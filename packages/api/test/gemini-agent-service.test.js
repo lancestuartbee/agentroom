@@ -608,6 +608,56 @@ describe('GeminiAgentService (antigravity-cli adapter)', () => {
     }
   });
 
+  test('F212: AGY empty stdout classifies actionable log diagnostics before silent_completion', async () => {
+    const proc = createMockProcess();
+    const spawnFn = mock.fn((_command, args) => {
+      const logIndex = args.indexOf('--log-file');
+      assert.ok(logIndex >= 0, 'antigravity-cli adapter must pass --log-file for diagnostics capture');
+      const logPath = args[logIndex + 1];
+      writeFileSync(
+        logPath,
+        [
+          'I... Print mode: starting (promptLength=6, model="", conversationID="")',
+          'E... failed to construct executor: neither PlanModel nor RequestedModel specified. You must specify a valid model.',
+          'E... neither PlanModel nor RequestedModel specified. You must specify a valid model.',
+        ].join('\n'),
+      );
+      return proc;
+    });
+    const service = new GeminiAgentService({
+      spawnFn,
+      adapter: 'antigravity-cli',
+      model: 'gemini-3.5-flash',
+    });
+    const workDir = mkdtempSync(join(tmpdir(), 'agy-empty-log-diagnostics-'));
+
+    try {
+      const promise = collect(
+        service.invoke('Say hi', {
+          workingDirectory: workDir,
+          agyLogPathOverride: join(workDir, 'agy.log'),
+          auditContext: { invocationId: 'inv-agy-empty-log' },
+        }),
+      );
+      emitPlainText(proc, '', 0);
+
+      const msgs = await promise;
+      const err = msgs.find((m) => m.type === 'error');
+      assert.ok(err, 'empty stdout with actionable AGY log diagnostics must surface as an error');
+      assert.match(err.error, /\/model|默认模型/i);
+      assert.equal(err.metadata?.cliDiagnostics?.reasonCode, 'model_not_found');
+      assert.equal(err.metadata?.cliDiagnostics?.debugRef.command, 'agy');
+      assert.equal(err.metadata?.cliDiagnostics?.debugRef.invocationId, 'inv-agy-empty-log');
+      assert.equal(
+        msgs.some((m) => m.type === 'system_info' && m.metadata?.cliDiagnostics?.reasonCode === 'silent_completion'),
+        false,
+        'classified AGY log diagnostics must not be downgraded to silent_completion',
+      );
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
   test('F212: AGY empty stdout with unclassified stderr stays silent_completion', async () => {
     const proc = createMockProcess();
     const spawnFn = createMockSpawnFn(proc);

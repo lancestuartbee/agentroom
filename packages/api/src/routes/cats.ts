@@ -6,6 +6,7 @@
 
 import { resolve } from 'node:path';
 import {
+  type AgyProfileConfig,
   type CatConfig,
   CLI_EFFORT_VALUES,
   type CliConfig,
@@ -48,6 +49,23 @@ const contextBudgetSchema = z.object({
   maxMessages: z.number().int().positive(),
   maxContentLengthPerMsg: z.number().int().positive(),
 });
+
+const agyProfileSchema = z.object({
+  enabled: z.boolean().optional(),
+  profileId: z.string().min(1).optional(),
+  homeRoot: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  autoApprove: z.boolean().optional(),
+  trustedWorkspaces: z.array(z.string().min(1)).optional(),
+}).superRefine((value, ctx) => {
+  if (value.enabled === false) return;
+  if (value.model && value.model.trim().length > 0) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ['model'],
+    message: 'agyProfile.model is required unless agyProfile.enabled=false',
+  });
+}) satisfies z.ZodType<AgyProfileConfig>;
 
 const cliEffortSchema = z.enum(CLI_EFFORT_VALUES);
 const cliSchema = z.object({
@@ -152,6 +170,7 @@ const baseCatSchema = z.object({
   mentionPatterns: z.array(z.string().min(1)).min(1),
   accountRef: z.string().min(1).optional(),
   contextBudget: contextBudgetSchema.optional(),
+  agyProfile: agyProfileSchema.optional(),
   roleDescription: z.string().min(1),
   personality: z.string().optional(),
   teamStrengths: z.string().optional(),
@@ -211,6 +230,7 @@ const updateCatSchema = z.object({
   mentionPatterns: z.array(z.string().min(1)).min(1).optional(),
   accountRef: z.string().min(1).nullable().optional(),
   contextBudget: contextBudgetSchema.nullable().optional(),
+  agyProfile: agyProfileSchema.nullable().optional(),
   roleDescription: z.string().min(1).optional(),
   personality: z.string().optional(),
   teamStrengths: z.string().optional(),
@@ -455,6 +475,7 @@ async function toCatResponse(
     strengths: cat.strengths,
     sessionChain: cat.sessionChain,
     voiceConfig: cat.voiceConfig,
+    agyProfile: cat.agyProfile,
     commandArgs: cat.commandArgs,
     cliConfigArgs: cat.cliConfigArgs,
     provider: cat.provider,
@@ -696,6 +717,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
               body.clientId === 'opencode'),
           cli: resolvedCli,
           ...(body.cliConfigArgs ? { cliConfigArgs: body.cliConfigArgs } : {}),
+          ...(body.agyProfile ? { agyProfile: body.agyProfile } : {}),
           ...(body.provider || providerNameForValidation
             ? { provider: body.provider ?? providerNameForValidation }
             : {}),
@@ -882,6 +904,11 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         ...(nextCli !== undefined ? { cli: nextCli } : {}),
         ...(body.available !== undefined ? { available: body.available } : {}),
         ...(body.cliConfigArgs !== undefined ? { cliConfigArgs: body.cliConfigArgs } : {}),
+        ...(body.agyProfile !== undefined
+          ? body.agyProfile === null
+            ? { agyProfile: null }
+            : { agyProfile: body.agyProfile }
+          : {}),
         // F161 AC-A5 / KD-1: generic ACP never carries provider — clear any stale value and
         // ignore incoming provider; other clients keep the explicit set/clear semantics.
         ...(effectiveClient === 'acp'

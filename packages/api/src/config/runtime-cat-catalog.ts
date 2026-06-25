@@ -1,6 +1,7 @@
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type {
+  AgyProfileConfig,
   CatBreed,
   CatCafeConfig,
   CatColor,
@@ -44,6 +45,8 @@ export interface RuntimeCatInput {
   cliConfigArgs?: string[];
   contextBudget?: ContextBudget;
   voiceConfig?: VoiceConfig;
+  /** F210 Phase G: isolated Antigravity CLI HOME/profile binding for Google/AGY cats. */
+  agyProfile?: AgyProfileConfig;
   /** clowder-ai#340 P5: Model provider name (renamed from ocProviderName). */
   provider?: string;
   /** F161: ACP transport config — presence triggers ACP transport instead of CLI. */
@@ -73,6 +76,8 @@ export interface RuntimeCatUpdate {
   cliConfigArgs?: string[];
   contextBudget?: ContextBudget | null;
   voiceConfig?: VoiceConfig | null;
+  /** F210 Phase G: null removes isolated AGY profile binding. */
+  agyProfile?: AgyProfileConfig | null;
   /** clowder-ai#340 P5: Model provider name (renamed from ocProviderName). */
   provider?: string | null;
   available?: boolean;
@@ -232,6 +237,7 @@ function createBreedFromInput(input: RuntimeCatInput): CatBreed {
         ...(input.provider ? { provider: input.provider } : {}),
         ...(input.contextBudget ? { contextBudget: input.contextBudget } : {}),
         ...(input.voiceConfig !== undefined ? { voiceConfig: input.voiceConfig } : {}),
+        ...(input.agyProfile !== undefined ? { agyProfile: input.agyProfile } : {}),
         ...(input.personality != null && input.personality.trim().length > 0 ? { personality: input.personality } : {}),
         ...(input.teamStrengths != null && input.teamStrengths.trim().length > 0
           ? { teamStrengths: input.teamStrengths.trim() }
@@ -415,6 +421,13 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
       variant.voiceConfig = patch.voiceConfig;
     } else {
       delete variant.voiceConfig;
+    }
+  }
+  if (patch.agyProfile !== undefined) {
+    if (patch.agyProfile) {
+      variant.agyProfile = patch.agyProfile;
+    } else {
+      delete variant.agyProfile;
     }
   }
   if (patch.commandArgs !== undefined) {

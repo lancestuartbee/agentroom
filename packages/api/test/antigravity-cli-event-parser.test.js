@@ -19,12 +19,13 @@ function readFixture(name) {
 }
 
 function extractBlock(fixture, label) {
+  const normalized = fixture.replace(/\r\n/g, '\n');
   const marker = `${label}:\n`;
-  const start = fixture.indexOf(marker);
+  const start = normalized.indexOf(marker);
   assert.notEqual(start, -1, `missing ${label} block`);
   const bodyStart = start + marker.length;
-  const bodyEnd = fixture.indexOf('\n\n', bodyStart);
-  const raw = fixture.slice(bodyStart, bodyEnd === -1 ? undefined : bodyEnd).trimEnd();
+  const bodyEnd = normalized.indexOf('\n\n', bodyStart);
+  const raw = normalized.slice(bodyStart, bodyEnd === -1 ? undefined : bodyEnd).trimEnd();
   return raw === '(empty)' ? '' : raw;
 }
 
@@ -135,10 +136,45 @@ describe('Antigravity CLI plain text parser', () => {
     assert.match(result.error, /\/model/);
   });
 
+  test('classifies log-only F210 missing-model diagnostics as onboarding error', () => {
+    const agyLogText = readFixture('agy-real-home-no-default-model.txt');
+
+    const result = classifyAntigravityCliPlainText({ stdout: '', stderr: '', resumed: false, agyLogText });
+
+    assert.equal(result.kind, 'error');
+    assert.equal(result.errorKind, 'missing_model');
+    assert.match(result.error, /\/model/);
+  });
+
+  test('keeps normal log-only empty AGY output as empty when no diagnostic matches', () => {
+    const agyLogText = [
+      'I... Print mode: starting (promptLength=6, model="Gemini 3.5 Flash (High)", conversationID="")',
+      'I... ChainedAuth: authenticated via keyring (effective: keyring)',
+      'I... Print mode: conversation=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee, sending message',
+      'I... Print mode: completed',
+    ].join('\n');
+
+    const result = classifyAntigravityCliPlainText({ stdout: '', stderr: '', resumed: false, agyLogText });
+
+    assert.deepEqual(result, { kind: 'empty' });
+  });
+
   test('classifies F210 auth-required OAuth stdout as onboarding error', () => {
     const stdout = extractBlock(readFixture('agy-print-auth-required.txt'), 'stdout');
 
     const result = classifyAntigravityCliPlainText({ stdout, stderr: '', resumed: false });
+
+    assert.equal(result.kind, 'error');
+    assert.equal(result.errorKind, 'auth_required');
+    assert.match(result.error, /agy/i);
+    assert.match(result.error, /login|auth/i);
+    assert.doesNotMatch(result.error, /accounts\.google\.com/);
+  });
+
+  test('classifies log-only F210 auth-required OAuth diagnostics as onboarding error', () => {
+    const agyLogText = extractBlock(readFixture('agy-print-auth-required.txt'), 'stdout');
+
+    const result = classifyAntigravityCliPlainText({ stdout: '', stderr: '', resumed: false, agyLogText });
 
     assert.equal(result.kind, 'error');
     assert.equal(result.errorKind, 'auth_required');

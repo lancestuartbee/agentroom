@@ -135,6 +135,41 @@ describe('Callback Routes', () => {
     assert.equal(recent[0].content, 'Hello from cat!');
   });
 
+  test('POST post-message rejects empty callback content without storing or claiming clientMessageId', async () => {
+    const app = await createApp();
+    const { invocationId, callbackToken } = await registry.create('user-1', 'opus');
+    const headers = { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken };
+
+    const empty = await app.inject({
+      method: 'POST',
+      url: '/api/callbacks/post-message',
+      headers,
+      payload: {
+        content: '   \n\t',
+        clientMessageId: 'empty-retry-key',
+      },
+    });
+
+    assert.equal(empty.statusCode, 400);
+    assert.equal(JSON.parse(empty.body).code, 'EMPTY_CALLBACK_MESSAGE');
+    assert.equal(messageStore.getRecent(10).length, 0, 'empty callback content must not persist');
+    assert.equal(socketManager.getMessages().length, 0, 'empty callback content must not broadcast');
+
+    const validRetry = await app.inject({
+      method: 'POST',
+      url: '/api/callbacks/post-message',
+      headers,
+      payload: {
+        content: 'valid after empty retry key',
+        clientMessageId: 'empty-retry-key',
+      },
+    });
+
+    assert.equal(validRetry.statusCode, 200);
+    assert.equal(JSON.parse(validRetry.body).status, 'ok');
+    assert.equal(messageStore.getRecent(10)[0].content, 'valid after empty retry key');
+  });
+
   test('POST post-message calls outboundHook.deliver when wired', async () => {
     const { callbacksRoutes } = await import('../dist/routes/callbacks.js');
     const app = Fastify();

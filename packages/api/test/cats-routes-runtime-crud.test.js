@@ -616,6 +616,137 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     }
   });
 
+  it('POST/PATCH /api/cats persists and clears AGY profile config for Google members', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const agyProfile = {
+      enabled: true,
+      profileId: 'siamese-gemini35',
+      model: 'Gemini 3.5 Flash (High)',
+      trustedWorkspaces: [projectRoot],
+      autoApprove: false,
+    };
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-gemini-agy',
+        name: 'runtime-gemini-agy-name',
+        displayName: 'runtime-gemini-agy-display',
+        avatar: '/avatars/runtime.png',
+        color: { primary: '#334155', secondary: '#cbd5e1' },
+        mentionPatterns: ['@runtime-gemini-agy'],
+        roleDescription: 'runtime',
+        clientId: 'google',
+        accountRef: 'gemini',
+        defaultModel: 'gemini-3.5-flash',
+        agyProfile,
+      }),
+    });
+
+    assert.equal(createRes.statusCode, 201);
+    const createBody = JSON.parse(createRes.body);
+    assert.deepEqual(createBody.cat.agyProfile, agyProfile);
+
+    let catalog = JSON.parse(readFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), 'utf-8'));
+    let variant = catalog.breeds.find((breed) => breed.catId === 'runtime-gemini-agy')?.variants?.[0];
+    assert.deepEqual(variant?.agyProfile, agyProfile);
+
+    const clearRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/runtime-gemini-agy',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({ agyProfile: null }),
+    });
+
+    assert.equal(clearRes.statusCode, 200);
+    const clearBody = JSON.parse(clearRes.body);
+    assert.equal(clearBody.cat.agyProfile, undefined);
+
+    catalog = JSON.parse(readFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), 'utf-8'));
+    variant = catalog.breeds.find((breed) => breed.catId === 'runtime-gemini-agy')?.variants?.[0];
+    assert.equal(variant?.agyProfile, undefined);
+  });
+
+  it('POST /api/cats requires agyProfile.model unless the profile is disabled', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const baseBody = {
+      name: 'runtime-gemini-agy-validation-name',
+      displayName: 'runtime-gemini-agy-validation-display',
+      avatar: '/avatars/runtime.png',
+      color: { primary: '#334155', secondary: '#cbd5e1' },
+      roleDescription: 'runtime',
+      clientId: 'google',
+      accountRef: 'gemini',
+      defaultModel: 'gemini-3.5-flash',
+    };
+
+    const missingModelRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        ...baseBody,
+        catId: 'runtime-gemini-agy-missing-model',
+        mentionPatterns: ['@runtime-gemini-agy-missing-model'],
+        agyProfile: { enabled: true, profileId: 'missing-model-profile' },
+      }),
+    });
+
+    assert.equal(missingModelRes.statusCode, 400);
+    const missingModelBody = JSON.parse(missingModelRes.body);
+    assert.ok(
+      missingModelBody.details?.some(
+        (issue) => issue.path?.join('.') === 'agyProfile.model' && /required/.test(issue.message),
+      ),
+      'enabled AGY profiles must reject missing model labels',
+    );
+
+    const disabledRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        ...baseBody,
+        catId: 'runtime-gemini-agy-disabled',
+        mentionPatterns: ['@runtime-gemini-agy-disabled'],
+        agyProfile: { enabled: false, profileId: 'disabled-profile' },
+      }),
+    });
+
+    assert.equal(disabledRes.statusCode, 201);
+    const disabledBody = JSON.parse(disabledRes.body);
+    assert.deepEqual(disabledBody.cat.agyProfile, { enabled: false, profileId: 'disabled-profile' });
+  });
+
   it('PATCH /api/cats/:id rejects provider bindings that do not resolve to an existing account', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');

@@ -37,7 +37,9 @@ export function classifyAntigravityCliPlainText(input: AntigravityCliPlainTextIn
   }
 
   const trimmedStdout = stripFreshConversationWarning(input.stdout).trim();
-  const diagnosticText = `${trimmedStdout}\n${(input.stderr ?? '').trim()}`;
+  const diagnosticText = [trimmedStdout, input.stderr?.trim() ?? '', input.agyLogText?.trim() ?? '']
+    .filter((chunk) => chunk.length > 0)
+    .join('\n');
 
   if (isAgyPrintTimeoutOutput(trimmedStdout)) {
     return {

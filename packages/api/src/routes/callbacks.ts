@@ -13,7 +13,7 @@ import {
   normalizeSopDefinitionId,
   resolveWorkflowSopSkill,
 } from '@cat-cafe/shared';
-import type { FastifyBaseLogger, FastifyPluginAsync } from 'fastify';
+import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { resolveFrontendBaseUrl } from '../config/frontend-origin.js';
 import type { InvocationQueue } from '../domains/cats/services/agents/invocation/InvocationQueue.js';
@@ -248,6 +248,18 @@ function buildRoutingOutcome(requestedIds: string[], enqueuedIds: readonly strin
   return {
     routed: [...enqueuedIds],
     notEnqueued: requestedIds.filter((id) => !enqueuedSet.has(id)),
+  };
+}
+
+function hasRenderablePostMessageContent(storedContent: string, richBlocks: readonly RichBlock[]): boolean {
+  return storedContent.trim().length > 0 || richBlocks.length > 0;
+}
+
+function rejectEmptyPostMessage(reply: FastifyReply) {
+  reply.status(400);
+  return {
+    error: 'post_message content is empty',
+    code: 'EMPTY_CALLBACK_MESSAGE',
   };
 }
 
@@ -813,14 +825,17 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
       const effectiveThreadId = threadResult.threadId;
       const { content, replyTo, clientMessageId, targetCats: explicitTargetCats } = parsed.data;
 
+      const { cleanText: storedContent, blocks: extractedBlocks } = extractRichFromText(content);
+      if (!hasRenderablePostMessageContent(storedContent, extractedBlocks)) {
+        return rejectEmptyPostMessage(reply);
+      }
+
       if (clientMessageId && agentKeyRegistry) {
         const isFirst = await agentKeyRegistry.claimClientMessageId(principal.agentKeyId, clientMessageId);
         if (!isFirst) {
           return { status: 'duplicate', replyTo, clientMessageId };
         }
       }
-
-      const { cleanText: storedContent, blocks: extractedBlocks } = extractRichFromText(content);
       let richBlocks = extractedBlocks;
       const synthesizer = getVoiceBlockSynthesizer();
       if (synthesizer && richBlocks.some((b) => b.kind === 'audio' && 'text' in b)) {
@@ -1327,14 +1342,6 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
       };
     }
 
-    // At-least-once de-duplication: retries with same clientMessageId are treated as duplicate.
-    if (clientMessageId) {
-      const isFirstSeen = await registry.claimClientMessageId(invocationId, clientMessageId);
-      if (!isFirstSeen) {
-        return { status: 'duplicate', replyTo, clientMessageId };
-      }
-    }
-
     // #83: Extract cc_rich blocks from post_message content (Route B for callback path)
     const { cleanText: storedContent, blocks: extractedBlocks } = extractRichFromText(content);
 
@@ -1343,9 +1350,21 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
     // For route-serial agents, the buffer is already consumed before post_message — this is a no-op.
     const bufferedBlocks = getRichBlockBuffer().consume(effectiveThreadId, actor.catId as string, invocationId);
 
+    let richBlocks = [...extractedBlocks, ...bufferedBlocks];
+    if (!hasRenderablePostMessageContent(storedContent, richBlocks)) {
+      return rejectEmptyPostMessage(reply);
+    }
+
+    // At-least-once de-duplication: retries with same clientMessageId are treated as duplicate.
+    if (clientMessageId) {
+      const isFirstSeen = await registry.claimClientMessageId(invocationId, clientMessageId);
+      if (!isFirstSeen) {
+        return { status: 'duplicate', replyTo, clientMessageId };
+      }
+    }
+
     // F34-b: Resolve voice blocks (audio with text, no url) before storing
     const synthesizer = getVoiceBlockSynthesizer();
-    let richBlocks = [...extractedBlocks, ...bufferedBlocks];
     if (synthesizer && richBlocks.some((b) => b.kind === 'audio' && 'text' in b)) {
       try {
         richBlocks = await synthesizer.resolveVoiceBlocks(richBlocks, actor.catId as string);

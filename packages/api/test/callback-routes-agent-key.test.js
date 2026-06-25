@@ -104,6 +104,45 @@ describe('Callback routes: agent-key auth path', () => {
     assert.equal(body.status, 'ok');
   });
 
+  test('post-message with agent-key rejects empty content without storing or claiming clientMessageId', async () => {
+    const app = await createApp();
+    const { secret } = await issueKey();
+    const headers = { 'x-agent-key-secret': secret };
+
+    const empty = await app.inject({
+      method: 'POST',
+      url: '/api/callbacks/post-message',
+      headers,
+      payload: {
+        content: ' \n\t ',
+        threadId: ownedThreadId,
+        clientMessageId: 'agent-key-empty-retry',
+      },
+    });
+
+    assert.equal(empty.statusCode, 400);
+    assert.equal(JSON.parse(empty.body).code, 'EMPTY_CALLBACK_MESSAGE');
+    assert.equal((await messageStore.getByThread(ownedThreadId)).length, 0, 'empty agent-key post must not persist');
+    assert.equal(socketManager.getMessages().length, 0, 'empty agent-key post must not broadcast');
+
+    const validRetry = await app.inject({
+      method: 'POST',
+      url: '/api/callbacks/post-message',
+      headers,
+      payload: {
+        content: 'agent-key content after empty retry key',
+        threadId: ownedThreadId,
+        clientMessageId: 'agent-key-empty-retry',
+      },
+    });
+
+    assert.equal(validRetry.statusCode, 200);
+    assert.equal(JSON.parse(validRetry.body).status, 'ok');
+    const messages = await messageStore.getByThread(ownedThreadId);
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].content, 'agent-key content after empty retry key');
+  });
+
   test('post-message with agent-key synthesizes text-only audio rich blocks before storing', async () => {
     const { initVoiceBlockSynthesizer } = await import('../dist/domains/cats/services/tts/VoiceBlockSynthesizer.js');
     const cacheDir = mkdtempSync(path.join(os.tmpdir(), 'cat-cafe-agent-key-audio-'));

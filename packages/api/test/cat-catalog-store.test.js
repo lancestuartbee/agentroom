@@ -425,6 +425,53 @@ describe('cat-catalog-store', () => {
     });
   });
 
+  it('persists and clears agyProfile for runtime Google members', async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cat-catalog-store-'));
+    const templatePath = join(projectRoot, 'cat-template.json');
+    writeFileSync(templatePath, JSON.stringify(validConfig(), null, 2));
+    writeCatCatalog(projectRoot, validConfig());
+
+    await createRuntimeCat(projectRoot, {
+      catId: 'agy-cat',
+      breedId: 'agy-cat',
+      name: 'AGY猫',
+      displayName: 'AGY猫',
+      avatar: '/avatars/gemini.png',
+      color: { primary: '#2563eb', secondary: '#dbeafe' },
+      mentionPatterns: ['@agy-cat'],
+      roleDescription: 'AGY profile config validation',
+      clientId: 'google',
+      defaultModel: 'gemini-3.5-flash',
+      mcpSupport: true,
+      cli: { command: 'gemini', outputFormat: 'stream-json' },
+      agyProfile: {
+        enabled: true,
+        profileId: 'siamese-gemini35',
+        model: 'Gemini 3.5 Flash (High)',
+        trustedWorkspaces: [projectRoot],
+        autoApprove: false,
+      },
+    });
+
+    let catalog = readRuntimeCatCatalog(projectRoot);
+    let created = catalog.breeds.find((breed) => breed.catId === 'agy-cat');
+    assert.ok(created, 'agy-cat breed should be created');
+    assert.deepEqual(created.variants[0]?.agyProfile, {
+      enabled: true,
+      profileId: 'siamese-gemini35',
+      model: 'Gemini 3.5 Flash (High)',
+      trustedWorkspaces: [projectRoot],
+      autoApprove: false,
+    });
+
+    await updateRuntimeCat(projectRoot, 'agy-cat', { agyProfile: null });
+
+    catalog = readRuntimeCatCatalog(projectRoot);
+    created = catalog.breeds.find((breed) => breed.catId === 'agy-cat');
+    assert.ok(created, 'agy-cat breed should remain after clearing agyProfile');
+    assert.equal(created.variants[0]?.agyProfile, undefined);
+  });
+
   it('updates an existing runtime member in place', async () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'cat-catalog-store-'));
     const templatePath = join(projectRoot, 'cat-template.json');
