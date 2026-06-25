@@ -896,7 +896,12 @@ export class GeminiAgentService implements AgentService {
           ? {
               ...(options?.callbackEnv ?? {}),
               ...(options?.accountEnv ?? {}),
-              ...(agyProfile ? { HOME: agyProfile.homePath } : {}),
+              ...(agyProfile
+                ? {
+                    HOME: agyProfile.homePath,
+                    ...(process.platform === 'win32' ? { USERPROFILE: agyProfile.homePath } : {}),
+                  }
+                : {}),
             }
           : undefined;
       let stdout = '';
