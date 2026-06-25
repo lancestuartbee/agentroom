@@ -527,12 +527,12 @@
           "defaultModel": "gemini-3.1-pro-preview",
           "mcpSupport": true,
           "cli": {
-            "command": "gemini",
+            "command": "agy",
             "outputFormat": "stream-json",
             "defaultArgs": []
           },
           "acp": {
-            "command": "gemini",
+            "command": "agy",
             "startupArgs": ["--acp", "--approval-mode", "yolo"],
             "mcpWhitelist": ["cat-cafe", "cat-cafe-memory", "cat-cafe-collab", "cat-cafe-signals", "pencil"],
             "supportsMultiplexing": true
@@ -570,12 +570,12 @@
             "secondary": "#BBDEFB"
           },
           "cli": {
-            "command": "gemini",
+            "command": "agy",
             "outputFormat": "stream-json",
             "defaultArgs": []
           },
           "acp": {
-            "command": "gemini",
+            "command": "agy",
             "startupArgs": ["--acp", "--approval-mode", "yolo"],
             "mcpWhitelist": ["cat-cafe", "cat-cafe-memory", "cat-cafe-collab", "cat-cafe-signals", "pencil"],
             "supportsMultiplexing": true
@@ -630,7 +630,7 @@
           "defaultModel": "Gemini 3.5 Flash (High)",
           "mcpSupport": true,
           "cli": {
-            "command": "gemini",
+            "command": "agy",
             "outputFormat": "stream-json"
           },
           "accountRef": "gemini",

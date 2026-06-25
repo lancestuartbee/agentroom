@@ -50,7 +50,7 @@ const CLI_SPECS: CliSpec[] = [
   { client: 'claude', provider: 'anthropic', label: 'Claude', cli: 'claude', envKey: 'ANTHROPIC_API_KEY' },
   { client: 'codex', provider: 'openai', label: 'Codex', cli: 'codex', envKey: 'OPENAI_API_KEY' },
   { client: 'opencode', provider: 'opencode', label: 'OpenCode', cli: 'opencode', envKey: 'ANTHROPIC_API_KEY' },
-  { client: 'gemini', provider: 'google', label: 'Gemini', cli: 'gemini', envKey: 'GOOGLE_API_KEY' },
+  { client: 'gemini', provider: 'google', label: 'Gemini', cli: 'agy', envKey: 'GOOGLE_API_KEY' },
   { client: 'dare', provider: 'dare', label: 'Dare', cli: 'dare', envKey: '' },
   { client: 'kimi', provider: 'kimi', label: 'Kimi', cli: 'kimi', envKey: 'MOONSHOT_API_KEY' },
 ];

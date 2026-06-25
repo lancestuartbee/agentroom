@@ -1331,20 +1331,43 @@ export async function generateCliConfigs(config: CapabilitiesConfig, paths: CliC
   const perProvider = collectServersPerProvider(config);
   const projectRoot = resolve(paths.anthropic, '..');
   await resolveMachineSpecificServers(perProvider, { projectRoot });
-  const configPaths = Object.values(paths).filter(
-    (path): path is string => typeof path === 'string' && path.length > 0,
-  );
+
+  // Map absolute path string -> { writer, servers: Map<name, McpServerDescriptor> }
+  const pathWrites = new Map<string, { writer: typeof writeAntigravityMcpConfig; servers: Map<string, McpServerDescriptor> }>();
+
+  for (const [provider, servers] of Object.entries(perProvider)) {
+    const rawPath = paths[provider as keyof CliConfigPaths];
+    if (!rawPath) continue;
+    const absPath = resolve(rawPath);
+
+    const writer = absPath.includes('antigravity')
+      ? writeAntigravityMcpConfig
+      : (PROVIDER_WRITERS[provider as keyof typeof PROVIDER_WRITERS] as typeof writeAntigravityMcpConfig);
+
+    if (!writer) continue;
+
+    let targetWrite = pathWrites.get(absPath);
+    if (!targetWrite) {
+      targetWrite = { writer, servers: new Map() };
+      pathWrites.set(absPath, targetWrite);
+    }
+
+    for (const s of servers) {
+      const existing = targetWrite.servers.get(s.name);
+      if (!existing || (s.enabled && !existing.enabled)) {
+        targetWrite.servers.set(s.name, s);
+      }
+    }
+  }
+
+  const uniquePaths = Array.from(pathWrites.keys());
   const snapshots = await Promise.all(
-    configPaths.map(async (path) => ({ path, snapshot: await snapshotCliConfigPath(path) })),
+    uniquePaths.map(async (p) => ({ path: p, snapshot: await snapshotCliConfigPath(p) })),
   );
 
   const writes: Promise<void>[] = [];
-  for (const [provider, servers] of Object.entries(perProvider)) {
-    const writer = PROVIDER_WRITERS[provider as keyof typeof PROVIDER_WRITERS];
-    const path = paths[provider as keyof CliConfigPaths];
-    if (writer && path) {
-      writes.push(writer(path, servers));
-    }
+  for (const [absPath, { writer, servers }] of pathWrites.entries()) {
+    writes.push(writer(absPath, Array.from(servers.values())));
   }
 
   const results = await Promise.allSettled(writes);

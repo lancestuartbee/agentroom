@@ -78,7 +78,7 @@ const CLI_PROBE_SPECS: Record<string, CliProbeSpec> = {
     args: (m) => ['exec', ...(m ? ['--model', m] : []), 'reply pong'],
   },
   gemini: {
-    args: (m) => ['-p', 'reply pong', ...(m ? ['--model', m] : [])],
+    args: () => ['--print', 'reply pong'],
   },
   kimi: {
     args: (m) => ['--print', ...(m ? ['--model', m] : []), '--prompt', 'reply pong'],
@@ -215,7 +215,8 @@ function spawnProbe(
   const spawnEnv = env ?? { ...process.env };
 
   return new Promise((resolve) => {
-    let command: string = resolveCliCommand(client) ?? client;
+    const commandName = client === 'gemini' ? 'agy' : client;
+    let command: string = resolveCliCommand(commandName) ?? commandName;
     let finalArgs = cliArgs;
     let shell: boolean | string | undefined;
 

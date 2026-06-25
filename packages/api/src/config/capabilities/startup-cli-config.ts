@@ -32,7 +32,7 @@ export function resolveStartupCliConfigContext(
     paths: {
       anthropic: join(projectRoot, '.mcp.json'),
       openai: join(projectRoot, '.codex', 'config.toml'),
-      google: join(projectRoot, '.gemini', 'settings.json'),
+      google: join(homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
       kimi: join(projectRoot, '.kimi', 'mcp.json'),
       antigravity: join(homedir(), '.gemini', 'antigravity', 'mcp_config.json'),
     },
