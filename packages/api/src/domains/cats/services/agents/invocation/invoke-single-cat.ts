@@ -879,7 +879,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F152: Emit invocation start through OTel log pipeline
     emitOtelLog('INFO', 'invocation_started', { [AGENT_ID]: catId, [OPERATION_NAME]: 'invoke' }, invocationSpan);
 
-    const useProviderSession = promptProfile !== 'casual';
+    const useProviderSession = true;
+    const useSessionChain = promptProfile !== 'casual';
     let sessionId: string | undefined;
     if (useProviderSession) {
       try {
@@ -907,7 +908,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F33-fix: Always check chain even when sessionManager returns nothing.
     // The PATCH bind endpoint writes to sessionChainStore but not sessionManager,
     // so a freshly-bound session would be missed if we gate on sessionId being truthy.
-    const sessionChainActive = useProviderSession && isSessionChainEnabled(catId);
+    const sessionChainActive = useSessionChain && isSessionChainEnabled(catId);
     let activeSessionRecordForResume: SessionRecord | null = null;
     if (isBgCarrier && bgChainKey && deps.sessionChainStore && sessionChainActive) {
       // F198 Bug #3: bg resolves its resume target via the chainKey record's

@@ -127,3 +127,84 @@ git diff --check
   - 优先复用支持 server/ACP/bg/daemon 的 provider。
   - 无法常驻的 provider 继续走裁剪后的 cold-start CLI。
   - 记录每轮 input/cache 命中率，观察 prompt cache 是否随着稳定 prefix 和 session 复用提升。
+
+### 闲聊 CLI carrier/session 复用第一版
+
+完成内容：
+
+- casual 模式重新启用 provider session 复用，但 session key 带 `promptProfile=casual`，不会复用或污染开发协作 session。
+- casual 仍不启用开发协作的 session-chain/bootstrap/seal 机制，避免把重型开发控制流带回闲聊。
+- 各 CLI provider 在 casual 模式下不再丢弃 `sessionId` / `cliSessionId`，允许同一 thread + cat + profile 继续 resume：
+  - Codex
+  - Claude Code
+  - Claude bg carrier
+  - Gemini CLI / Antigravity CLI
+  - OpenCode
+  - Kimi
+  - Dare
+- Codex casual 去掉 `--ephemeral`，否则 CLI session 无法持久化并在后续轮次 resume。
+- casual 仍保留轻量裁剪：不注入 Cat Cafe MCP，不恢复成员编辑器里的额外 CLI config args，不添加 `.git` 写权限。
+
+验证：
+
+```bash
+corepack pnpm --filter @cat-cafe/api build
+CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT=1 bash ./packages/api/scripts/with-test-home.sh node --test --test-name-pattern 'casual prompt profile uses lightweight Codex CLI launch flags|casual prompt profile resumes Codex CLI session|casual mode reuses profile-scoped provider session|casual prompt profile|casual mode routing|promptProfile isolates|prompt segment diagnostics' packages/api/test/codex-agent-service.test.js packages/api/test/invoke-single-cat.test.js packages/api/test/casual-prompt-profile.test.js packages/api/test/casual-mode-routing.test.js packages/api/test/prompt-segment-diagnostics.test.js packages/api/test/session-chain-store.test.js packages/api/test/redis-session-chain-store.test.js
+git diff --check
+```
+
+结果：
+
+- API build 通过。
+- 16 个相关定向测试通过。
+- `git diff --check` 通过。
+
+下一步观察：
+
+- 同一 casual thread 内连续发言时，OpenAI/GPT agent 的 `sessionId` 是否稳定复用。
+- `inputTokens` 是否下降，或至少 `cacheReadTokens` / input 占比是否提升。
+- Gemini/Antigravity 是否因为 `--conversation` resume 出现历史重放；如出现，再单独做 trajectory/final answer 去重或 provider-specific carrier。
+
+### 闲聊 CLI carrier 后台实测记录
+
+测试线程：
+
+- `thread_mrgsjj2ma1a2n03o`
+- mode: `casual`
+- Redis profile: `opensource`
+- Redis port: `6398`
+
+实测观察：
+
+- carrier 改动前，GPT/Codex agent 每轮 `sessionId` 都变化：
+  - `019f52c6-7ee1-77a0-b19a-082fd4a97177`
+  - `019f52cd-ab89-7931-9f87-aae3e5282c04`
+  - `019f52ce-d165-7323-8e60-55471bcdeb5f`
+  - `019f52cf-4cc7-77b2-b0ff-221421a7d028`
+- carrier 改动后，GPT/Codex agent 在同一线程内稳定复用：
+  - `019f52de-6658-74f1-80a0-de693bf145c7`
+- carrier 改动后，Gemini/Antigravity agent 在同一线程内稳定复用：
+  - `ab5ff6e4-c998-466f-ae6e-986e8e31b427`
+- 当前 Redis provider session key 与最新消息中的 `sessionId` 一致：
+  - `cat-cafe:sessions:default-user:cat-k7noygiu:thread_mrgsjj2ma1a2n03o::prompt-profile:casual`
+  - `cat-cafe:sessions:default-user:cat-gvepveae:thread_mrgsjj2ma1a2n03o::prompt-profile:casual`
+- 当前测试线程没有写入 `cat-cafe:session-chain:*thread_mrgsjj2ma1a2n03o*`，说明 casual 没有误启用开发模式 session-chain。
+
+GPT/Codex usage 变化：
+
+| 阶段 | inputTokens | cacheReadTokens | cache 占比 |
+| --- | ---: | ---: | ---: |
+| carrier 前 | 12502 | 9600 | 76.8% |
+| carrier 前 | 12714 | 9600 | 75.5% |
+| carrier 前 | 12798 | 9600 | 75.0% |
+| carrier 前 | 12479 | 9600 | 76.9% |
+| carrier 后 | 12974 | 10112 | 77.9% |
+| carrier 后 | 14156 | 12672 | 89.5% |
+
+结论：
+
+- 第一版 CLI carrier 已解决“同一闲聊线程每轮更换 provider session”的问题。
+- GPT/Codex 侧 cache 命中占比提升明显，但 `inputTokens` 仍在 1.3w-1.4w 左右，说明 CLI runtime 固定上下文仍然较重。
+- Gemini/Antigravity 没有暴露 usage token 字段，只能通过 `sessionId` 稳定性确认 carrier 生效。
+- 闲聊模式下工具默认不主动使用，但当用户请求天气这类需要实时信息的任务时，Gemini/Antigravity 仍可触发 `search_web`；本次天气测试出现 1 次 web search 工具调用。
+- 下一步不建议继续大幅削弱必要人设；更有价值的方向是评估真正的常驻 CLI process/daemon carrier，或针对 Codex/Claude/Gemini 分 provider 做持久进程能力探测。

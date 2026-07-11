@@ -484,7 +484,7 @@ export class GeminiAgentService implements AgentService {
 
   private async *invokeGeminiCLI(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const isCasualProfile = options?.promptProfile === 'casual';
-    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const effectiveSessionId = options?.sessionId;
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_GEMINI_MODEL_OVERRIDE ?? this.model;
     const metadata: MessageMetadata = { provider: 'google', model: effectiveModel };
 
@@ -556,7 +556,7 @@ export class GeminiAgentService implements AgentService {
           : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
       };
@@ -796,7 +796,7 @@ export class GeminiAgentService implements AgentService {
     if (printTimeout) {
       args.push('--print-timeout', printTimeout);
     }
-    const requestedSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const requestedSessionId = options?.sessionId;
     let emittedSessionInit = false;
     if (requestedSessionId) {
       metadata.sessionId = requestedSessionId;
@@ -1019,7 +1019,7 @@ export class GeminiAgentService implements AgentService {
         ...(childEnv ? { env: childEnv } : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
       };
@@ -1332,7 +1332,7 @@ export class GeminiAgentService implements AgentService {
             firstEventAt: timeoutEvent.firstEventAt,
             lastEventAt: timeoutEvent.lastEventAt,
             invocationId: timeoutEvent.invocationId ?? options?.invocationId,
-            cliSessionId: timeoutEvent.cliSessionId ?? (isCasualProfile ? undefined : options?.cliSessionId),
+            cliSessionId: timeoutEvent.cliSessionId ?? options?.cliSessionId,
             rawArchivePath: timeoutEvent.rawArchivePath,
           }),
           timestamp: Date.now(),

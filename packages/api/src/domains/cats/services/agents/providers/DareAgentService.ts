@@ -120,7 +120,7 @@ export class DareAgentService implements AgentService {
     const args = this.buildArgs(
       prompt,
       options?.workingDirectory,
-      isCasualProfile ? undefined : options?.sessionId,
+      options?.sessionId,
       endpoint,
       effectiveModel,
       isCasualProfile ? undefined : options?.cliConfigArgs,
@@ -144,7 +144,7 @@ export class DareAgentService implements AgentService {
         env: childEnv,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
       };

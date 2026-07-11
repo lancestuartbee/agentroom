@@ -7208,6 +7208,61 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     assert.equal(existsSync(expected), true, 'casual artifact reports directory should be created');
   });
 
+  it('casual mode reuses profile-scoped provider session without session-chain bootstrap', async () => {
+    const optionsSeen = [];
+    const getCalls = [];
+    const storeCalls = [];
+    const service = {
+      l0CompilerFn: dummyL0CompilerFn,
+      async *invoke(_prompt, options) {
+        optionsSeen.push(options ?? {});
+        yield { type: 'session_init', catId: 'opus', sessionId: 'fresh-casual-session', timestamp: Date.now() };
+        yield { type: 'done', catId: 'opus', timestamp: Date.now() };
+      },
+    };
+
+    const deps = {
+      ...makeDeps(),
+      sessionManager: {
+        get: async (...args) => {
+          getCalls.push(args);
+          return 'existing-casual-session';
+        },
+        store: async (...args) => {
+          storeCalls.push(args);
+        },
+        delete: async () => {},
+      },
+      sessionChainStore: {
+        getChain: async () => {
+          throw new Error('casual mode must not use development session-chain bootstrap');
+        },
+        getActive: async () => {
+          throw new Error('casual mode must not use development session-chain active record');
+        },
+      },
+    };
+
+    await collect(
+      invokeSingleCat(deps, {
+        catId: 'opus',
+        service,
+        prompt: 'continue casual chat',
+        systemPrompt: '[Casual profile]\nidentity',
+        promptProfile: 'casual',
+        userId: 'user1',
+        threadId: 'thread-casual-carrier',
+        isLastCat: true,
+      }),
+    );
+
+    assert.equal(optionsSeen[0]?.sessionId, 'existing-casual-session');
+    assert.equal(optionsSeen[0]?.cliSessionId, 'existing-casual-session');
+    assert.equal(getCalls[0]?.[3], 'casual');
+    assert.equal(storeCalls[0]?.[3], 'fresh-casual-session');
+    assert.equal(storeCalls[0]?.[4], 'casual');
+  });
+
   it('fails loud for OpenCode when thread projectPath is default', async () => {
     let invokedService = false;
     const service = {

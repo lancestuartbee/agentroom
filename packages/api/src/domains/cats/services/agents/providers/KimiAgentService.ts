@@ -65,7 +65,7 @@ export class KimiAgentService implements AgentService {
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const isCasualProfile = options?.promptProfile === 'casual';
-    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const effectiveSessionId = options?.sessionId;
     const requestedModel = options?.callbackEnv?.CAT_CAFE_KIMI_MODEL_OVERRIDE ?? this.model;
     const effectiveModel = resolveKimiModelAlias(requestedModel, options?.callbackEnv);
     const metadata: MessageMetadata = { provider: 'kimi', model: effectiveModel };
@@ -175,7 +175,7 @@ export class KimiAgentService implements AgentService {
           : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
         ...(options?.invocationId && this.rawArchive.getPath

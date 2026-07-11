@@ -221,7 +221,7 @@ export class ClaudeBgCarrierService implements AgentService {
    */
   async startJob(prompt: string, options?: AgentServiceOptions): Promise<StartJobResult> {
     const isCasualProfile = options?.promptProfile === 'casual';
-    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const effectiveSessionId = options?.sessionId;
     const nativeSystemPromptOverride =
       options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined;
     const l0Path = nativeSystemPromptOverride

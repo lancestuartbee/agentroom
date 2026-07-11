@@ -272,7 +272,7 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
       const args = spawnFn.mock.calls[0].arguments[1];
       assert.ok(args.includes('--ignore-user-config'));
       assert.ok(args.includes('--ignore-rules'));
-      assert.ok(args.includes('--ephemeral'));
+      assert.equal(args.includes('--ephemeral'), false, 'casual carrier mode must persist a resumable CLI session');
       assert.ok(args.includes('--skip-git-repo-check'));
       assert.equal(args.includes('--add-dir'), false, 'casual mode must not grant .git write access');
       assert.equal(args.includes('.git'), false, 'casual mode must not add .git as a writable directory');
@@ -280,6 +280,44 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
         args.some((arg) => String(arg).includes('mcp_servers.')),
         false,
         'casual mode must not inject Cat Cafe MCP config',
+      );
+    } finally {
+      rmSync(workingDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test('casual prompt profile resumes Codex CLI session without restoring heavy config', async () => {
+    const proc = createMockProcess();
+    const spawnFn = createMockSpawnFn(proc);
+    const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn, model: 'gpt-5.3-codex' });
+    const workingDirectory = mkdtempSync(join(import.meta.dirname ?? '.', 'codex-casual-resume-workdir-'));
+
+    try {
+      const promise = collect(
+        service.invoke('hello resumed casual', {
+          promptProfile: 'casual',
+          nativeSystemPrompt: '[Casual profile]\nminimal identity',
+          workingDirectory,
+          sessionId: 'casual-codex-session',
+          cliSessionId: 'casual-codex-session',
+        }),
+      );
+
+      emitCodexEvents(proc, [
+        { type: 'thread.started', thread_id: 'casual-codex-session' },
+        { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } },
+      ]);
+      await promise;
+
+      const args = spawnFn.mock.calls[0].arguments[1];
+      assert.deepEqual(args.slice(0, 3), ['exec', 'resume', 'casual-codex-session']);
+      assert.ok(args.includes('--ignore-user-config'));
+      assert.ok(args.includes('--ignore-rules'));
+      assert.equal(args.includes('--ephemeral'), false, 'resumed casual session must remain resumable');
+      assert.equal(
+        args.some((arg) => String(arg).includes('mcp_servers.')),
+        false,
+        'casual resume must not inject Cat Cafe MCP config',
       );
     } finally {
       rmSync(workingDirectory, { recursive: true, force: true });

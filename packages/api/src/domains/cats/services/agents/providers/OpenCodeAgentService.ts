@@ -136,7 +136,7 @@ export class OpenCodeAgentService implements L0InjectableAgentService {
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const isCasualProfile = options?.promptProfile === 'casual';
-    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const effectiveSessionId = options?.sessionId;
     const effectiveCliConfigArgs = isCasualProfile ? undefined : options?.cliConfigArgs;
     // P1-2: runtime model override takes precedence over constructor model
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE ?? this.model;
@@ -197,7 +197,7 @@ export class OpenCodeAgentService implements L0InjectableAgentService {
         onSuccessfulExitStderr,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
         ...(options?.invocationId && this.rawArchive.getPath

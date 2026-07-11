@@ -329,7 +329,7 @@ export class ClaudeAgentService implements AgentService {
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const isCasualProfile = options?.promptProfile === 'casual';
-    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const effectiveSessionId = options?.sessionId;
     let effectivePrompt = prompt;
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
     const imageAccessDirs = collectImageAccessDirectories(imagePaths);
@@ -532,7 +532,7 @@ export class ClaudeAgentService implements AgentService {
         onSuccessfulExitStderr,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
         ...(options?.invocationId && this.rawArchive.getPath

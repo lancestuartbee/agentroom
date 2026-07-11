@@ -434,7 +434,7 @@ export class CodexAgentService implements AgentService {
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const isCasualProfile = options?.promptProfile === 'casual';
-    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const effectiveSessionId = options?.sessionId;
     // Codex CLI has no system prompt flag; prepend identity to prompt text
     const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_OPENAI_MODEL_OVERRIDE ?? this.model;
@@ -457,7 +457,7 @@ export class CodexAgentService implements AgentService {
       : [];
     const catCafeMcpArgs = isCasualProfile ? [] : buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
     const gitRepoArgs = isCasualProfile ? ['--skip-git-repo-check'] : buildGitRepoArgs(options?.workingDirectory);
-    const casualRuntimeArgs = isCasualProfile ? ['--ignore-user-config', '--ignore-rules', '--ephemeral'] : [];
+    const casualRuntimeArgs = isCasualProfile ? ['--ignore-user-config', '--ignore-rules'] : [];
     // User-defined CLI args from the member editor (#567) — passed as-is, no implicit wrapping.
     // Each entry is split by whitespace (e.g. "--config model_reasoning_effort=\"low\"").
     // F203 Phase C / 砚砚 P1: strip reserved system config keys (developer_instructions,
@@ -711,7 +711,7 @@ export class CodexAgentService implements AgentService {
         env: codexEnv,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.invocationId && this.rawArchive.getPath
           ? { rawArchivePath: this.rawArchive.getPath(options.invocationId) }
           : {}),
