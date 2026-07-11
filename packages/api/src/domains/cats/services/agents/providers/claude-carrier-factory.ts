@@ -5,7 +5,7 @@
  * Phase D (this change): Adds health-aware fallback — if the target tier is degraded,
  * automatically selects the next healthy tier in the degradation chain (D3).
  *
- * Degradation chain: bg_daemon → interactive_pty → print_sdk → api_key
+ * Degradation chain: bg_daemon → interactive_pty → stream_json → print_sdk → api_key
  *
  * AC-B8 regression pin: no env var + no health state = ClaudeAgentService (-p default).
  * All existing behavior unchanged when no failures are reported.
@@ -20,6 +20,7 @@ import type { AgentMessage, AgentService, AgentServiceOptions } from '../../type
 import { ClaudeAgentService } from './ClaudeAgentService.js';
 import { ClaudeBgCarrierService } from './ClaudeBgCarrierService.js';
 import { ClaudeInteractivePtyCarrierService } from './ClaudeInteractivePtyCarrierService.js';
+import { ClaudeStreamJsonCarrierService } from './ClaudeStreamJsonCarrierService.js';
 import {
   CarrierHealthStore,
   type CarrierTier,
@@ -31,6 +32,8 @@ export const CARRIER_ENV_KEY = 'CAT_CAFE_CLAUDE_CARRIER';
 export const CARRIER_BG_DAEMON = 'bg_daemon';
 /** F230: opt-in value for interactive PTY carrier */
 export const CARRIER_INTERACTIVE_PTY = 'interactive_pty';
+/** Opt-in value for Claude Code CLI persistent stream-json carrier. */
+export const CARRIER_STREAM_JSON = 'stream_json';
 export const CARRIER_PRINT_SDK = 'print_sdk';
 export const CARRIER_API_KEY = 'api_key';
 
@@ -80,6 +83,8 @@ export function createCarrierByTier(tier: CarrierTier | string, catId: CatId): A
       return new ClaudeBgCarrierService({ catId });
     case CARRIER_INTERACTIVE_PTY:
       return new ClaudeInteractivePtyCarrierService({ catId });
+    case CARRIER_STREAM_JSON:
+      return new ClaudeStreamJsonCarrierService({ catId });
     case CARRIER_PRINT_SDK:
     case CARRIER_API_KEY:
     default:
@@ -95,6 +100,7 @@ function resolveTargetTier(env: Record<string, string | undefined>): CarrierTier
   const carrier = env[CARRIER_ENV_KEY]?.trim();
   if (carrier === CARRIER_BG_DAEMON) return 'bg_daemon';
   if (carrier === CARRIER_INTERACTIVE_PTY) return 'interactive_pty';
+  if (carrier === CARRIER_STREAM_JSON) return 'stream_json';
   if (carrier === CARRIER_API_KEY) return 'api_key';
   // Default: print mode (-p), which is the current production path.
   // Unknown env values also fall here (AC-B8 regression pin).

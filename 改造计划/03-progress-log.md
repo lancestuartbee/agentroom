@@ -208,3 +208,44 @@ GPT/Codex usage 变化：
 - Gemini/Antigravity 没有暴露 usage token 字段，只能通过 `sessionId` 稳定性确认 carrier 生效。
 - 闲聊模式下工具默认不主动使用，但当用户请求天气这类需要实时信息的任务时，Gemini/Antigravity 仍可触发 `search_web`；本次天气测试出现 1 次 web search 工具调用。
 - 下一步不建议继续大幅削弱必要人设；更有价值的方向是评估真正的常驻 CLI process/daemon carrier，或针对 Codex/Claude/Gemini 分 provider 做持久进程能力探测。
+
+### Claude Code CLI stream-json 常驻 carrier 第一版
+
+完成内容：
+
+- 新增 `ClaudeStreamJsonCarrierService`，使用 Claude Code CLI 的 streaming input 模式：
+  - `claude -p --input-format stream-json --output-format stream-json`
+  - 同一 `user + thread + cat + promptProfile` 维度持有一个本地 Claude CLI 进程。
+  - 每轮用户消息通过 stdin 写入一行 stream-json，不再每轮重启本地 Claude CLI。
+- 新 carrier 通过 `CAT_CAFE_CLAUDE_CARRIER=stream_json` 显式启用；默认仍是旧的 `print_sdk`。
+- 初版只接管 casual 闲聊路径：
+  - 非 casual / 开发协作模式自动回退到 `ClaudeAgentService`。
+  - 带图片/附件的调用自动回退旧 carrier，避免常驻进程启动参数无法动态追加 `--add-dir`。
+  - casual 继续不注入 Cat Cafe MCP，不启用 `--chrome`，不应用成员 `cliConfigArgs`。
+- 稳定 casual 身份通过 `--system-prompt-file` 在进程启动时注入。
+- 如果进程已存在，后续同线程同猫闲聊只写新的 stream-json 用户消息；如果 native system prompt / cwd / env / model 等稳定启动签名变化，则关闭旧进程并重启。
+- carrier 进程按 thread 隔离，避免不同闲聊线程串上下文。
+- 空闲进程默认 30 分钟后关闭，可用 `CAT_CAFE_CLAUDE_STREAM_IDLE_MS` 调整。
+- 降级链新增 `stream_json`：
+  - `bg_daemon -> interactive_pty -> stream_json -> print_sdk -> api_key`
+
+验证：
+
+```bash
+corepack pnpm --filter @cat-cafe/api build
+CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT=1 bash ./packages/api/scripts/with-test-home.sh node --test packages/api/test/claude-stream-json-carrier.test.js packages/api/test/claude-carrier-factory.test.js
+git diff --check
+```
+
+结果：
+
+- API build 通过。
+- 33 个 Claude carrier 相关定向测试通过。
+- `git diff --check` 通过。
+
+待真实验证：
+
+- 用 `CAT_CAFE_CLAUDE_CARRIER=stream_json` 启动后，在同一个 casual thread 内连续调用 Claude agent。
+- 观察后台日志中同一 thread 是否只出现一次 `Claude stream-json CLI process started`。
+- 观察 Claude usage 的 `inputTokens` / `cacheReadTokens` 是否相比 `--resume` 每轮冷启动进一步改善。
+- 如果 Claude Code CLI 的 stream-json 模式在订阅账号下出现协议或权限限制，再回退到 `print_sdk` 并记录失败样本。

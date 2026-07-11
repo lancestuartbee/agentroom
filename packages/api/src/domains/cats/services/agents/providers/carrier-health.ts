@@ -5,7 +5,7 @@
  *
  * D1 — Failure classification: quota (sticky 4h) / structural (sticky 30min) / transient (no degrade, 3x→structural)
  * D2 — Health state is per-carrier global, not per-cat (quota = account-level, binary = machine-level)
- * D3 — Degradation chain: bg_daemon → interactive_pty → print_sdk → api_key
+ * D3 — Degradation chain: bg_daemon → interactive_pty → stream_json → print_sdk → api_key
  * D4 — Degradation yields visible system_info carrier_fallback event (NOT suppressed)
  * D5 — Rollout config in Redis (PR-2)
  *
@@ -15,7 +15,7 @@
 
 // ─── Types ───
 
-export type CarrierTier = 'bg_daemon' | 'interactive_pty' | 'print_sdk' | 'api_key';
+export type CarrierTier = 'bg_daemon' | 'interactive_pty' | 'stream_json' | 'print_sdk' | 'api_key';
 export type FailureClass = 'quota' | 'structural' | 'transient';
 
 export interface DegradedState {
@@ -30,7 +30,7 @@ export type HealthState = { state: 'healthy' } | DegradedState;
 // ─── Constants ───
 
 /** Fixed degradation chain (D3). bg is primary, api_key is last resort. */
-export const DEGRADATION_CHAIN: CarrierTier[] = ['bg_daemon', 'interactive_pty', 'print_sdk', 'api_key'];
+export const DEGRADATION_CHAIN: CarrierTier[] = ['bg_daemon', 'interactive_pty', 'stream_json', 'print_sdk', 'api_key'];
 
 /** Quota TTL: 4 hours (D1). Quota is account-level — once hit, all cats are blocked. */
 const QUOTA_TTL_MS = 4 * 60 * 60 * 1000;

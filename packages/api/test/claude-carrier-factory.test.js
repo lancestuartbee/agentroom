@@ -65,6 +65,14 @@ describe('canary factory — env-based tier selection', () => {
     assert.equal(service._carrierTier, 'interactive_pty');
     assert.equal(service.catId, 'opus');
   });
+
+  test('stream_json → stream_json tier', () => {
+    const service = createClaudeAgentServiceForCanary('opus', {
+      CAT_CAFE_CLAUDE_CARRIER: 'stream_json',
+    });
+    assert.equal(service._carrierTier, 'stream_json');
+    assert.equal(service.catId, 'opus');
+  });
 });
 
 // ─── Phase D: FallbackCarrierWrapper behavior ───
@@ -135,6 +143,11 @@ describe('createCarrierByTier — direct construction', () => {
     assert.equal(svc.constructor.name, 'ClaudeInteractivePtyCarrierService');
   });
 
+  test('stream_json → ClaudeStreamJsonCarrierService', () => {
+    const svc = createCarrierByTier('stream_json', 'opus');
+    assert.equal(svc.constructor.name, 'ClaudeStreamJsonCarrierService');
+  });
+
   test('print_sdk → ClaudeAgentService', () => {
     const svc = createCarrierByTier('print_sdk', 'opus');
     assert.equal(svc.constructor.name, 'ClaudeAgentService');
@@ -179,9 +192,10 @@ describe('FallbackCarrierWrapper — in-invocation fallback (D3/D4)', () => {
 
   test('thrown quota error → degrades tier + yields system_info + attempts fallback', async () => {
     const store = getCarrierHealthStore();
-    // Pre-degrade interactive_pty so fallback skips to print_sdk (ClaudeAgentService),
+    // Pre-degrade interactive_pty + stream_json so fallback skips to print_sdk (ClaudeAgentService),
     // which fails fast in test env (~1s) instead of interactive_pty's 300s timeout.
     store.reportFailure('interactive_pty', 'structural');
+    store.reportFailure('stream_json', 'structural');
 
     // Mock carrier that throws quota error on iteration
     const throwingCarrier = {
@@ -215,7 +229,7 @@ describe('FallbackCarrierWrapper — in-invocation fallback (D3/D4)', () => {
     const payload = JSON.parse(sysInfo.content);
     assert.equal(payload.type, 'carrier_fallback');
     assert.equal(payload.from, 'bg_daemon');
-    assert.equal(payload.to, 'print_sdk'); // skipped degraded interactive_pty
+    assert.equal(payload.to, 'print_sdk'); // skipped degraded interactive_pty + stream_json
     assert.equal(payload.reason, 'quota');
     assert.ok(payload.error.includes('usage limit'), 'error snippet included');
   });
@@ -249,6 +263,7 @@ describe('FallbackCarrierWrapper — in-invocation fallback (D3/D4)', () => {
     const store = getCarrierHealthStore();
     // Degrade everything except api_key and the active tier
     store.reportFailure('interactive_pty', 'structural');
+    store.reportFailure('stream_json', 'structural');
     store.reportFailure('print_sdk', 'structural');
 
     const throwingCarrier = {
@@ -392,6 +407,7 @@ describe('FallbackCarrierWrapper — api_key fallback guard', () => {
     const store = getCarrierHealthStore();
     // Degrade all tiers except api_key → selectFirstHealthyTier returns 'api_key'
     store.reportFailure('interactive_pty', 'structural');
+    store.reportFailure('stream_json', 'structural');
     store.reportFailure('print_sdk', 'structural');
 
     const throwingCarrier = {
@@ -529,6 +545,9 @@ describe('regression: factory with fresh health store = current behavior', () =>
 
     const pty = createClaudeAgentServiceForCanary('opus', { CAT_CAFE_CLAUDE_CARRIER: 'interactive_pty' });
     assert.equal(pty._carrierTier, 'interactive_pty');
+
+    const stream = createClaudeAgentServiceForCanary('opus', { CAT_CAFE_CLAUDE_CARRIER: 'stream_json' });
+    assert.equal(stream._carrierTier, 'stream_json');
   });
 
   test('no health state → no _carrierFallbackFrom (no fallback happened)', () => {
