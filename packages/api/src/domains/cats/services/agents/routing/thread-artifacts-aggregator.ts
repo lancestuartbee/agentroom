@@ -74,6 +74,11 @@ export interface AggregatorFileLedgerEntry {
   label: string;
   updatedAt: number;
   updatedBy: string;
+  url?: string;
+  artifactId?: string;
+  downloadUrl?: string;
+  localPath?: string;
+  storageScope?: 'thread' | 'library';
 }
 
 export interface ThreadArtifactsAggregatorInput {
@@ -161,6 +166,11 @@ function fileLedgerToArtifacts(fileLedger: AggregatorFileLedgerEntry[]): ThreadA
     createdAt: f.updatedAt,
     sourceMessageId: null,
     ref: f.ref,
+    ...(f.url ? { url: f.url } : {}),
+    ...(f.artifactId ? { artifactId: f.artifactId } : {}),
+    ...(f.downloadUrl ? { downloadUrl: f.downloadUrl } : {}),
+    ...(f.localPath ? { localPath: f.localPath } : {}),
+    ...(f.storageScope ? { storageScope: f.storageScope } : {}),
   }));
 }
 

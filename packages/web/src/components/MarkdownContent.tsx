@@ -1,12 +1,13 @@
 'use client';
 
 import { Children, isValidElement, type ReactNode, useCallback, useRef, useState } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { UNKNOWN_CAT_COLOR } from '@/lib/color-defaults';
 import { getMentionColor, getMentionRe, getMentionToCat } from '@/lib/mention-highlight';
 import { useChatStore } from '@/stores/chatStore';
+import { API_URL, apiFetch } from '@/utils/api-client';
 import { MermaidDiagram } from './MermaidDiagram';
 import { createWorkspaceImageComponent, createWorkspaceLinkComponent } from './workspace-md-components';
 
@@ -91,8 +92,191 @@ const PROJECT_ROOT = process.env.NEXT_PUBLIC_PROJECT_ROOT ?? '';
 const FILE_PATH_RE = /(?:^|\s)`?((?:\/[\w.@-]+)+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
 const REL_PATH_RE = /(?:^|\s)`?((?:packages|src|docs|tests?)\/[\w./@-]+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
 const WT_TAG_RE = /^\s*\[wt:([a-zA-Z0-9_/-]+)\]/;
+const AGENTROOM_REPORT_PATH_RE = /(?:^|\/)Documents\/AgentRoom\/profiles\/[^/]+\/threads\/[^/]+\/reports\/.+/;
+const ARTIFACT_STORE_PREFIX = '/api/artifact-store/threads/';
 
-function linkifyFilePaths(text: string): ReactNode[] {
+function stripMarkdownFragment(href: string): string {
+  return href.split('#')[0]?.trim() ?? '';
+}
+
+function normalizeLocalFileHref(href: string): string {
+  const clean = stripMarkdownFragment(href);
+  if (!/^file:\/\//i.test(clean)) return clean;
+  try {
+    return decodeURI(new URL(clean).pathname);
+  } catch {
+    return clean.replace(/^file:\/\//i, '');
+  }
+}
+
+function isExternalHref(href: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(href);
+}
+
+function isRelativeMarkdownReportHref(href: string): boolean {
+  const clean = stripMarkdownFragment(href);
+  if (!clean || clean.startsWith('/') || clean.startsWith('#') || isExternalHref(clean)) return false;
+  return /\.(md|markdown)$/i.test(clean);
+}
+
+function isAgentRoomReportPath(href: string): boolean {
+  const clean = normalizeLocalFileHref(href);
+  return AGENTROOM_REPORT_PATH_RE.test(clean) && /\.(md|markdown)$/i.test(clean);
+}
+
+function resolveArtifactReportDownloadHref(href: string | undefined, threadId: string | undefined): string | null {
+  if (!href || !threadId) return null;
+  const clean = normalizeLocalFileHref(href);
+  if (!clean) return null;
+  if (!isRelativeMarkdownReportHref(clean) && !isAgentRoomReportPath(clean)) return null;
+  return `${API_URL}/api/artifact-store/threads/${encodeURIComponent(threadId)}/download-path?path=${encodeURIComponent(clean)}`;
+}
+
+function resolveArtifactStoreDownloadHref(href: string | undefined, currentThreadId: string | undefined): string | null {
+  if (!href) return null;
+  const clean = stripMarkdownFragment(href);
+  if (!clean) return null;
+
+  let url: URL;
+  try {
+    url = new URL(clean, API_URL);
+  } catch {
+    return null;
+  }
+
+  if (url.pathname.startsWith(ARTIFACT_STORE_PREFIX)) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    const threadId = parts[3] ? decodeURIComponent(parts[3]) : '';
+    const artifactId = parts[4] ? decodeURIComponent(parts[4]) : '';
+    const action = parts[5] ?? '';
+
+    if (threadId && artifactId && (action === 'content' || action === 'download')) {
+      return `${API_URL}/api/artifact-store/threads/${encodeURIComponent(threadId)}/${encodeURIComponent(artifactId)}/download`;
+    }
+    if (threadId && action === 'download-path') {
+      return `${API_URL}${url.pathname}${url.search}`;
+    }
+  }
+
+  const linkedThreadId = url.searchParams.get('threadId') ?? currentThreadId;
+  const linkedArtifactId = url.searchParams.get('artifactId');
+  if (linkedThreadId && linkedArtifactId) {
+    return `${API_URL}/api/artifact-store/threads/${encodeURIComponent(linkedThreadId)}/${encodeURIComponent(
+      linkedArtifactId,
+    )}/download`;
+  }
+
+  return null;
+}
+
+function resolveArtifactDownloadHref(href: string | undefined, threadId: string | undefined): string | null {
+  return resolveArtifactStoreDownloadHref(href, threadId) ?? resolveArtifactReportDownloadHref(href, threadId);
+}
+
+function markdownUrlTransform(url: string): string {
+  if (/^file:\/\//i.test(url) && isAgentRoomReportPath(url)) return url;
+  return defaultUrlTransform(url);
+}
+
+function filenameFromContentDisposition(value: string | null): string | null {
+  if (!value) return null;
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).trim() || null;
+    } catch {
+      return utf8Match[1].trim() || null;
+    }
+  }
+  const asciiMatch = /filename="?([^";]+)"?/i.exec(value);
+  return asciiMatch?.[1]?.trim() || null;
+}
+
+function filenameFromDownloadHref(href: string): string {
+  try {
+    const url = new URL(href, API_URL);
+    const rawPath = url.searchParams.get('path') ?? '';
+    const cleanPath = stripMarkdownFragment(rawPath);
+    const name = cleanPath.split('/').filter(Boolean).at(-1);
+    if (name) return name;
+    const pathName = decodeURIComponent(url.pathname).split('/').filter(Boolean).at(-2);
+    return pathName || 'agentroom-report.md';
+  } catch {
+    return 'agentroom-report.md';
+  }
+}
+
+function apiPathFromHref(href: string): string | null {
+  try {
+    const url = new URL(href, API_URL);
+    const apiUrl = new URL(API_URL);
+    if (url.origin !== apiUrl.origin) return null;
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return null;
+  }
+}
+
+function ArtifactReportLink({
+  href,
+  children,
+  title,
+}: {
+  href: string;
+  children: ReactNode;
+  title?: string;
+}) {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleClick = useCallback(
+    async (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const apiPath = apiPathFromHref(href);
+      if (!apiPath) return;
+
+      event.preventDefault();
+      if (downloading) return;
+      setDownloading(true);
+      try {
+        const res = await apiFetch(apiPath);
+        if (!res.ok) throw new Error(`artifact download failed (${res.status})`);
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filenameFromContentDisposition(res.headers.get('content-disposition')) ?? filenameFromDownloadHref(href);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      } catch (err) {
+        console.error('[MarkdownContent] Failed to download artifact report', err);
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } finally {
+        setDownloading(false);
+      }
+    },
+    [downloading, href],
+  );
+
+  return (
+    <a
+      href={href}
+      onClick={handleClick}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-conn-blue-text hover:underline break-all"
+      title={downloading ? '正在下载...' : (title ?? '下载当前对话产物')}
+    >
+      {children}
+      <span className="ml-1 rounded border border-cafe-subtle bg-cafe-surface-elevated px-1 py-0.5 text-micro text-cafe-muted no-underline">
+        下载
+      </span>
+    </a>
+  );
+}
+
+function linkifyFilePaths(text: string, artifactThreadId?: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let lastIdx = 0;
   const combined = new RegExp(`${FILE_PATH_RE.source}|${REL_PATH_RE.source}`, 'g');
@@ -118,6 +302,26 @@ function linkifyFilePaths(text: string): ReactNode[] {
     const display = path;
     const isAbsolute = path.startsWith('/');
     const filePath = path.split(':')[0];
+    const artifactHref = resolveArtifactDownloadHref(filePath, artifactThreadId);
+    if (artifactHref) {
+      parts.push(
+        <ArtifactReportLink
+          key={`artifact${m.index}`}
+          href={artifactHref}
+          title={`下载当前对话产物\n${display}`}
+        >
+          {display}
+        </ArtifactReportLink>,
+      );
+      if (wtMatch) {
+        lastIdx = m.index + fullMatch.length + wtMatch[0].length;
+        combined.lastIndex = lastIdx;
+      } else {
+        lastIdx = m.index + fullMatch.length;
+      }
+      continue;
+    }
+
     const absPath = isAbsolute ? filePath : PROJECT_ROOT ? `${PROJECT_ROOT}/${filePath}` : null;
     const href = absPath ? `vscode://file${absPath}${line ? `:${line}` : ''}` : null;
 
@@ -189,11 +393,11 @@ function FilePathLink({
 }
 
 /** Process string children → @mentions + file path links */
-function withMentionsAndLinks(children: ReactNode): ReactNode {
+function withMentionsAndLinks(children: ReactNode, artifactThreadId?: string): ReactNode {
   return Children.map(children, (child) => {
     if (typeof child !== 'string') return child;
     // First pass: file paths → ReactNode[]
-    const linked = linkifyFilePaths(child);
+    const linked = linkifyFilePaths(child, artifactThreadId);
     // Second pass: highlight @mentions in remaining text nodes
     return (
       <>{linked.map((node, i) => (typeof node === 'string' ? <span key={i}>{highlightMentions(node)}</span> : node))}</>
@@ -240,11 +444,13 @@ function inlineCodeClassName(className = ''): string {
  * Using a factory avoids duplicating component definitions: styling is defined once,
  * and textProcessor composition is injected into the mention-processing pipeline.
  */
-function buildMdComponents(tp?: (children: ReactNode) => ReactNode): Components {
+function buildMdComponents(tp?: (children: ReactNode) => ReactNode, artifactThreadId?: string): Components {
   // Compose text processing: tp runs first (e.g. replace markers with buttons),
   // then withMentions/withMentionsAndLinks processes remaining strings.
   const m = tp ? (c: ReactNode) => withMentions(tp(c)) : withMentions;
-  const ml = tp ? (c: ReactNode) => withMentionsAndLinks(tp(c)) : withMentionsAndLinks;
+  const ml = tp
+    ? (c: ReactNode) => withMentionsAndLinks(tp(c), artifactThreadId)
+    : (c: ReactNode) => withMentionsAndLinks(c, artifactThreadId);
 
   return {
     p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{ml(children)}</p>,
@@ -283,16 +489,26 @@ function buildMdComponents(tp?: (children: ReactNode) => ReactNode): Components 
     blockquote: ({ children }) => (
       <blockquote className="border-l-[3px] border-cafe pl-3 my-2 italic opacity-80">{children}</blockquote>
     ),
-    a: ({ href, children }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-conn-blue-text hover:underline break-all"
-      >
-        {m(children)}
-      </a>
-    ),
+    a: ({ href, children }) => {
+      const artifactHref = resolveArtifactDownloadHref(href, artifactThreadId);
+      if (artifactHref) {
+        return (
+          <ArtifactReportLink href={artifactHref} title={`下载当前对话产物\n${href ?? ''}`}>
+            {m(children)}
+          </ArtifactReportLink>
+        );
+      }
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-conn-blue-text hover:underline break-all"
+        >
+          {m(children)}
+        </a>
+      );
+    },
     hr: () => <hr className="my-3 border-cafe" />,
 
     /* Code blocks with copy button — textProcessor intentionally excluded */
@@ -331,6 +547,8 @@ interface Props {
   basePath?: string;
   /** Worktree ID for resolving workspace-relative image paths */
   worktreeId?: string;
+  /** Thread whose shared artifact reports directory should resolve report links */
+  artifactThreadId?: string;
   /** Pre-process text children in all text-containing components (p, strong, em,
    *  del, h1-h6, li, a, th, td) BEFORE mention/link processing. Code/pre components
    *  are excluded — textProcessor never touches code block content.
@@ -364,12 +582,19 @@ export function MarkdownContent({
   disableCommandPrefix,
   basePath,
   worktreeId,
+  artifactThreadId,
   textProcessor,
 }: Props) {
   const cmdMatch = disableCommandPrefix ? null : /^(\/\w+)/.exec(content);
   const md = cmdMatch ? content.slice(cmdMatch[1].length) : content;
+  const currentThreadId = useChatStore((s) => s.currentThreadId);
+  const resolvedArtifactThreadId = artifactThreadId ?? currentThreadId;
 
-  let components: Components = textProcessor ? buildMdComponents(textProcessor) : mdComponents;
+  let components: Components = textProcessor
+    ? buildMdComponents(textProcessor, resolvedArtifactThreadId)
+    : resolvedArtifactThreadId
+      ? buildMdComponents(undefined, resolvedArtifactThreadId)
+      : mdComponents;
 
   if (basePath != null) {
     // When textProcessor is active, the workspace link component must also compose it
@@ -383,7 +608,7 @@ export function MarkdownContent({
   return (
     <div className={`markdown-content text-sm break-words ${className ?? ''}`}>
       {cmdMatch && <span className="font-semibold text-[var(--semantic-info)]">{cmdMatch[1]}</span>}
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components} urlTransform={markdownUrlTransform}>
         {md}
       </ReactMarkdown>
     </div>

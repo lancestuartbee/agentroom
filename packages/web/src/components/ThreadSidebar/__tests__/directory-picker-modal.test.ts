@@ -138,9 +138,9 @@ describe('DirectoryPickerModal', () => {
   });
 
   // ── F068-R7: Helper to click confirm button after selecting ──
-  function clickConfirm() {
+  function clickConfirm(label = '创建对话') {
     const confirmBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('创建对话'),
+      b.textContent?.includes(label),
     );
     expect(confirmBtn).toBeTruthy();
     act(() => {
@@ -193,6 +193,84 @@ describe('DirectoryPickerModal', () => {
     expect(fns.onSelect).not.toHaveBeenCalled();
     clickConfirm();
     expect(fns.onSelect).toHaveBeenCalledWith(expect.objectContaining({ projectPath: undefined }));
+  });
+
+  it('passes casual mode when selected and confirmed', async () => {
+    setupCwdSuccess();
+    const fns = render();
+    await flush();
+    const casualBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('闲聊'));
+    expect(casualBtn).toBeTruthy();
+    act(() => {
+      casualBtn?.click();
+    });
+    clickConfirm('创建闲聊');
+    expect(fns.onSelect).toHaveBeenCalledWith(expect.objectContaining({ mode: 'casual', projectPath: undefined }));
+  });
+
+  it('removes project selection controls when casual mode is selected', async () => {
+    const existingPath = '/home/user/projects/other';
+    setupCwdSuccess();
+    render({ existingProjects: [existingPath] });
+    await flush();
+    const casualBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('闲聊'));
+    expect(casualBtn).toBeTruthy();
+    act(() => {
+      casualBtn?.click();
+    });
+    expect(container.textContent).toContain('参与成员（可选）');
+    expect(container.textContent).not.toContain('闲聊模式不会绑定项目目录');
+    expect(container.textContent).not.toContain('闲聊模式不关联项目');
+    expect(container.textContent).not.toContain('选择项目');
+    expect(container.textContent).not.toContain(CWD_PATH);
+    expect(container.textContent).not.toContain(existingPath);
+    expect(container.textContent).not.toContain('大厅 (无项目)');
+    expect(container.textContent).not.toContain('浏览文件夹');
+    expect(container.textContent).not.toContain('或输入路径');
+    expect(container.textContent).not.toContain('已选：');
+    expect(container.textContent).not.toContain('选猫猫');
+    expect(container.textContent).toContain('创建闲聊');
+  });
+
+  it('passes selected casual members as preferredCats', async () => {
+    setupCwdSuccess();
+    const fns = render();
+    await flush();
+    const casualBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('闲聊'));
+    expect(casualBtn).toBeTruthy();
+    act(() => {
+      casualBtn?.click();
+    });
+    const catChip = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('缅因猫'));
+    expect(catChip).toBeTruthy();
+    act(() => {
+      catChip?.click();
+    });
+    clickConfirm('创建闲聊');
+    expect(fns.onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'casual', projectPath: undefined, preferredCats: ['codex'] }),
+    );
+  });
+
+  it('allows casual mode creation without any project path', async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/projects/cwd') return jsonFail();
+      if (path === '/api/backlog/items') return jsonOk({ items: [] });
+      return jsonFail();
+    });
+    const fns = render({ existingProjects: [] });
+    await flush();
+    const casualBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('闲聊'));
+    expect(casualBtn).toBeTruthy();
+    act(() => {
+      casualBtn?.click();
+    });
+    const confirmBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('创建闲聊'),
+    ) as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(false);
+    clickConfirm('创建闲聊');
+    expect(fns.onSelect).toHaveBeenCalledWith(expect.objectContaining({ mode: 'casual', projectPath: undefined }));
   });
 
   it('confirm button is disabled when no project available at all', async () => {

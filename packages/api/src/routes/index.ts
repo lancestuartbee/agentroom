@@ -1,5 +1,6 @@
 export { accountsRoutes } from './accounts.js';
 export { agentHooksRoutes } from './agent-hooks.js';
+export { artifactStoreRoutes } from './artifact-store.js';
 export { approvalHubRoutes } from './approval-hub-routes.js';
 export { audioProxyRoutes } from './audio-proxy.js';
 export { auditRoutes } from './audit.js';

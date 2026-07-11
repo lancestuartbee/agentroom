@@ -5,6 +5,11 @@ export interface RecentArtifact {
   updatedAt: number;
   updatedBy: string;
   ops?: string[];
+  url?: string;
+  artifactId?: string;
+  downloadUrl?: string;
+  localPath?: string;
+  storageScope?: 'thread' | 'library';
 }
 
 const MAX_ARTIFACTS = 5;

@@ -578,6 +578,16 @@ export {
   createCatMessage,
   createUserMessage,
 } from './message.js';
+// Thread/session mode types
+export {
+  DEFAULT_THREAD_AUDIENCE,
+  DEFAULT_THREAD_MODE,
+  isThreadMode,
+  normalizeThreadAudience,
+  THREAD_MODES,
+  type ThreadAudience,
+  type ThreadMode,
+} from './modes.js';
 // Mount Rules types (F228 Skill 挂载规则解耦)
 export type {
   CustomMountPointRule,

@@ -171,6 +171,7 @@ import { gameRoutes } from './routes/games.js';
 import {
   accountsRoutes,
   agentHooksRoutes,
+  artifactStoreRoutes,
   approvalHubRoutes,
   audioProxyRoutes,
   auditRoutes,
@@ -2949,6 +2950,7 @@ async function main(): Promise<void> {
     getFingerprint,
   });
   await app.register(exportRoutes, { messageStore, threadStore });
+  await app.register(artifactStoreRoutes, { messageStore, threadStore });
   await app.register(debugInvocationExportRoutes, { projectRoot: findMonorepoRoot(process.cwd()) });
   await app.register(configRoutes);
   await app.register(configSecretsRoutes);

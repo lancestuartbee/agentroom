@@ -61,5 +61,17 @@ export function useThreadArtifacts(threadId: string | undefined): UseThreadArtif
     return () => abortRef.current?.abort();
   }, [threadId, refetch]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ threadId?: string }>).detail;
+      const tid = threadIdRef.current;
+      if (!tid || (detail?.threadId && detail.threadId !== tid)) return;
+      refetch();
+    };
+    window.addEventListener('agentroom:artifacts-updated', handler);
+    return () => window.removeEventListener('agentroom:artifacts-updated', handler);
+  }, [refetch]);
+
   return { artifacts, loading, error, refetch };
 }

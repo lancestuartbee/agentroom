@@ -10,8 +10,14 @@
  * 默认持久化；用户可见状态禁止默认 TTL（LL-048）。
  */
 
-import type { CatId, ThreadKind, ThreadPhase } from '@cat-cafe/shared';
-import { generateThreadId } from '@cat-cafe/shared';
+import type { CatId, ThreadAudience, ThreadKind, ThreadMode, ThreadPhase } from '@cat-cafe/shared';
+import {
+  DEFAULT_THREAD_AUDIENCE,
+  DEFAULT_THREAD_MODE,
+  generateThreadId,
+  isThreadMode,
+  normalizeThreadAudience,
+} from '@cat-cafe/shared';
 import type { RedisClient } from '@cat-cafe/shared/utils';
 import type {
   BootcampStateV1,
@@ -174,6 +180,8 @@ export class RedisThreadStore implements IThreadStore {
       participants: [],
       lastActiveAt: now,
       createdAt: now,
+      mode: DEFAULT_THREAD_MODE,
+      audience: DEFAULT_THREAD_AUDIENCE,
       ...(parentThreadId ? { parentThreadId } : {}),
       ...(proposalAudit
         ? {
@@ -225,6 +233,8 @@ export class RedisThreadStore implements IThreadStore {
       participants: [],
       lastActiveAt: now,
       createdAt: now,
+      mode: DEFAULT_THREAD_MODE,
+      audience: DEFAULT_THREAD_AUDIENCE,
     };
 
     await this.redis.hset(key, this.serializeThread(thread));
@@ -250,6 +260,8 @@ export class RedisThreadStore implements IThreadStore {
       participants: [],
       lastActiveAt: now,
       createdAt: now,
+      mode: DEFAULT_THREAD_MODE,
+      audience: DEFAULT_THREAD_AUDIENCE,
       externalRuntimeAnchorState: {
         v: 1,
         runtime,
@@ -436,6 +448,16 @@ export class RedisThreadStore implements IThreadStore {
   async updateThinkingMode(threadId: string, mode: 'debug' | 'play'): Promise<void> {
     const key = ThreadKeys.detail(threadId);
     await this.setDetailFields(key, 'thinkingMode', mode);
+  }
+
+  async updateThreadMode(threadId: string, mode: ThreadMode): Promise<void> {
+    const key = ThreadKeys.detail(threadId);
+    await this.setDetailFields(key, 'mode', mode);
+  }
+
+  async updateThreadAudience(threadId: string, audience: ThreadAudience): Promise<void> {
+    const key = ThreadKeys.detail(threadId);
+    await this.setDetailFields(key, 'audience', JSON.stringify(normalizeThreadAudience(audience)));
   }
 
   async updateMentionActionabilityMode(threadId: string, mode: MentionActionabilityMode): Promise<void> {
@@ -1002,6 +1024,8 @@ export class RedisThreadStore implements IThreadStore {
       favorited: String(thread.favorited ?? false),
       favoritedAt: String(thread.favoritedAt ?? 0),
       thinkingMode: thread.thinkingMode ?? 'debug',
+      mode: thread.mode ?? DEFAULT_THREAD_MODE,
+      audience: JSON.stringify(normalizeThreadAudience(thread.audience)),
     };
     if (thread.phase) {
       result.phase = thread.phase;
@@ -1089,7 +1113,16 @@ export class RedisThreadStore implements IThreadStore {
       favorited: data.favorited === 'true',
       favoritedAt: favoritedAt || null,
       thinkingMode: (data.thinkingMode === 'debug' ? 'debug' : 'play') as 'debug' | 'play',
+      mode: isThreadMode(data.mode) ? data.mode : DEFAULT_THREAD_MODE,
+      audience: DEFAULT_THREAD_AUDIENCE,
     };
+    if (data.audience) {
+      try {
+        result.audience = normalizeThreadAudience(JSON.parse(data.audience));
+      } catch {
+        result.audience = DEFAULT_THREAD_AUDIENCE;
+      }
+    }
     if (data.mentionActionabilityMode === 'relaxed') {
       result.mentionActionabilityMode = 'relaxed';
     }

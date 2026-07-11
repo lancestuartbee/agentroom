@@ -186,6 +186,7 @@ export function ThreadSidebar({ onClose, className }: ThreadSidebarProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...(opts.projectPath ? { projectPath: opts.projectPath } : {}),
+            ...(opts.mode && opts.mode !== 'development' ? { mode: opts.mode } : {}),
             ...(opts.preferredCats?.length ? { preferredCats: opts.preferredCats } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(opts.pinned ? { pinned: opts.pinned } : {}),

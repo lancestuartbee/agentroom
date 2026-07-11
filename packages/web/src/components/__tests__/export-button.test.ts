@@ -101,16 +101,18 @@ describe('ExportButton', () => {
     });
     expect(getMenu()).toBeTruthy();
     const items = getMenuButtons();
-    expect(items.length).toBe(3);
+    expect(items.length).toBe(5);
   });
 
-  it('shows all three export format options', () => {
+  it('shows all export and save options', () => {
     renderButton();
     act(() => {
       getToggle().click();
     });
     const items = getMenuButtons();
     const labels = items.map((b) => b.textContent);
+    expect(labels.some((t) => t?.includes('保存到本对话'))).toBe(true);
+    expect(labels.some((t) => t?.includes('保存并显示路径'))).toBe(true);
     expect(labels.some((t) => t?.includes('PNG'))).toBe(true);
     expect(labels.some((t) => t?.includes('Markdown'))).toBe(true);
     expect(labels.some((t) => t?.includes('纯文本'))).toBe(true);
@@ -195,7 +197,9 @@ describe('ExportButton', () => {
     act(() => {
       getToggle().click();
     });
-    const mdBtn = getMenuButtons().find((b) => b.textContent?.includes('Markdown'));
+    const mdBtn = getMenuButtons().find(
+      (b) => b.textContent?.includes('下载聊天记录') && b.textContent?.includes('Markdown'),
+    );
 
     await act(async () => {
       mdBtn?.click();
@@ -204,6 +208,60 @@ describe('ExportButton', () => {
     expect(mockApiFetch).toHaveBeenCalledWith('/api/export/thread/thread-77?format=md');
     expect(dl.clickSpy).toHaveBeenCalled();
     dl.restore();
+  });
+
+  it('saves thread markdown to the thread artifact store', async () => {
+    mockApiFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ artifact: { artifactId: 'md-1', localPath: '/tmp/report.md' } }),
+    });
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+    renderButton('thread-88');
+    act(() => {
+      getToggle().click();
+    });
+    const saveBtn = getMenuButtons().find((b) => b.textContent?.includes('保存到本对话'));
+
+    await act(async () => {
+      saveBtn?.click();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/threads/thread-88/artifacts/markdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'thread-export' }),
+    });
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('/tmp/report.md'));
+    alertSpy.mockRestore();
+  });
+
+  it('reveals saved markdown path when requested', async () => {
+    mockApiFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ artifact: { artifactId: 'md-2', localPath: '/tmp/report.md' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+    renderButton('thread-89');
+    act(() => {
+      getToggle().click();
+    });
+    const saveBtn = getMenuButtons().find((b) => b.textContent?.includes('保存并显示路径'));
+
+    await act(async () => {
+      saveBtn?.click();
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, '/api/artifact-store/threads/thread-89/md-2/reveal', {
+      method: 'POST',
+    });
+    alertSpy.mockRestore();
   });
 
   it('closes menu when export option is clicked', async () => {

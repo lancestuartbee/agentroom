@@ -6,13 +6,14 @@ import { catColorMix, catColorVar } from '@/lib/cat-slug';
 interface CatSelectorProps {
   selectedCats: string[];
   onSelectionChange: (ids: string[]) => void;
+  title?: string;
 }
 
 /**
  * F32-b Phase 3: Breed-grouped cat chip selector.
  * Used in thread creation (DirectoryPickerModal) and thread settings.
  */
-export function CatSelector({ selectedCats, onSelectionChange }: CatSelectorProps) {
+export function CatSelector({ selectedCats, onSelectionChange, title = '默认猫猫 (可选)' }: CatSelectorProps) {
   const { getCatsByBreed } = useCatData();
   const groups = getCatsByBreed();
 
@@ -36,7 +37,7 @@ export function CatSelector({ selectedCats, onSelectionChange }: CatSelectorProp
 
   return (
     <div className="space-y-2">
-      <div className="text-xs text-cafe-secondary font-medium">默认猫猫 (可选)</div>
+      <div className="text-xs text-cafe-secondary font-medium">{title}</div>
       {[...groups.entries()].map(([breedId, cats]) => {
         const breedName = cats[0].breedDisplayName ?? cats[0].displayName;
         return (

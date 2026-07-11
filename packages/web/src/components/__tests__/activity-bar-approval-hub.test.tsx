@@ -124,6 +124,23 @@ describe('F246 AC-D3: ActivityBar — ApprovalHubButton', () => {
     expect(bellBtn).not.toBeNull();
   });
 
+  it('artifacts rail button opens workspace artifacts tab', async () => {
+    mockWorkspaceMode = 'dev';
+    mockRightPanelMode = 'status';
+    await act(async () => {
+      root.render(React.createElement(ActivityBar));
+    });
+
+    const artifactsBtn = container.querySelector('[data-testid="artifacts-rail-button"]');
+    expect(artifactsBtn).not.toBeNull();
+
+    await act(async () => {
+      artifactsBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(mockSetWorkspaceMode).toHaveBeenCalledWith('artifacts');
+  });
+
   it('no badge when count=0', async () => {
     mockCount = 0;
     await act(async () => {

@@ -92,8 +92,81 @@ describe('MarkdownContent workspace link rendering', () => {
   });
 
   it('renders relative md link as external when no basePath', () => {
-    const html = render('[Feature spec](features/F046.md)');
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content: '[Feature spec](features/F046.md)',
+        disableCommandPrefix: true,
+        artifactThreadId: '',
+      }),
+    );
     expect(html).toContain('target="_blank"');
     expect(html).not.toContain('在工作区中打开');
+  });
+
+  it('renders relative report markdown links as thread artifact downloads', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content: '[报告](gemini-report.md)',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread-1',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread-1/download-path');
+    expect(html).toContain('path=gemini-report.md');
+  });
+
+  it('renders absolute AgentRoom report paths as thread artifact downloads', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content: '报告路径 /Users/aidox/Documents/AgentRoom/profiles/opensource-6398/threads/thread-1/reports/report.md',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread-1',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread-1/download-path');
+    expect(html).toContain('Documents%2FAgentRoom%2Fprofiles%2Fopensource-6398%2Fthreads%2Fthread-1%2Freports%2Freport.md');
+  });
+
+  it('renders file URI AgentRoom report links as downloads without leaking file scheme', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content:
+          '[magic-link-test.md](file:///Users/aidox/Documents/AgentRoom/profiles/opensource-6398/threads/thread-1/reports/magic-link-test.md)',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread-1',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread-1/download-path');
+    expect(html).toContain(
+      '%2FUsers%2Faidox%2FDocuments%2FAgentRoom%2Fprofiles%2Fopensource-6398%2Fthreads%2Fthread-1%2Freports%2Fmagic-link-test.md',
+    );
+    expect(html).not.toContain('path=file%3A');
+  });
+
+  it('renders artifact-store content links as download links', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content: '[报告](http://localhost:3004/api/artifact-store/threads/thread-1/md-abc/content)',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread-1',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread-1/md-abc/download');
+  });
+
+  it('renders artifact deep links with threadId and artifactId as download links', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content: '[报告](http://localhost:3003/thread/thread-1?workspace=artifacts&threadId=thread-1&artifactId=md-abc)',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread-1',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread-1/md-abc/download');
   });
 });

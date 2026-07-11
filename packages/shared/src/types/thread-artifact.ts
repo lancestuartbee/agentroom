@@ -8,6 +8,7 @@
 
 /** 产物类型 — 决定前端图标 / 筛选分组 */
 export type ThreadArtifactType = 'image' | 'file' | 'code' | 'pr' | 'audio' | 'video';
+export type ThreadArtifactStorageScope = 'thread' | 'library';
 
 export interface ThreadArtifactDTO {
   /** 产物类型（图 / 文件 / 代码 / PR / 语音 / 视频） */
@@ -24,6 +25,14 @@ export interface ThreadArtifactDTO {
   url?: string;
   /** 去重键（PR ref `org/repo#123` / 文件路径）；同 ref 取最新 */
   ref?: string;
+  /** 平台托管产物 ID。旧 rich block / PR / repo 文件产物没有此字段。 */
+  artifactId?: string;
+  /** 下载副本 URL。平台托管文件可用，普通 url 产物沿用 url。 */
+  downloadUrl?: string;
+  /** 本机绝对路径，仅用于本地/桌面环境展示和 Finder reveal。 */
+  localPath?: string;
+  /** 平台托管范围：本对话或报告库。 */
+  storageScope?: ThreadArtifactStorageScope;
 }
 
 /** GET /api/threads/:threadId/artifacts 响应 */

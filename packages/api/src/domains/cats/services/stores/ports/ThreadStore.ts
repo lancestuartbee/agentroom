@@ -6,8 +6,13 @@
  * Phase 3.3 可扩展 Redis 版本。
  */
 
-import type { CatId, ThreadKind, ThreadPhase } from '@cat-cafe/shared';
-import { generateThreadId } from '@cat-cafe/shared';
+import type { CatId, ThreadAudience, ThreadKind, ThreadMode, ThreadPhase } from '@cat-cafe/shared';
+import {
+  DEFAULT_THREAD_AUDIENCE,
+  DEFAULT_THREAD_MODE,
+  generateThreadId,
+  normalizeThreadAudience,
+} from '@cat-cafe/shared';
 
 /** Default thread ID for the lobby (backwards-compatible single-thread mode) */
 export const DEFAULT_THREAD_ID = 'default';
@@ -74,6 +79,11 @@ export interface ThreadMemoryV1 {
     updatedAt: number;
     updatedBy: string;
     ops?: string[];
+    url?: string;
+    artifactId?: string;
+    downloadUrl?: string;
+    localPath?: string;
+    storageScope?: 'thread' | 'library';
   }>;
 }
 
@@ -118,6 +128,10 @@ export interface Thread {
   participants: CatId[];
   lastActiveAt: number;
   createdAt: number;
+  /** Professional collaboration mode. Missing legacy records behave as development. */
+  mode?: ThreadMode;
+  /** Default chat audience for lightweight modes. Missing legacy records behave as all. */
+  audience?: ThreadAudience;
   pinned?: boolean;
   pinnedAt?: number | null;
   favorited?: boolean;
@@ -371,6 +385,8 @@ export interface IThreadStore {
   updatePin(threadId: string, pinned: boolean): void | Promise<void>;
   updateFavorite(threadId: string, favorited: boolean): void | Promise<void>;
   updateThinkingMode(threadId: string, mode: 'debug' | 'play'): void | Promise<void>;
+  updateThreadMode(threadId: string, mode: ThreadMode): void | Promise<void>;
+  updateThreadAudience(threadId: string, audience: ThreadAudience): void | Promise<void>;
   updateMentionActionabilityMode(threadId: string, mode: MentionActionabilityMode): void | Promise<void>;
   updatePreferredCats(threadId: string, catIds: CatId[]): void | Promise<void>;
   updatePhase(threadId: string, phase: ThreadPhase): void | Promise<void>;
@@ -530,6 +546,8 @@ export class ThreadStore implements IThreadStore {
       participants: [],
       lastActiveAt: Date.now(),
       createdAt: Date.now(),
+      mode: DEFAULT_THREAD_MODE,
+      audience: DEFAULT_THREAD_AUDIENCE,
       ...(parentThreadId ? { parentThreadId } : {}),
       ...(proposalAudit
         ? {
@@ -560,6 +578,8 @@ export class ThreadStore implements IThreadStore {
       participants: [],
       lastActiveAt: now,
       createdAt: now,
+      mode: DEFAULT_THREAD_MODE,
+      audience: DEFAULT_THREAD_AUDIENCE,
     };
     this.threads.set(threadId, thread);
     return thread;
@@ -581,6 +601,8 @@ export class ThreadStore implements IThreadStore {
       participants: [],
       lastActiveAt: now,
       createdAt: now,
+      mode: DEFAULT_THREAD_MODE,
+      audience: DEFAULT_THREAD_AUDIENCE,
       externalRuntimeAnchorState: {
         v: 1,
         runtime,
@@ -603,6 +625,8 @@ export class ThreadStore implements IThreadStore {
         participants: [],
         lastActiveAt: Date.now(),
         createdAt: Date.now(),
+        mode: DEFAULT_THREAD_MODE,
+        audience: DEFAULT_THREAD_AUDIENCE,
       };
       this.threads.set(DEFAULT_THREAD_ID, defaultThread);
     }
@@ -715,6 +739,16 @@ export class ThreadStore implements IThreadStore {
   updateThinkingMode(threadId: string, mode: 'debug' | 'play'): void {
     const thread = this.get(threadId);
     if (thread) thread.thinkingMode = mode;
+  }
+
+  updateThreadMode(threadId: string, mode: ThreadMode): void {
+    const thread = this.get(threadId);
+    if (thread) thread.mode = mode;
+  }
+
+  updateThreadAudience(threadId: string, audience: ThreadAudience): void {
+    const thread = this.get(threadId);
+    if (thread) thread.audience = normalizeThreadAudience(audience);
   }
 
   updateMentionActionabilityMode(threadId: string, mode: MentionActionabilityMode): void {

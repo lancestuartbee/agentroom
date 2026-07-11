@@ -158,6 +158,7 @@ export function ArtifactDetailView({
 }): JSX.Element {
   const view = classifyArtifactView(artifact);
   const url = resolveAssetUrl(artifact.url, API_URL);
+  const downloadUrl = resolveAssetUrl(artifact.downloadUrl, API_URL);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -173,6 +174,11 @@ export function ArtifactDetailView({
         <span className="truncate text-xs font-semibold text-cafe-secondary" title={artifact.name}>
           {artifact.name}
         </span>
+        {downloadUrl && (
+          <a href={downloadUrl} target="_blank" rel="noreferrer" className={`ml-auto ${actionBtnClass}`}>
+            下载 <IconDownload />
+          </a>
+        )}
       </div>
       <div className="flex flex-1 flex-col overflow-auto">
         {view === 'image' && url && (

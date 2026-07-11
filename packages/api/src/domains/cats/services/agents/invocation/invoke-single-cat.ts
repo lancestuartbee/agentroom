@@ -69,11 +69,13 @@ import {
 } from '../../../../../infrastructure/telemetry/span-helpers.js';
 import { ToolSpanTracker } from '../../../../../infrastructure/telemetry/tool-span-tracker.js';
 import { resolveActiveProjectRoot } from '../../../../../utils/active-project-root.js';
+import { resolveThreadArtifactPaths } from '../../../../../utils/artifact-store-paths.js';
 import { resolveCliCommand } from '../../../../../utils/cli-resolve.js';
 import { DEFAULT_CLI_TIMEOUT_MS, resolveCliTimeoutMs } from '../../../../../utils/cli-timeout.js';
 import { findMonorepoRoot, isSameProject } from '../../../../../utils/monorepo-root.js';
 import { pathsEqual, validateProjectPathDetailed } from '../../../../../utils/project-path.js';
 import { tcpProbe } from '../../../../../utils/tcp-probe.js';
+import { registerMarkdownArtifactsFromThreadDirectory } from '../../../../../utils/thread-artifact-registration.js';
 import type { AgentPaneRegistry } from '../../../../terminal/agent-pane-registry.js';
 import type { TmuxGateway } from '../../../../terminal/tmux-gateway.js';
 import { resolveBootcampWorkspaceRoot } from '../../bootcamp/workspace-root.js';
@@ -819,6 +821,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
 
   // F118: Declared before try so it's accessible in finally
   let sessionMutexRelease: (() => void) | undefined;
+  let workingDirectory: string | undefined;
+  let isCasualArtifactWorkspace = false;
 
   // F152: Create invocation span for distributed tracing
   // F153 Phase E: If a route span exists, make invocation its child
@@ -1060,8 +1064,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       }
     }
 
-    // Resolve workingDirectory from thread's projectPath
-    let workingDirectory: string | undefined;
+    // Resolve workingDirectory from thread mode/projectPath.
     let threadProjectPath: string | undefined;
     let bootcampWorkspaceError: Error | undefined;
     let workspaceResolutionError: Error | undefined;
@@ -1105,7 +1108,12 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           sessionId = undefined;
           log.info({ catId, threadId }, '#836: reborn session strategy — forcing new session');
         }
-        if (thread?.projectPath && thread.projectPath !== 'default') {
+        if (thread?.mode === 'casual') {
+          const artifactPaths = resolveThreadArtifactPaths(thread.id);
+          mkdirSync(artifactPaths.reportsDir, { recursive: true });
+          workingDirectory = artifactPaths.reportsDir;
+          isCasualArtifactWorkspace = true;
+        } else if (thread?.projectPath && thread.projectPath !== 'default') {
           // F101: Game threads use virtual projectPaths (e.g. 'games/werewolf') for
           // categorization only — they are not real filesystem directories. Skip them
           // to avoid triggering the F070 governance gate on a non-existent path.
@@ -1264,7 +1272,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     }
 
     // F070: Governance gate for external project dispatch
-    if (workingDirectory && !isSameProject(workingDirectory, hostProjectRoot)) {
+    if (workingDirectory && !isCasualArtifactWorkspace && !isSameProject(workingDirectory, hostProjectRoot)) {
       const catCafeRoot = hostProjectRoot;
       const { tryGovernanceBootstrap } = await import('../../../../../config/capabilities/capability-orchestrator.js');
       await tryGovernanceBootstrap(workingDirectory, catCafeRoot);
@@ -1306,7 +1314,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F070 Phase 2: Inject dispatch mission context for external projects
     let missionPrefix = '';
     let capturedMissionPack: import('@cat-cafe/shared').DispatchMissionPack | undefined;
-    if (workingDirectory && !isSameProject(workingDirectory, hostProjectRoot) && threadStore) {
+    if (workingDirectory && !isCasualArtifactWorkspace && !isSameProject(workingDirectory, hostProjectRoot) && threadStore) {
       try {
         const thread = await preflightRace(
           Promise.resolve(threadStore.get(threadId)),
@@ -3388,6 +3396,17 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       const openCodeRuntimeConfigDir = dirname(openCodeRuntimeConfigPath);
       await rm(openCodeRuntimeConfigDir, { recursive: true, force: true }).catch((err) => {
         log.warn({ invocationId, path: openCodeRuntimeConfigDir, err }, 'Failed to remove OpenCode runtime config dir');
+      });
+    }
+
+    if (isCasualArtifactWorkspace && deps.threadStore) {
+      await registerMarkdownArtifactsFromThreadDirectory({
+        threadStore: deps.threadStore,
+        threadId,
+        userId,
+        catId: catId as string,
+      }).catch((err) => {
+        log.warn({ threadId, catId, invocationId, err }, 'Failed to register casual mode markdown artifacts');
       });
     }
 

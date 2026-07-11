@@ -133,7 +133,7 @@ function ArtifactRow({
 }) {
   const Icon = TYPE_ICON[a.type];
   const tint = TYPE_TINT[a.type];
-  const url = resolveUrl(a.url);
+  const actionUrl = resolveUrl(a.downloadUrl ?? a.url);
   const meta = artifactRowMeta(a, resolveNick);
   const global = isGlobal(a);
   return (
@@ -185,15 +185,15 @@ function ArtifactRow({
           )}
         </div>
       </div>
-      {url && (
+      {actionUrl && (
         <a
-          href={url}
+          href={actionUrl}
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
           className="shrink-0 rounded-lg border border-cafe bg-cafe-surface-elevated px-2.5 py-1 text-micro text-cafe-muted transition-colors hover:text-cafe-secondary"
         >
-          打开
+          {a.downloadUrl ? '下载' : '打开'}
         </a>
       )}
     </div>

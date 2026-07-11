@@ -7160,6 +7160,54 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     assert.equal(optionsSeen[1]?.cliSessionId, 'ses_fresh_workspace');
   });
 
+  it('uses the shared thread artifact reports directory as casual mode workingDirectory', async () => {
+    const { resolveThreadArtifactPaths } = await import('../dist/utils/artifact-store-paths.js');
+    const threadId = 'thread-casual-artifact-workspace';
+    const optionsSeen = [];
+    const memoryByThread = new Map();
+    const service = {
+      l0CompilerFn: dummyL0CompilerFn,
+      async *invoke(_prompt, options) {
+        optionsSeen.push(options ?? {});
+        yield { type: 'done', catId: 'opus', timestamp: Date.now() };
+      },
+    };
+
+    const deps = {
+      ...makeDeps(),
+      threadStore: {
+        get: async () => ({
+          id: threadId,
+          projectPath: '/this/project/path/must/not/be/used',
+          mode: 'casual',
+          createdBy: 'user1',
+        }),
+        updateParticipantActivity: async () => {},
+        getThreadMemory: async (tid) => memoryByThread.get(tid) ?? null,
+        updateThreadMemory: async (tid, memory) => {
+          memoryByThread.set(tid, memory);
+        },
+      },
+    };
+
+    const msgs = await collect(
+      invokeSingleCat(deps, {
+        catId: 'opus',
+        service,
+        prompt: 'write a casual report',
+        userId: 'user1',
+        threadId,
+        isLastCat: true,
+      }),
+    );
+
+    const expected = resolveThreadArtifactPaths(threadId).reportsDir;
+    assert.ok(msgs.some((m) => m.type === 'done'), 'service should complete');
+    assert.equal(optionsSeen.length, 1);
+    assert.equal(optionsSeen[0]?.workingDirectory, expected);
+    assert.equal(existsSync(expected), true, 'casual artifact reports directory should be created');
+  });
+
   it('fails loud for OpenCode when thread projectPath is default', async () => {
     let invokedService = false;
     const service = {

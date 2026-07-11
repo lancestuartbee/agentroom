@@ -170,6 +170,41 @@ function BellIcon({ className = 'w-5 h-5' }: { className?: string }) {
   );
 }
 
+function ArtifactsIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={className}>
+      <title>产物</title>
+      <path d="M12 2 3 6.5 12 11l9-4.5L12 2Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 12.5 12 17l9-4.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 17.5 12 22l9-4.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ArtifactsRailButton() {
+  const workspaceMode = useChatStore((s) => s.workspaceMode);
+  const rightPanelMode = useChatStore((s) => s.rightPanelMode);
+  const setWorkspaceMode = useChatStore((s) => s.setWorkspaceMode);
+  const active = workspaceMode === 'artifacts' && rightPanelMode === 'workspace';
+
+  return (
+    <button
+      type="button"
+      onClick={() => setWorkspaceMode('artifacts')}
+      className={`flex h-10 w-10 items-center justify-center rounded-lg transition-all ${
+        active
+          ? 'bg-[var(--console-rail-active)] shadow-[var(--console-rail-shadow)]'
+          : 'hover:bg-[var(--console-rail-item)] hover:shadow-[var(--console-rail-shadow)]'
+      }`}
+      title="产物"
+      aria-current={active ? 'page' : undefined}
+      data-testid="artifacts-rail-button"
+    >
+      <ArtifactsIcon className="h-5 w-5" />
+    </button>
+  );
+}
+
 function ApprovalHubButton() {
   const count = useApprovalHubStore((s) => s.count);
   const fetchPending = useApprovalHubStore((s) => s.fetchPending);
@@ -350,6 +385,9 @@ export function ActivityBar({ className }: ActivityBarProps) {
           </button>
         );
       })}
+
+      <div className="my-1 h-px w-6 bg-[var(--console-border-soft)] opacity-50" />
+      <ArtifactsRailButton />
 
       <Suspense>
         <PinnedSections pinned={pinned} onNav={handleNav} />

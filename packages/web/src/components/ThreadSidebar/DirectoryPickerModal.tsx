@@ -1,3 +1,4 @@
+import type { ThreadMode } from '@cat-cafe/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatCatName, useCatData } from '@/hooks/useCatData';
 import { useIMEGuard } from '@/hooks/useIMEGuard';
@@ -15,6 +16,7 @@ export interface SessionBinding {
 /** F095 Phase C: All options collected by the new-thread modal */
 export interface NewThreadOptions {
   projectPath?: string;
+  mode?: ThreadMode;
   preferredCats?: string[];
   sessionBindings?: SessionBinding[];
   title?: string;
@@ -37,6 +39,7 @@ export function DirectoryPickerModal({
   onSelect: (opts: NewThreadOptions) => void;
   onCancel: () => void;
 }) {
+  const [threadMode, setThreadMode] = useState<ThreadMode>('development');
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [sessionInputs, setSessionInputs] = useState<Record<string, string>>({});
   const [bindExpanded, setBindExpanded] = useState(false);
@@ -92,25 +95,30 @@ export function DirectoryPickerModal({
       }
       onSelect({
         projectPath,
+        mode: threadMode,
         preferredCats: selectedCats.length > 0 ? selectedCats : undefined,
         sessionBindings: bindings.length > 0 ? bindings : undefined,
         title: threadTitle.trim() || undefined,
         pinned: pinOnCreate || undefined,
-        backlogItemId: selectedBacklogItemId || undefined,
+        backlogItemId: threadMode === 'casual' ? undefined : selectedBacklogItemId || undefined,
       });
     },
-    [onSelect, selectedCats, sessionInputs, threadTitle, pinOnCreate, selectedBacklogItemId],
+    [onSelect, selectedCats, sessionInputs, threadTitle, pinOnCreate, selectedBacklogItemId, threadMode],
   );
 
   // F068-R7: Confirm creation with currently selected project
   const confirmCreate = useCallback(() => {
     console.log('[DirectoryPicker] confirmCreate called, selectedPath=', selectedPath);
+    if (threadMode === 'casual') {
+      selectWithOptions(undefined);
+      return;
+    }
     if (selectedPath === null) {
       console.warn('[DirectoryPicker] selectedPath is null — button should be disabled');
       return;
     }
     selectWithOptions(selectedPath === 'lobby' ? undefined : selectedPath);
-  }, [selectedPath, selectWithOptions]);
+  }, [selectedPath, selectWithOptions, threadMode]);
 
   // F113: Handle directory selection from the web-based browser
   const handleBrowserSelect = useCallback(
@@ -172,6 +180,15 @@ export function DirectoryPickerModal({
 
   const [catsExpanded, setCatsExpanded] = useState(false);
   const catSummary = selectedCats.length > 0 ? `已选 ${selectedCats.length} 只猫` : '';
+  const isCasualMode = threadMode === 'casual';
+  const createButtonLabel = isCasualMode ? '创建闲聊' : '创建对话';
+
+  useEffect(() => {
+    if (!isCasualMode) return;
+    setSelectedPath('lobby');
+    setShowBrowser(false);
+    setPathError(null);
+  }, [isCasualMode]);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-to-close
@@ -212,79 +229,110 @@ export function DirectoryPickerModal({
             maxLength={200}
             className="w-full text-sm px-3 py-2 rounded-lg border border-cafe bg-cafe-surface focus:outline-none focus:ring-1 focus:ring-cafe-accent"
           />
+          <div className="mt-3 inline-flex rounded-lg border border-cafe bg-cafe-surface p-0.5">
+            {[
+              ['development', '开发协作'],
+              ['casual', '闲聊'],
+            ].map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setThreadMode(mode as ThreadMode)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  threadMode === mode
+                    ? 'bg-cafe-accent text-[var(--cafe-surface)]'
+                    : 'text-cafe-secondary hover:bg-[var(--console-hover-bg)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
+        {isCasualMode && (
+          <div className="flex-1 min-h-[220px] overflow-y-auto px-5 py-4">
+            <CatSelector
+              selectedCats={selectedCats}
+              onSelectionChange={setSelectedCats}
+              title="参与成员（可选）"
+            />
+          </div>
+        )}
+
         {/* ── Project list (PRIMARY ACTION — takes most space, hidden when browser is open) ── */}
-        <div className={`overflow-y-auto px-5 py-3 space-y-1 ${showBrowser ? 'hidden' : 'flex-1 min-h-[180px]'}`}>
-          <div className="text-micro text-cafe-muted font-medium mb-1">选择项目</div>
+        {!isCasualMode && !showBrowser && (
+          <div className="overflow-y-auto px-5 py-3 space-y-1 flex-1 min-h-[180px]">
+            <div className="text-micro text-cafe-muted font-medium mb-1">选择项目</div>
 
-          {cwdPath && !existingProjects.includes(cwdPath) && (
-            <button
-              type="button"
-              onClick={() => handleSelectPath(cwdPath)}
-              className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === cwdPath ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
-              title={cwdPath}
-            >
-              <FolderIcon />
-              <div className="min-w-0 flex-1">
-                <span className="font-medium block truncate">{projectDisplayName(cwdPath)}</span>
-                <span className="text-micro text-cafe-muted block truncate">{cwdPath}</span>
-              </div>
-              <span className="text-micro text-cafe-accent flex-shrink-0">推荐</span>
-            </button>
-          )}
-
-          {/* Browsed path not in existing list — show as highlighted entry (pinned to top) */}
-          {selectedPath &&
-            selectedPath !== 'lobby' &&
-            selectedPath !== cwdPath &&
-            !existingProjects.includes(selectedPath) && (
+            {cwdPath && !existingProjects.includes(cwdPath) && (
               <button
                 type="button"
-                onClick={() => handleSelectPath(selectedPath)}
-                className="w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ring-2 ring-cafe-accent bg-cafe-surface"
-                title={selectedPath}
+                onClick={() => handleSelectPath(cwdPath)}
+                className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === cwdPath ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
+                title={cwdPath}
               >
                 <FolderIcon />
                 <div className="min-w-0 flex-1">
-                  <span className="font-medium block truncate">{projectDisplayName(selectedPath)}</span>
-                  <span className="text-micro text-cafe-muted block truncate">{selectedPath}</span>
+                  <span className="font-medium block truncate">{projectDisplayName(cwdPath)}</span>
+                  <span className="text-micro text-cafe-muted block truncate">{cwdPath}</span>
                 </div>
-                <span className="text-micro text-cafe-accent flex-shrink-0">已选</span>
+                <span className="text-micro text-cafe-accent flex-shrink-0">推荐</span>
               </button>
             )}
 
-          {existingProjects.map((path) => (
+            {/* Browsed path not in existing list — show as highlighted entry (pinned to top) */}
+            {selectedPath &&
+              selectedPath !== 'lobby' &&
+              selectedPath !== cwdPath &&
+              !existingProjects.includes(selectedPath) && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectPath(selectedPath)}
+                  className="w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ring-2 ring-cafe-accent bg-cafe-surface"
+                  title={selectedPath}
+                >
+                  <FolderIcon />
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium block truncate">{projectDisplayName(selectedPath)}</span>
+                    <span className="text-micro text-cafe-muted block truncate">{selectedPath}</span>
+                  </div>
+                  <span className="text-micro text-cafe-accent flex-shrink-0">已选</span>
+                </button>
+              )}
+
+            {existingProjects.map((path) => (
+              <button
+                type="button"
+                key={path}
+                onClick={() => handleSelectPath(path)}
+                className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === path ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
+                title={path}
+              >
+                <FolderIcon />
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium block truncate">{projectDisplayName(path)}</span>
+                  <span className="text-micro text-cafe-muted block truncate">{path}</span>
+                </div>
+              </button>
+            ))}
+
             <button
               type="button"
-              key={path}
-              onClick={() => handleSelectPath(path)}
-              className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === path ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
-              title={path}
+              onClick={() => handleSelectPath('lobby')}
+              className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === 'lobby' ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
             >
-              <FolderIcon />
-              <div className="min-w-0 flex-1">
-                <span className="font-medium block truncate">{projectDisplayName(path)}</span>
-                <span className="text-micro text-cafe-muted block truncate">{path}</span>
-              </div>
+              <span className="text-base">🏠</span>
+              <span>大厅 (无项目)</span>
             </button>
-          ))}
-
-          <button
-            type="button"
-            onClick={() => handleSelectPath('lobby')}
-            className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === 'lobby' ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
-          >
-            <span className="text-base">🏠</span>
-            <span>大厅 (无项目)</span>
-          </button>
-        </div>
+          </div>
+        )}
 
         {/* ── Options bar: feat + pin + cats toggle (hidden when browser is open) ── */}
         <div
           className={`px-5 py-2 border-t border-cafe-subtle flex items-center gap-3 flex-wrap ${showBrowser ? 'hidden' : ''}`}
         >
-          {backlogItems.length > 0 && (
+          {backlogItems.length > 0 && !isCasualMode && (
             <div className="flex-1 min-w-[140px]">
               <select
                 value={selectedBacklogItemId}
@@ -309,30 +357,33 @@ export function DirectoryPickerModal({
             />
             <span>创建后置顶</span>
           </label>
-          <button
-            type="button"
-            onClick={() => setCatsExpanded((v) => !v)}
-            className="flex items-center gap-1 text-xs text-cafe-secondary hover:text-cafe-secondary transition-colors ml-auto"
-          >
-            <span>{catsExpanded ? '收起猫猫' : '选猫猫'}</span>
-            {catSummary && <span className="text-cafe-accent">({catSummary})</span>}
-            <svg
-              aria-hidden="true"
-              className={`w-3 h-3 transition-transform ${catsExpanded ? 'rotate-180' : ''}`}
-              viewBox="0 0 20 20"
-              fill="currentColor"
+          {!isCasualMode && (
+            <button
+              type="button"
+              onClick={() => setCatsExpanded((v) => !v)}
+              className="flex items-center gap-1 text-xs text-cafe-secondary hover:text-cafe-secondary transition-colors ml-auto"
             >
-              <path
-                fillRule="evenodd"
-                d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
+              <span>{catsExpanded ? '收起猫猫' : '选猫猫'}</span>
+              {catSummary && <span className="text-cafe-accent">({catSummary})</span>}
+              <svg
+                aria-hidden="true"
+                className={`w-3 h-3 transition-transform ${catsExpanded ? 'rotate-180' : ''}`}
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+          )}
+          {isCasualMode && catSummary && <span className="ml-auto text-xs text-cafe-accent">{catSummary}</span>}
         </div>
 
         {/* ── Cat selector (collapsed by default, hidden when browser is open) ── */}
-        {catsExpanded && !showBrowser && (
+        {catsExpanded && !showBrowser && !isCasualMode && (
           <div className="px-5 py-2 border-t border-cafe-subtle overflow-y-auto max-h-[40vh]">
             <CatSelector selectedCats={selectedCats} onSelectionChange={setSelectedCats} />
             {/* F33: Session binding */}
@@ -386,7 +437,7 @@ export function DirectoryPickerModal({
         )}
 
         {/* ── F113: Inline directory browser (replaces osascript picker) ── */}
-        {showBrowser && (
+        {showBrowser && !isCasualMode && (
           <div className="border-t border-cafe-subtle flex-1 min-h-0 flex flex-col overflow-hidden">
             <DirectoryBrowser
               initialPath={cwdPath ?? undefined}
@@ -399,52 +450,54 @@ export function DirectoryPickerModal({
 
         {/* ── Bottom: browse button + path input + confirm ── */}
         <div className="px-5 py-3 border-t border-cafe-subtle space-y-2 flex-shrink-0">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setShowBrowser((v) => !v)}
-              className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
-                showBrowser
-                  ? 'bg-cafe-accent text-[var(--cafe-surface)]'
-                  : 'bg-cafe-surface-elevated hover:bg-[var(--console-hover-bg)] text-cafe-secondary'
-              }`}
-            >
-              <FolderOpenIcon />
-              <span>{showBrowser ? '收起浏览' : '浏览文件夹...'}</span>
-            </button>
-            <input
-              type="text"
-              value={pathInput}
-              onChange={(e) => setPathInput(e.target.value)}
-              onCompositionStart={ime.onCompositionStart}
-              onCompositionEnd={ime.onCompositionEnd}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !ime.isComposing()) handlePathSubmit();
-              }}
-              placeholder="或输入路径..."
-              className="flex-1 text-xs px-3 py-2 rounded-lg border border-[var(--console-border-soft)] bg-[var(--console-field-bg)] focus:outline-none focus:ring-1 focus:ring-cafe-accent"
-            />
-            {pathInput.trim() && (
+          {!isCasualMode && (
+            <div className="flex gap-2">
               <button
                 type="button"
-                onClick={handlePathSubmit}
-                className="px-2.5 py-2 rounded-lg bg-cafe-surface-elevated text-cafe-secondary hover:bg-[var(--console-hover-bg)] transition-colors"
-                aria-label="跳转到路径"
+                onClick={() => setShowBrowser((v) => !v)}
+                className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  showBrowser
+                    ? 'bg-cafe-accent text-[var(--cafe-surface)]'
+                    : 'bg-cafe-surface-elevated hover:bg-[var(--console-hover-bg)] text-cafe-secondary'
+                }`}
               >
-                <svg aria-hidden="true" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path
-                    fillRule="evenodd"
-                    d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                </svg>
+                <FolderOpenIcon />
+                <span>{showBrowser ? '收起浏览' : '浏览文件夹...'}</span>
               </button>
-            )}
-          </div>
-          {pathError && <p className="text-micro text-conn-red-text">{pathError}</p>}
+              <input
+                type="text"
+                value={pathInput}
+                onChange={(e) => setPathInput(e.target.value)}
+                onCompositionStart={ime.onCompositionStart}
+                onCompositionEnd={ime.onCompositionEnd}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !ime.isComposing()) handlePathSubmit();
+                }}
+                placeholder="或输入路径..."
+                className="flex-1 text-xs px-3 py-2 rounded-lg border border-[var(--console-border-soft)] bg-[var(--console-field-bg)] focus:outline-none focus:ring-1 focus:ring-cafe-accent"
+              />
+              {pathInput.trim() && (
+                <button
+                  type="button"
+                  onClick={handlePathSubmit}
+                  className="px-2.5 py-2 rounded-lg bg-cafe-surface-elevated text-cafe-secondary hover:bg-[var(--console-hover-bg)] transition-colors"
+                  aria-label="跳转到路径"
+                >
+                  <svg aria-hidden="true" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          {pathError && !isCasualMode && <p className="text-micro text-conn-red-text">{pathError}</p>}
           {/* F068-R7: Selected path hint + confirm button */}
           <div className="flex items-center gap-2 pt-1">
-            {selectedPath && (
+            {selectedPath && !isCasualMode && (
               <span
                 className={`truncate flex-1 ${
                   showBrowser
@@ -459,10 +512,10 @@ export function DirectoryPickerModal({
             <button
               type="button"
               onClick={confirmCreate}
-              disabled={selectedPath === null}
+              disabled={!isCasualMode && selectedPath === null}
               className="ml-auto px-5 py-2 rounded-lg bg-cafe-accent hover:bg-cafe-interactive text-[var(--cafe-surface)] text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              创建对话
+              {createButtonLabel}
             </button>
           </div>
         </div>

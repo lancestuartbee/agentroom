@@ -18,7 +18,7 @@
  * 虽然参数可选（兼容测试），但生产代码必须显式传入。
  */
 
-import type { CatId, CatRoutingError, MessageContent } from '@cat-cafe/shared';
+import type { CatId, CatRoutingError, MessageContent, ThreadAudience } from '@cat-cafe/shared';
 import { catRegistry, escapeRegExp } from '@cat-cafe/shared';
 import type { SessionStore } from '@cat-cafe/shared/utils';
 import { context as ctxApi, SpanStatusCode, trace } from '@opentelemetry/api';
@@ -30,6 +30,7 @@ import {
   ROUTING_STRATEGY,
   ROUTING_TARGET_CATS,
 } from '../../../../../infrastructure/telemetry/genai-semconv.js';
+import { resolveThreadArtifactPaths } from '../../../../../utils/artifact-store-paths.js';
 import type { IntentResult } from '../../context/IntentParser.js';
 import { parseIntent, ROUTE_CONTROL_TAGS, stripIntentTags } from '../../context/IntentParser.js';
 import type { IRuntimeSessionStore } from '../../runtime-session/RuntimeSessionStore.js';
@@ -42,7 +43,12 @@ import type { IDraftStore } from '../../stores/ports/DraftStore.js';
 import type { IMessageStore } from '../../stores/ports/MessageStore.js';
 import type { ISessionChainStore } from '../../stores/ports/SessionChainStore.js';
 import type { ITaskStore } from '../../stores/ports/TaskStore.js';
-import type { IThreadStore, ThreadRoutingPolicyV1, ThreadRoutingScope } from '../../stores/ports/ThreadStore.js';
+import type {
+  IThreadStore,
+  Thread,
+  ThreadRoutingPolicyV1,
+  ThreadRoutingScope,
+} from '../../stores/ports/ThreadStore.js';
 import { DEFAULT_THREAD_ID } from '../../stores/ports/ThreadStore.js';
 import type { IWorkflowSopStore } from '../../stores/ports/WorkflowSopStore.js';
 import { SYSTEM_USER_IDS } from '../../stores/visibility.js';
@@ -57,6 +63,39 @@ import { resolveCatTarget } from './cat-target-resolver.js';
 
 const log = createModuleLogger('agent-router');
 const routeTracer = trace.getTracer('cat-cafe-api', '0.1.0');
+
+function buildCasualModeSystemPrompt(thread: Thread): string {
+  const artifactPaths = resolveThreadArtifactPaths(thread.id);
+  return [
+    '[Casual mode]',
+    'Treat this as lightweight conversation, not development collaboration.',
+    'Answer directly and concisely from your own model perspective.',
+    'Do not invoke tools, inspect local files, run commands, or write files by default.',
+    'You may use tools only when the user explicitly asks for an action that needs them, such as current web research, reading a user-specified file, or creating/saving/exporting a report.',
+    `When saving Markdown reports or other chat artifacts, write them under this shared thread artifact directory: ${artifactPaths.reportsDir}`,
+    'Do not write chat artifacts into the API package directory, provider-private directories, or another agent-specific directory.',
+    'After saving an artifact, report the absolute path plainly.',
+    'Do not create development tasks, run project commands, or hand work to another agent unless the user switches to development mode.',
+    'When multiple agents are addressed, give your independent view without debating other agents.',
+  ].join('\n');
+}
+
+function getModeRouteOptions(
+  thread: Thread | null | undefined,
+): Pick<RouteOptions, 'modeSystemPrompt' | 'maxA2ADepth'> {
+  if (thread?.mode !== 'casual') return {};
+  return {
+    modeSystemPrompt: buildCasualModeSystemPrompt(thread),
+    maxA2ADepth: 0,
+  };
+}
+
+function applyCasualIntentRules(intent: IntentResult, targetCatCount: number): IntentResult {
+  if (targetCatCount > 1 && intent.intent !== 'ideate') {
+    return { ...intent, intent: 'ideate', explicit: false };
+  }
+  return intent;
+}
 
 /**
  * F194 Phase Z5 AC-Z16: 无 @ fallback 回看最近 thread messages 找上一条 user message
@@ -781,6 +820,105 @@ export class AgentRouter {
     return filtered;
   }
 
+  private getAllRoutableCats(): CatId[] {
+    const allCats = this.filterRoutableCats(Object.keys(this.services).sort());
+    if (allCats.length > 0) return allCats;
+    const fallback = this.pickFallbackCat(new Set());
+    return fallback ? [fallback] : [];
+  }
+
+  private hasCasualAllMention(message: string): boolean {
+    const normalized = this.normalizeSpeechMentions(message).toLowerCase();
+    for (const token of ['@all', '@全体']) {
+      let index = normalized.indexOf(token);
+      while (index >= 0) {
+        const left = normalized[index - 1];
+        const right = normalized[index + token.length];
+        const leftOk = left === undefined || MENTION_TOKEN_BOUNDARY_RE.test(left);
+        const nextAfterDot = normalized[index + token.length + 1];
+        const rightOk =
+          right === undefined ||
+          (right === '.' && nextAfterDot !== undefined && DOMAIN_SUFFIX_START_RE.test(nextAfterDot)
+            ? false
+            : MENTION_TOKEN_BOUNDARY_RE.test(right));
+        if (leftOk && rightOk) return true;
+        index = normalized.indexOf(token, index + token.length);
+      }
+    }
+    return false;
+  }
+
+  private filterCasualAllWarnings(warnings: CatRoutingError[]): CatRoutingError[] {
+    return warnings.filter((warning) => {
+      if (warning.kind !== 'cat_not_found') return true;
+      const mention = warning.mention.toLowerCase();
+      return mention !== 'all' && mention !== '全体';
+    });
+  }
+
+  private getCasualDefaultTargets(thread?: Thread | null): CatId[] {
+    const preferred = this.filterRoutableCats(thread?.preferredCats ?? []);
+    if (preferred.length > 0) return preferred;
+    return this.getAllRoutableCats();
+  }
+
+  private getCasualTargetsForAudience(thread?: Thread | null): CatId[] {
+    const audience = thread?.audience;
+    if (audience?.mode === 'selected') {
+      const selected = this.filterRoutableCats(audience.agentIds);
+      if (selected.length > 0) return selected;
+    }
+    return this.getCasualDefaultTargets(thread);
+  }
+
+  private async persistCasualAudience(threadId: string, targetCats: CatId[], audience: ThreadAudience): Promise<void> {
+    if (!this.threadStore) return;
+    if (targetCats.length > 0) {
+      await this.threadStore.addParticipants(threadId, targetCats);
+    }
+    await this.threadStore.updateThreadAudience(threadId, audience);
+  }
+
+  private async resolveCasualTargetsAndIntent(
+    message: string,
+    threadId: string,
+    thread: Thread | null,
+    options?: { persist?: boolean },
+  ): Promise<{ targetCats: CatId[]; intent: IntentResult; hasMentions: boolean; routing_warnings: CatRoutingError[] }> {
+    const allMentions = await this.parseAllMentions(message, threadId);
+    const hasAllMention = this.hasCasualAllMention(message);
+    let targetCats: CatId[];
+    let hasMentions = hasAllMention || allMentions.mentions.length > 0;
+    let routing_warnings = allMentions.routing_warnings;
+
+    if (hasAllMention) {
+      targetCats = this.getCasualDefaultTargets(thread);
+      routing_warnings = this.filterCasualAllWarnings(routing_warnings);
+      if (options?.persist) {
+        await this.persistCasualAudience(threadId, targetCats, { mode: 'all' });
+      }
+    } else if (allMentions.mentions.length > 0) {
+      targetCats = this.filterRoutableCats(allMentions.mentions);
+      if (targetCats.length === 0) {
+        targetCats = this.getCasualTargetsForAudience(thread);
+        hasMentions = false;
+      } else if (options?.persist) {
+        await this.persistCasualAudience(threadId, targetCats, {
+          mode: 'selected',
+          agentIds: targetCats.map(String),
+        });
+      }
+    } else {
+      targetCats = this.getCasualTargetsForAudience(thread);
+      if (options?.persist && this.threadStore && targetCats.length > 0) {
+        await this.threadStore.addParticipants(threadId, targetCats);
+      }
+    }
+
+    const intent = applyCasualIntentRules(parseIntent(message, targetCats.length), targetCats.length);
+    return { targetCats, intent, hasMentions, routing_warnings };
+  }
+
   /**
    * F194 Phase Z5 AC-Z16: 无 @ fallback 优先用上一条 user message 的 mentions，
    * 不让 thread 里其他猫的发言（如 vision guard cross-post）抢路由 fallback。
@@ -1382,6 +1520,11 @@ export class AgentRouter {
     options?: { persist?: boolean },
   ): Promise<{ targetCats: CatId[]; intent: IntentResult; hasMentions: boolean; routing_warnings: CatRoutingError[] }> {
     const resolvedThreadId = threadId ?? DEFAULT_THREAD_ID;
+    const thread = this.threadStore ? await this.threadStore.get(resolvedThreadId) : null;
+    if (thread?.mode === 'casual') {
+      return this.resolveCasualTargetsAndIntent(message, resolvedThreadId, thread, options);
+    }
+
     // Capture both valid mentions AND routing_warnings (for disabled/not-found cats).
     // routing_warnings lets callers (e.g. messages.ts) surface explicit feedback when
     // a user's @mention silently fell back to a different cat (Thread 1 bug: @kimi→opus).
@@ -1409,8 +1552,7 @@ export class AgentRouter {
     signal?: AbortSignal,
   ): AsyncIterable<AgentMessage> {
     const resolvedThreadId = threadId ?? DEFAULT_THREAD_ID;
-    const targetCats = await this.resolveTargets(message, resolvedThreadId);
-    const intent = parseIntent(message, targetCats.length);
+    const { targetCats, intent } = await this.resolveTargetsAndIntent(message, resolvedThreadId, { persist: true });
     const strategy = intent.intent === 'ideate' && targetCats.length > 1 ? 'parallel' : 'serial';
     const cleanMessage = stripIntentTags(message);
 
@@ -1425,10 +1567,11 @@ export class AgentRouter {
     // Fetch thread for thinkingMode + update lastActive
     // Default to play mode when no threadStore is available: stream thinking stays isolated.
     let legacyThinkingMode: 'debug' | 'play' = 'play';
+    let routeThread: Thread | null = null;
     if (this.threadStore) {
-      const thread = await this.threadStore.get(resolvedThreadId);
-      if (thread) {
-        legacyThinkingMode = thread.thinkingMode ?? 'play';
+      routeThread = await this.threadStore.get(resolvedThreadId);
+      if (routeThread) {
+        legacyThinkingMode = routeThread.thinkingMode ?? 'play';
       }
       await this.threadStore.updateLastActive(resolvedThreadId);
     }
@@ -1504,6 +1647,7 @@ export class AgentRouter {
       currentUserMessageId: storedUserMessage.id,
       thinkingMode: legacyThinkingMode,
       routeSpan,
+      ...getModeRouteOptions(routeThread),
     };
 
     try {
@@ -1598,10 +1742,11 @@ export class AgentRouter {
     // Fetch thread for thinkingMode + update lastActive
     // Default to play mode when no threadStore is available: stream thinking stays isolated.
     let thinkingMode: 'debug' | 'play' = 'play';
+    let routeThread: Thread | null = null;
     if (this.threadStore) {
-      const thread = await this.threadStore.get(threadId);
-      if (thread) {
-        thinkingMode = thread.thinkingMode ?? 'play';
+      routeThread = await this.threadStore.get(threadId);
+      if (routeThread) {
+        thinkingMode = routeThread.thinkingMode ?? 'play';
       }
       await this.threadStore.updateLastActive(threadId);
     }
@@ -1678,6 +1823,7 @@ export class AgentRouter {
       ...(options?.persistenceContext ? { persistenceContext: options.persistenceContext } : {}),
       ...(options?.parentInvocationId ? { parentInvocationId: options.parentInvocationId } : {}),
       routeSpan,
+      ...getModeRouteOptions(routeThread),
       // F222 P1: thread provenance flag so route-serial/route-parallel can gate detection
       ...(options?.frustrationAutoIssueEligible !== undefined
         ? { frustrationAutoIssueEligible: options.frustrationAutoIssueEligible }

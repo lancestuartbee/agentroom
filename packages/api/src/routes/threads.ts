@@ -7,8 +7,8 @@
  * DELETE /api/threads/:id  - 删除对话
  */
 
-import type { CatId } from '@cat-cafe/shared';
-import { catIdSchema } from '@cat-cafe/shared';
+import type { CatId, ThreadAudience } from '@cat-cafe/shared';
+import { catIdSchema, DEFAULT_THREAD_MODE, normalizeThreadAudience, THREAD_MODES } from '@cat-cafe/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { InvocationTracker } from '../domains/cats/services/agents/invocation/InvocationTracker.js';
@@ -126,6 +126,15 @@ const createThreadSchema = z
     backlogItemId: z.string().min(1).max(100).optional(),
     /** F087: Initial bootcamp state */
     bootcampState: bootcampStateSchema.optional(),
+    /** Professional collaboration mode. Defaults to development for legacy compatibility. */
+    mode: z.enum(THREAD_MODES).optional(),
+    /** Lightweight-mode audience state. Defaults to all. */
+    audience: z
+      .discriminatedUnion('mode', [
+        z.object({ mode: z.literal('all') }).strict(),
+        z.object({ mode: z.literal('selected'), agentIds: z.array(catIdSchema()).min(1).max(10) }).strict(),
+      ])
+      .optional(),
   })
   .strict();
 
@@ -187,13 +196,18 @@ function parseOptionalBooleanQuery(value: string | boolean | undefined): boolean
 }
 
 export function sanitizeThreadForResponse(thread: Thread, _userId: string): Thread {
+  const withModeDefaults: Thread = {
+    ...thread,
+    mode: thread.mode ?? DEFAULT_THREAD_MODE,
+    audience: normalizeThreadAudience(thread.audience),
+  };
   // Cloud Codex P2: strip internal-only fields that should not appear in API responses.
   // pendingContinuation is per-cat/user session state — not client-visible.
-  if (thread.pendingContinuation) {
-    const { pendingContinuation: _, ...sanitized } = thread;
+  if (withModeDefaults.pendingContinuation) {
+    const { pendingContinuation: _, ...sanitized } = withModeDefaults;
     return sanitized as Thread;
   }
-  return thread;
+  return withModeDefaults;
 }
 
 function isConciergeThread(thread: Thread): boolean {
@@ -246,6 +260,15 @@ const updateThreadSchema = z
     bubbleThinking: z.enum(['global', 'expanded', 'collapsed']).optional(),
     /** Bubble display overrides: CLI output block expand/collapse. */
     bubbleCli: z.enum(['global', 'expanded', 'collapsed']).optional(),
+    /** Professional collaboration mode. */
+    mode: z.enum(THREAD_MODES).optional(),
+    /** Lightweight-mode audience state. */
+    audience: z
+      .discriminatedUnion('mode', [
+        z.object({ mode: z.literal('all') }).strict(),
+        z.object({ mode: z.literal('selected'), agentIds: z.array(catIdSchema()).min(1).max(10) }).strict(),
+      ])
+      .optional(),
     /** F168: Preferred workspace mode for auto-switch on thread open. null clears. */
     preferredWorkspaceMode: z
       .enum(['dev', 'recall', 'schedule', 'tasks', 'community', 'artifacts', 'approval', 'trajectory'])
@@ -267,6 +290,8 @@ const updateThreadSchema = z
       data.bootcampState !== undefined ||
       data.bubbleThinking !== undefined ||
       data.bubbleCli !== undefined ||
+      data.mode !== undefined ||
+      data.audience !== undefined ||
       data.preferredWorkspaceMode !== undefined ||
       data.labels !== undefined,
     {
@@ -293,6 +318,8 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
       pinned,
       backlogItemId,
       bootcampState,
+      mode,
+      audience,
     } = parseResult.data;
     const userId = resolveUserId(request, { fallbackUserId: legacyUserId });
     if (!userId) {
@@ -307,6 +334,14 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
     }
 
     let thread: Thread = await threadStore.create(userId, title, resolvedProjectPath.projectPath);
+
+    if (mode !== undefined) {
+      await threadStore.updateThreadMode(thread.id, mode);
+    }
+
+    if (audience !== undefined) {
+      await threadStore.updateThreadAudience(thread.id, audience as ThreadAudience);
+    }
 
     // F32-b Phase 2: Set preferred cats if provided at creation time
     if (preferredCats && preferredCats.length > 0) {
@@ -331,7 +366,13 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
     }
 
     // Re-fetch if any post-create mutations applied
-    if ((preferredCats && preferredCats.length > 0) || pinned || backlogItemId) {
+    if (
+      (preferredCats && preferredCats.length > 0) ||
+      pinned ||
+      backlogItemId ||
+      mode !== undefined ||
+      audience !== undefined
+    ) {
       thread = (await threadStore.get(thread.id)) ?? thread;
     }
 
@@ -528,6 +569,8 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
       bootcampState,
       bubbleThinking,
       bubbleCli,
+      mode,
+      audience,
       preferredWorkspaceMode,
       labels,
     } = parseResult.data;
@@ -553,6 +596,8 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
     }
     if (bubbleThinking !== undefined) await threadStore.updateBubbleDisplay(id, 'bubbleThinking', bubbleThinking);
     if (bubbleCli !== undefined) await threadStore.updateBubbleDisplay(id, 'bubbleCli', bubbleCli);
+    if (mode !== undefined) await threadStore.updateThreadMode(id, mode);
+    if (audience !== undefined) await threadStore.updateThreadAudience(id, audience as ThreadAudience);
     if (preferredWorkspaceMode !== undefined) {
       await threadStore.updatePreferredWorkspaceMode(id, preferredWorkspaceMode);
     }

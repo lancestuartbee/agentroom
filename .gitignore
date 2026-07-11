@@ -67,6 +67,9 @@ packages/web/public/vendor/
 cat-config.json
 .cat-cafe/
 
+# Local AgentRoom runtime artifact spillover; canonical artifacts live under ~/Documents/AgentRoom
+/profiles/
+
 # Claude Code skills — cat-cafe symlinks are tracked; plugin-generated ones are not
 .claude/skills/pencil-renderer
 .claude/skills/pencil-to-code

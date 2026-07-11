@@ -1,4 +1,4 @@
-import type { CliDiagnostics, ReplyPreview, SchedulerMessageExtra } from '@cat-cafe/shared';
+import type { CliDiagnostics, ReplyPreview, SchedulerMessageExtra, ThreadAudience, ThreadMode } from '@cat-cafe/shared';
 
 // F212 Phase B: re-export so existing web imports (panel + tests) can pull the contract via the
 // canonical chat-types entry point without each consumer reaching into @cat-cafe/shared.
@@ -349,6 +349,10 @@ export interface Thread {
   participants: string[];
   lastActiveAt: number;
   createdAt: number;
+  /** Professional collaboration mode. Legacy/missing threads behave as development. */
+  mode?: ThreadMode;
+  /** Default audience for lightweight chat modes. Legacy/missing threads behave as all. */
+  audience?: ThreadAudience;
   pinned?: boolean;
   pinnedAt?: number | null;
   favorited?: boolean;
