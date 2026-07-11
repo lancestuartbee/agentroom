@@ -11,6 +11,7 @@
 
 import type { CatId } from '@cat-cafe/shared';
 import type { SessionStore } from '@cat-cafe/shared/utils';
+import type { PromptProfile } from '../types.js';
 
 /** Maximum number of sessions to keep in memory (fallback mode only) */
 const MAX_SESSIONS = 1000;
@@ -24,17 +25,31 @@ export class SessionManager {
     this.sessionStore = sessionStore ?? null;
   }
 
+  private storageThreadId(threadId: string, promptProfile?: PromptProfile): string {
+    if (promptProfile && promptProfile !== 'development') {
+      return `${threadId}::prompt-profile:${promptProfile}`;
+    }
+    return threadId;
+  }
+
   /**
    * Store session ID for user + cat + thread combination.
    * Uses Redis SessionStore when available, falls back to in-memory Map.
    */
-  async store(userId: string, catId: CatId, threadId: string, sessionId: string): Promise<void> {
+  async store(
+    userId: string,
+    catId: CatId,
+    threadId: string,
+    sessionId: string,
+    promptProfile?: PromptProfile,
+  ): Promise<void> {
+    const storageThreadId = this.storageThreadId(threadId, promptProfile);
     if (this.sessionStore) {
-      await this.sessionStore.setSessionId(userId, catId, threadId, sessionId);
+      await this.sessionStore.setSessionId(userId, catId, storageThreadId, sessionId);
       return;
     }
 
-    const key = `${userId}:${catId}:${threadId}`;
+    const key = `${userId}:${catId}:${storageThreadId}`;
 
     // Delete first so it moves to the end (most recent) on re-insert
     if (this.sessions.has(key)) {
@@ -56,24 +71,26 @@ export class SessionManager {
    * Get stored session ID for user + cat + thread combination.
    * Uses Redis SessionStore when available, falls back to in-memory Map.
    */
-  async get(userId: string, catId: CatId, threadId: string): Promise<string | undefined> {
+  async get(userId: string, catId: CatId, threadId: string, promptProfile?: PromptProfile): Promise<string | undefined> {
+    const storageThreadId = this.storageThreadId(threadId, promptProfile);
     if (this.sessionStore) {
-      const result = await this.sessionStore.getSessionId(userId, catId, threadId);
+      const result = await this.sessionStore.getSessionId(userId, catId, storageThreadId);
       return result ?? undefined;
     }
 
-    return this.sessions.get(`${userId}:${catId}:${threadId}`);
+    return this.sessions.get(`${userId}:${catId}:${storageThreadId}`);
   }
 
   /**
    * Delete stored session for user + cat + thread combination.
    * Used by self-healing flows when persisted CLI session becomes invalid.
    */
-  async delete(userId: string, catId: CatId, threadId: string): Promise<void> {
+  async delete(userId: string, catId: CatId, threadId: string, promptProfile?: PromptProfile): Promise<void> {
+    const storageThreadId = this.storageThreadId(threadId, promptProfile);
     if (this.sessionStore) {
-      await this.sessionStore.deleteSession(userId, catId, threadId);
+      await this.sessionStore.deleteSession(userId, catId, storageThreadId);
       return;
     }
-    this.sessions.delete(`${userId}:${catId}:${threadId}`);
+    this.sessions.delete(`${userId}:${catId}:${storageThreadId}`);
   }
 }

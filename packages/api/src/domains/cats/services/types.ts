@@ -3,7 +3,7 @@
  * Agent 服务的共享类型定义
  */
 
-import type { CatId, MessageContent, ReplyPreview } from '@cat-cafe/shared';
+import type { CatId, MessageContent, ReplyPreview, SessionPromptProfile } from '@cat-cafe/shared';
 import type { Span } from '@opentelemetry/api';
 import type { CliDiagnostics } from '../../../utils/cli-diagnostics.js';
 import type { CliSpawnOptions } from '../../../utils/cli-types.js';
@@ -248,6 +248,8 @@ export interface AgentMessage {
  */
 export type SpawnCliOverride = (options: CliSpawnOptions) => AsyncGenerator<unknown, void, undefined>;
 
+export type PromptProfile = SessionPromptProfile;
+
 /**
  * Options for invoking an agent
  */
@@ -271,6 +273,10 @@ export interface AgentServiceOptions {
   auditContext?: AuditContext;
   /** Static identity prompt (Claude: --append-system-prompt, others: prepend to prompt) */
   systemPrompt?: string;
+  /** Prompt/control profile selected by the thread mode. Defaults to development. */
+  promptProfile?: PromptProfile;
+  /** Native system-role prompt override for providers that normally compile L0 internally. */
+  nativeSystemPrompt?: string;
   /** Static identity prompt used only if a resumed carrier creates a fresh fallback session. */
   resumeFallbackSystemPrompt?: string;
   /** F089: Override spawnCli with tmux-based spawner (set per-invocation) */

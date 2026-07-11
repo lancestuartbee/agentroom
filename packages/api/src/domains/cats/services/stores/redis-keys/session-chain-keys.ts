@@ -10,9 +10,15 @@ export const SessionChainKeys = {
   /** Hash: session record fields */
   detail: (id: string) => `session:${id}`,
   /** Sorted Set: cat+thread session chain (score = seq) */
-  chain: (catId: string, threadId: string) => `session-chain:${catId}:${threadId}`,
+  chain: (catId: string, threadId: string, promptProfile?: string) =>
+    promptProfile && promptProfile !== 'development'
+      ? `session-chain:${catId}:${threadId}:profile:${promptProfile}`
+      : `session-chain:${catId}:${threadId}`,
   /** String: cat+thread → active session ID (fast lookup) */
-  active: (catId: string, threadId: string) => `session-active:${catId}:${threadId}`,
+  active: (catId: string, threadId: string, promptProfile?: string) =>
+    promptProfile && promptProfile !== 'development'
+      ? `session-active:${catId}:${threadId}:profile:${promptProfile}`
+      : `session-active:${catId}:${threadId}`,
   /** String: CLI session ID → record ID index */
   byCli: (cliSessionId: string) => `session-cli:${cliSessionId}`,
   /**

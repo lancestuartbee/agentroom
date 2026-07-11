@@ -18,7 +18,7 @@ import type { IDraftStore } from '../../stores/ports/DraftStore.js';
 import type { IMessageStore, StoredMessage, StoredToolEvent } from '../../stores/ports/MessageStore.js';
 import type { Thread } from '../../stores/ports/ThreadStore.js';
 import { canViewMessage, resolveVisibleReplyParent } from '../../stores/visibility.js';
-import type { AgentMessage, AgentService } from '../../types.js';
+import type { AgentMessage, AgentService, PromptProfile } from '../../types.js';
 import type { InvocationDeps } from '../invocation/invoke-single-cat.js';
 import { extractRecentArtifacts, mergeLedger } from './artifact-tracking.js';
 import type { CoverageMap } from './context-transport.js';
@@ -143,6 +143,8 @@ export interface RouteOptions {
   modeSystemPrompt?: string | undefined;
   /** F11: Per-cat mode prompt override (takes precedence over modeSystemPrompt) */
   modeSystemPromptByCat?: Record<string, string> | undefined;
+  /** Prompt/control profile selected by the thread mode. Defaults to development. */
+  promptProfile?: PromptProfile | undefined;
   /** Thinking visibility: play = cats don't see each other's thinking, debug = cats share thinking. Default: play */
   thinkingMode?: 'debug' | 'play' | undefined;
   /** F108: Unique invocation ID for WorklistRegistry isolation in concurrent execution.

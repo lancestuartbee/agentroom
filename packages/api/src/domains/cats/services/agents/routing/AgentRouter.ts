@@ -30,7 +30,6 @@ import {
   ROUTING_STRATEGY,
   ROUTING_TARGET_CATS,
 } from '../../../../../infrastructure/telemetry/genai-semconv.js';
-import { resolveThreadArtifactPaths } from '../../../../../utils/artifact-store-paths.js';
 import type { IntentResult } from '../../context/IntentParser.js';
 import { parseIntent, ROUTE_CONTROL_TAGS, stripIntentTags } from '../../context/IntentParser.js';
 import type { IRuntimeSessionStore } from '../../runtime-session/RuntimeSessionStore.js';
@@ -65,26 +64,19 @@ const log = createModuleLogger('agent-router');
 const routeTracer = trace.getTracer('cat-cafe-api', '0.1.0');
 
 function buildCasualModeSystemPrompt(thread: Thread): string {
-  const artifactPaths = resolveThreadArtifactPaths(thread.id);
   return [
     '[Casual mode]',
-    'Treat this as lightweight conversation, not development collaboration.',
-    'Answer directly and concisely from your own model perspective.',
-    'Do not invoke tools, inspect local files, run commands, or write files by default.',
-    'You may use tools only when the user explicitly asks for an action that needs them, such as current web research, reading a user-specified file, or creating/saving/exporting a report.',
-    `When saving Markdown reports or other chat artifacts, write them under this shared thread artifact directory: ${artifactPaths.reportsDir}`,
-    'Do not write chat artifacts into the API package directory, provider-private directories, or another agent-specific directory.',
-    'After saving an artifact, report the absolute path plainly.',
-    'Do not create development tasks, run project commands, or hand work to another agent unless the user switches to development mode.',
-    'When multiple agents are addressed, give your independent view without debating other agents.',
+    `Thread ${thread.id}.`,
+    'Use the lightweight chat profile; do not enter development workflow unless the user asks.',
   ].join('\n');
 }
 
 function getModeRouteOptions(
   thread: Thread | null | undefined,
-): Pick<RouteOptions, 'modeSystemPrompt' | 'maxA2ADepth'> {
+): Pick<RouteOptions, 'modeSystemPrompt' | 'maxA2ADepth' | 'promptProfile'> {
   if (thread?.mode !== 'casual') return {};
   return {
+    promptProfile: 'casual',
     modeSystemPrompt: buildCasualModeSystemPrompt(thread),
     maxA2ADepth: 0,
   };

@@ -248,6 +248,44 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
     assert.ok(!args.includes('approval_policy=\\"on-request\\"'), 'argv should not contain literal backslash escapes');
   });
 
+  test('casual prompt profile uses lightweight Codex CLI launch flags', async () => {
+    const proc = createMockProcess();
+    const spawnFn = createMockSpawnFn(proc);
+    const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn, model: 'gpt-5.3-codex' });
+    const workingDirectory = mkdtempSync(join(import.meta.dirname ?? '.', 'codex-casual-workdir-'));
+
+    try {
+      const promise = collect(
+        service.invoke('hello casual', {
+          promptProfile: 'casual',
+          nativeSystemPrompt: '[Casual profile]\nminimal identity',
+          workingDirectory,
+        }),
+      );
+
+      emitCodexEvents(proc, [
+        { type: 'thread.started', thread_id: 'thread-casual-lite' },
+        { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } },
+      ]);
+      await promise;
+
+      const args = spawnFn.mock.calls[0].arguments[1];
+      assert.ok(args.includes('--ignore-user-config'));
+      assert.ok(args.includes('--ignore-rules'));
+      assert.ok(args.includes('--ephemeral'));
+      assert.ok(args.includes('--skip-git-repo-check'));
+      assert.equal(args.includes('--add-dir'), false, 'casual mode must not grant .git write access');
+      assert.equal(args.includes('.git'), false, 'casual mode must not add .git as a writable directory');
+      assert.equal(
+        args.some((arg) => String(arg).includes('mcp_servers.')),
+        false,
+        'casual mode must not inject Cat Cafe MCP config',
+      );
+    } finally {
+      rmSync(workingDirectory, { recursive: true, force: true });
+    }
+  });
+
   test('injects cat-cafe MCP config from runtime root, not thread workingDirectory', async () => {
     const tmpRoot = makeTempDir('.tmp-mcp-test-');
     const previousAllowedWorkspaceDirs = process.env.ALLOWED_WORKSPACE_DIRS;

@@ -182,6 +182,22 @@ describe('RedisSessionChainStore', { skip: redisIsolationSkipReason(REDIS_URL) }
     assert.equal(active.status, 'active');
   });
 
+  it('promptProfile isolates active sessions for the same cat+thread', async () => {
+    const dev = await store.create(BASE_INPUT);
+    const casual = await store.create({
+      ...BASE_INPUT,
+      cliSessionId: 'cli-sess-casual',
+      promptProfile: 'casual',
+    });
+
+    assert.equal((await store.getActive('opus', 'thread-1'))?.id, dev.id);
+    assert.equal((await store.getActive('opus', 'thread-1', 'casual'))?.id, casual.id);
+    assert.equal((await store.getChain('opus', 'thread-1')).length, 1);
+    assert.equal((await store.getChain('opus', 'thread-1', 'casual')).length, 1);
+    assert.equal(casual.promptProfile, 'casual');
+    assert.equal(dev.promptProfile, undefined);
+  });
+
   it('getActive() returns null when no active session', async () => {
     const result = await store.getActive('opus', 'thread-1');
     assert.equal(result, null);

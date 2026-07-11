@@ -320,7 +320,16 @@ export class ClaudeAgentService implements AgentService {
     return l0Path;
   }
 
+  private writeNativeSystemPromptOverrideToTempFile(content: string): string {
+    const l0Dir = mkdtempSync(join(tmpdir(), 'cat-cafe-l0-'));
+    const l0Path = join(l0Dir, 'system-prompt-l0.md');
+    writeFileSync(l0Path, content, 'utf8');
+    return l0Path;
+  }
+
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
+    const isCasualProfile = options?.promptProfile === 'casual';
+    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
     let effectivePrompt = prompt;
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
     const imageAccessDirs = collectImageAccessDirectories(imagePaths);
@@ -363,11 +372,11 @@ export class ClaudeAgentService implements AgentService {
       '--setting-sources',
       isApiKeyMode ? 'project,local' : 'project,local,user',
       // Enable Chrome MCP integration (built-in, requires Chrome + extension running)
-      '--chrome',
+      ...(isCasualProfile ? [] : ['--chrome']),
     ];
 
-    if (options?.sessionId) {
-      args.push('--resume', options.sessionId);
+    if (effectiveSessionId) {
+      args.push('--resume', effectiveSessionId);
     }
     for (const dir of imageAccessDirs) {
       args.push('--add-dir', dir);
@@ -376,7 +385,7 @@ export class ClaudeAgentService implements AgentService {
     // Add MCP server config when callback env is present
     // On Windows, Claude CLI treats inline JSON as a file path — write to temp file instead.
     // The file is cached per-instance so concurrent invocations share one file (no temp spam).
-    if (options?.callbackEnv && this.mcpServerPath) {
+    if (!isCasualProfile && options?.callbackEnv && this.mcpServerPath) {
       if (IS_WINDOWS) {
         if (!this.mcpConfigFilePath || !existsSync(this.mcpConfigFilePath)) {
           const dir = mkdtempSync(join(tmpdir(), 'cat-cafe-mcp-'));
@@ -415,7 +424,11 @@ export class ClaudeAgentService implements AgentService {
     let l0Path: string | undefined;
     let appendPromptPath: string | undefined;
     try {
-      l0Path = await this.compileL0ToTempFile();
+      const nativeSystemPromptOverride =
+        options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined;
+      l0Path = nativeSystemPromptOverride
+        ? this.writeNativeSystemPromptOverrideToTempFile(nativeSystemPromptOverride)
+        : await this.compileL0ToTempFile();
       args.push('--system-prompt-file', l0Path);
       // Route layer passes pack-only systemPrompt for native-L0 providers.
       // Keep it as an append layer, but never use it as the carrier's L0 source.
@@ -430,7 +443,7 @@ export class ClaudeAgentService implements AgentService {
       // User flags win when they overlap with ordinary system-injected flags,
       // but native L0 flags are reserved: user overrides would silently remove
       // the compression-immune identity/governance layer.
-      const cliConfigArgs = options?.cliConfigArgs;
+      const cliConfigArgs = isCasualProfile ? undefined : options?.cliConfigArgs;
       const userParts = stripReservedSystemPromptArgs(
         cliConfigArgs ? cliConfigArgs.flatMap((arg) => arg.trim().split(/\s+/)) : [],
         this.catId as string,
@@ -494,7 +507,7 @@ export class ClaudeAgentService implements AgentService {
           catId: this.catId,
           command: claudeCommand,
           model: effectiveModel,
-          sessionId: options?.sessionId,
+          sessionId: effectiveSessionId,
           invocationId: options?.invocationId,
           cwd: options?.workingDirectory,
           envOverrides: safeEnvSummary,
@@ -519,7 +532,7 @@ export class ClaudeAgentService implements AgentService {
         onSuccessfulExitStderr,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
         ...(options?.invocationId && this.rawArchive.getPath
@@ -641,7 +654,7 @@ export class ClaudeAgentService implements AgentService {
           if (sawResultError) continue;
           const error =
             event.reasonCode === 'invalid_thinking_signature'
-              ? formatThinkingSignatureRescueError(options?.sessionId)
+              ? formatThinkingSignatureRescueError(effectiveSessionId)
               : formatCliExitError('Claude CLI', event);
           // F212 Phase A: forward cliDiagnostics on metadata for frontend folded panel (Phase B).
           yield {
@@ -691,7 +704,7 @@ export class ClaudeAgentService implements AgentService {
             if (isInvalidThinkingSignatureMessage(result.error)) {
               result = {
                 ...result,
-                error: formatThinkingSignatureRescueError(options?.sessionId),
+                error: formatThinkingSignatureRescueError(effectiveSessionId),
               };
             }
             sawResultError = true;

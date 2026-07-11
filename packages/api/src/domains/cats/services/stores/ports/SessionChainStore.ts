@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { CatId, SessionRecord } from '@cat-cafe/shared';
+import type { CatId, SessionPromptProfile, SessionRecord } from '@cat-cafe/shared';
 
 export interface CreateSessionInput {
   cliSessionId: string;
@@ -16,6 +16,7 @@ export interface CreateSessionInput {
   threadId: string;
   catId: CatId;
   userId: string;
+  promptProfile?: SessionPromptProfile;
   reuseExistingCliSession?: boolean;
   /**
    * F198 Bug #3: stable conversation anchor for bg carrier
@@ -54,9 +55,17 @@ export interface ISessionChainStore {
   /** Get by internal ID */
   get(id: string): SessionRecord | null | Promise<SessionRecord | null>;
   /** Get active session for a cat in a thread */
-  getActive(catId: CatId, threadId: string): SessionRecord | null | Promise<SessionRecord | null>;
+  getActive(
+    catId: CatId,
+    threadId: string,
+    promptProfile?: SessionPromptProfile,
+  ): SessionRecord | null | Promise<SessionRecord | null>;
   /** Get full session chain (sorted by seq) */
-  getChain(catId: CatId, threadId: string): SessionRecord[] | Promise<SessionRecord[]>;
+  getChain(
+    catId: CatId,
+    threadId: string,
+    promptProfile?: SessionPromptProfile,
+  ): SessionRecord[] | Promise<SessionRecord[]>;
   /** Get all cats' sessions for a thread */
   getChainByThread(threadId: string): SessionRecord[] | Promise<SessionRecord[]>;
   /** Update partial fields */
@@ -93,7 +102,10 @@ export class SessionChainStore implements ISessionChainStore {
   private chainKeyIndex = new Map<string, string>();
 
   /** Composite key for the per-(catId,threadId) chain/active indexes. */
-  private catThreadKey(catId: string, threadId: string): string {
+  private catThreadKey(catId: string, threadId: string, promptProfile?: SessionPromptProfile): string {
+    if (promptProfile && promptProfile !== 'development') {
+      return `${catId}:${threadId}:profile:${promptProfile}`;
+    }
     return `${catId}:${threadId}`;
   }
 
@@ -108,7 +120,7 @@ export class SessionChainStore implements ISessionChainStore {
     }
 
     const now = Date.now();
-    const key = this.catThreadKey(input.catId, input.threadId);
+    const key = this.catThreadKey(input.catId, input.threadId, input.promptProfile);
 
     // Compute next seq
     const chain = this.chains.get(key) ?? [];
@@ -123,6 +135,7 @@ export class SessionChainStore implements ISessionChainStore {
       threadId: input.threadId,
       catId: input.catId,
       userId: input.userId,
+      ...(input.promptProfile && input.promptProfile !== 'development' ? { promptProfile: input.promptProfile } : {}),
       seq,
       status: 'active',
       messageCount: 0,
@@ -158,16 +171,16 @@ export class SessionChainStore implements ISessionChainStore {
     return this.records.get(id) ?? null;
   }
 
-  getActive(catId: CatId, threadId: string): SessionRecord | null {
-    const activeId = this.activeIndex.get(this.catThreadKey(catId, threadId));
+  getActive(catId: CatId, threadId: string, promptProfile?: SessionPromptProfile): SessionRecord | null {
+    const activeId = this.activeIndex.get(this.catThreadKey(catId, threadId, promptProfile));
     if (!activeId) return null;
     const record = this.records.get(activeId);
     if (!record || record.status !== 'active') return null;
     return record;
   }
 
-  getChain(catId: CatId, threadId: string): SessionRecord[] {
-    const chain = this.chains.get(this.catThreadKey(catId, threadId)) ?? [];
+  getChain(catId: CatId, threadId: string, promptProfile?: SessionPromptProfile): SessionRecord[] {
+    const chain = this.chains.get(this.catThreadKey(catId, threadId, promptProfile)) ?? [];
     return chain
       .map((id) => this.records.get(id))
       .filter((r): r is SessionRecord => r != null)
@@ -201,7 +214,7 @@ export class SessionChainStore implements ISessionChainStore {
     if (patch.workspaceFingerprint !== undefined) record.workspaceFingerprint = patch.workspaceFingerprint;
     if (patch.status !== undefined) {
       record.status = patch.status;
-      const key = this.catThreadKey(record.catId, record.threadId);
+      const key = this.catThreadKey(record.catId, record.threadId, record.promptProfile);
       if (patch.status === 'active') {
         this.activeIndex.set(key, id);
       } else {
@@ -318,7 +331,7 @@ export class SessionChainStore implements ISessionChainStore {
       this.chainKeyIndex.delete(record.chainKey);
     }
 
-    const key = this.catThreadKey(record.catId, record.threadId);
+      const key = this.catThreadKey(record.catId, record.threadId, record.promptProfile);
     if (this.activeIndex.get(key) === id) {
       this.activeIndex.delete(key);
     }

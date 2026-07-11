@@ -135,9 +135,12 @@ export class OpenCodeAgentService implements L0InjectableAgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
+    const isCasualProfile = options?.promptProfile === 'casual';
+    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const effectiveCliConfigArgs = isCasualProfile ? undefined : options?.cliConfigArgs;
     // P1-2: runtime model override takes precedence over constructor model
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE ?? this.model;
-    const args = this.buildArgs(prompt, options?.sessionId, effectiveModel, options?.cliConfigArgs);
+    const args = this.buildArgs(prompt, effectiveSessionId, effectiveModel, effectiveCliConfigArgs);
     const cwd = options?.workingDirectory;
     const childEnv = this.buildEnv(options?.callbackEnv);
     // F171: Account env vars applied LAST — user overrides provider-injected values
@@ -171,7 +174,7 @@ export class OpenCodeAgentService implements L0InjectableAgentService {
           catId: this.catId,
           command: opencodeCommand,
           model: effectiveModel,
-          sessionId: options?.sessionId,
+          sessionId: effectiveSessionId,
           invocationId: options?.invocationId,
           cwd,
           envSummary,
@@ -194,7 +197,7 @@ export class OpenCodeAgentService implements L0InjectableAgentService {
         onSuccessfulExitStderr,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
         ...(options?.invocationId && this.rawArchive.getPath

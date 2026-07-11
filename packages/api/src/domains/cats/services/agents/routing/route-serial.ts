@@ -13,6 +13,7 @@
 import {
   type CatConfig,
   type CatId,
+  type ContextBudget,
   catRegistry,
   createCatId,
   type RichBlock,
@@ -20,7 +21,6 @@ import {
 } from '@cat-cafe/shared';
 import type { Span } from '@opentelemetry/api';
 import { context, trace } from '@opentelemetry/api';
-import { getCatContextBudget } from '../../../../../config/cat-budgets.js';
 import { getConfigSessionStrategy, isSessionChainEnabled } from '../../../../../config/cat-config-loader.js';
 import { getCatVoice } from '../../../../../config/cat-voices.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
@@ -112,11 +112,22 @@ import {
 } from '../routing/WorklistRegistry.js';
 import { accumulateTextAggregate } from '../text-aggregation.js';
 import { formatA2AHandoffContent } from './a2a-handoff-label.js';
+import {
+  buildPromptProfileStaticIdentity,
+  getPromptProfileContextBudget,
+  resolvePromptProfile,
+} from './casual-prompt-profile.js';
 import { extractContextEvalSignals } from './context-eval.js';
 import { validateRoutingSyntax } from './final-routing-slot.js';
 import { buildBriefingMessage } from './format-briefing.js';
 import { buildRemedialPrompt, hasValidRoutingExit, shouldRemediateRouting } from './guards/routing-guard-remedial.js';
 import { extractRichFromText, isValidRichBlock } from './rich-block-extract.js';
+import {
+  isCasualModePrompt,
+  promptTextSegment,
+  shouldRecordPromptSegmentDiagnostics,
+  type RoutePromptSegmentDiagnostics,
+} from './prompt-segment-diagnostics.js';
 import type { RouteOptions, RouteStrategyDeps } from './route-helpers.js';
 import {
   assembleIncrementalContext,
@@ -471,6 +482,7 @@ export async function* routeSerial(
     a2aTriggerMessageId,
     modeSystemPrompt,
     modeSystemPromptByCat,
+    promptProfile: requestedPromptProfile,
     queueHasQueuedMessages,
     hasQueuedOrActiveAgentForCat,
     deferA2AEnqueue,
@@ -480,6 +492,8 @@ export async function* routeSerial(
   // P2-3 fix: also consider default MCP server path (ClaudeAgentService has fallback resolution)
   const mcpServerPath = process.env.CAT_CAFE_MCP_SERVER_PATH || resolveDefaultClaudeMcpServerPath();
   const incrementalMode = Boolean(currentUserMessageId && deps.deliveryCursorStore);
+  const routePromptProfile = resolvePromptProfile(requestedPromptProfile, modeSystemPrompt);
+  const isCasualProfile = routePromptProfile === 'casual';
 
   // Worklist pattern: starts with targetCats, may grow via A2A mentions
   // F27: Register worklist so callback A2A can push targets here
@@ -682,11 +696,13 @@ export async function* routeSerial(
         packBlocks = await getActivePackBlocks(deps.packStore);
       }
       const service = getService(deps.services, catId);
-      const needsServerRoutingGuard = service.needsServerRoutingGuard?.() ?? false;
+      const needsServerRoutingGuard = !isCasualProfile && (service.needsServerRoutingGuard?.() ?? false);
       const hasNativeL0 = service.injectsL0Natively?.() ?? false;
-      const staticIdentity = hasNativeL0
-        ? buildStaticIdentityPackOnly(catId, { packBlocks })
-        : buildStaticIdentity(catId, { mcpAvailable, packBlocks });
+      const staticIdentity = buildPromptProfileStaticIdentity(catId, threadId, routePromptProfile, () =>
+        hasNativeL0
+          ? buildStaticIdentityPackOnly(catId, { packBlocks })
+          : buildStaticIdentity(catId, { mcpAvailable, packBlocks }),
+      );
       // L0-budget-defense PR-B-impl (ADR-038 件套 ④): staging is NOT prepended
       // to staticIdentity here. Cloud R2 P1 #2237 L1099: folding staging into
       // staticIdentity breaks ADR-038 "每轮注入生效" contract on resumed
@@ -694,12 +710,13 @@ export async function* routeSerial(
       // injection on those resumes. Staging is now injected in invoke-single-cat
       // independently (mirrors F225 contextHintPrefix pattern).
       // F041: inject HTTP callback only when MCP is NOT actually available (fallback)
-      const mcpInstructions = needsMcpInjection(mcpAvailable, catConfig?.clientId)
-        ? buildMcpCallbackInstructions({
-            currentCatId: catId as string,
-            teammates: teammates.map((id) => id as string),
-          })
-        : '';
+      const mcpInstructions =
+        !isCasualProfile && needsMcpInjection(mcpAvailable, catConfig?.clientId)
+          ? buildMcpCallbackInstructions({
+              currentCatId: catId as string,
+              teammates: teammates.map((id) => id as string),
+            })
+          : '';
       // F091: Inject linked signal articles into context
       let activeSignals:
         | readonly {
@@ -712,7 +729,7 @@ export async function* routeSerial(
             relatedDiscussions?: readonly { sessionId: string; snippet: string; score: number }[] | undefined;
           }[]
         | undefined;
-      if (deps.invocationDeps.signalArticleLookup) {
+      if (!isCasualProfile && deps.invocationDeps.signalArticleLookup) {
         try {
           const signals = await deps.invocationDeps.signalArticleLookup(threadId);
           if (signals.length > 0) activeSignals = signals;
@@ -727,7 +744,7 @@ export async function* routeSerial(
       // off: skip entirely
       let alwaysOnDocs: readonly { anchor: string; title: string; summary: string }[] | undefined;
       let alwaysOnInjectionMode: 'off' | 'shadow' | 'on' = 'off';
-      if (deps.evidenceStore) {
+      if (!isCasualProfile && deps.evidenceStore) {
         try {
           const { freezeFlags } = await import('../../../../../domains/memory/f163-types.js');
           const f163Flags = freezeFlags();
@@ -766,30 +783,32 @@ export async function* routeSerial(
 
       const invocationMode = worklist.length > 1 ? 'serial' : 'independent';
       const a2aEnabled = worklistEntry.a2aCount < maxDepth;
-      const invocationContext = buildInvocationContext({
-        catId,
-        mode: invocationMode,
-        chainIndex: index + 1,
-        chainTotal: worklist.length,
-        teammates,
-        mcpAvailable,
-        ...(promptTags && promptTags.length > 0 ? { promptTags } : {}),
-        a2aEnabled,
-        ...(directMessageFrom ? { directMessageFrom } : {}),
-        ...(pingPongWarning ? { pingPongWarning } : {}),
-        ...(crossThreadReplyHint ? { crossThreadReplyHint } : {}),
-        ...(mentionRoutingFeedback ? { mentionRoutingFeedback } : {}),
-        ...(activeParticipants.length > 0 ? { activeParticipants } : {}),
-        ...(routingPolicy ? { routingPolicy } : {}),
-        ...(sopStageHint ? { sopStageHint } : {}),
-        ...(activeSignals ? { activeSignals } : {}),
-        ...(voiceMode ? { voiceMode } : {}),
-        ...(bootcampState ? { bootcampState, threadId, bootcampMemberCount } : {}),
-        ...(alwaysOnDocs && alwaysOnInjectionMode === 'on' ? { alwaysOnDocs } : {}),
-        ...guideContextForCat(guideCtx, catId, targetCatIds, threadId),
-        ...(worldContext ? { worldContext } : {}),
-        ...conciergeContextForCat(conciergeCtx, catId as string),
-      });
+      const invocationContext = isCasualProfile
+        ? ''
+        : buildInvocationContext({
+            catId,
+            mode: invocationMode,
+            chainIndex: index + 1,
+            chainTotal: worklist.length,
+            teammates,
+            mcpAvailable,
+            ...(promptTags && promptTags.length > 0 ? { promptTags } : {}),
+            a2aEnabled,
+            ...(directMessageFrom ? { directMessageFrom } : {}),
+            ...(pingPongWarning ? { pingPongWarning } : {}),
+            ...(crossThreadReplyHint ? { crossThreadReplyHint } : {}),
+            ...(mentionRoutingFeedback ? { mentionRoutingFeedback } : {}),
+            ...(activeParticipants.length > 0 ? { activeParticipants } : {}),
+            ...(routingPolicy ? { routingPolicy } : {}),
+            ...(sopStageHint ? { sopStageHint } : {}),
+            ...(activeSignals ? { activeSignals } : {}),
+            ...(voiceMode ? { voiceMode } : {}),
+            ...(bootcampState ? { bootcampState, threadId, bootcampMemberCount } : {}),
+            ...(alwaysOnDocs && alwaysOnInjectionMode === 'on' ? { alwaysOnDocs } : {}),
+            ...guideContextForCat(guideCtx, catId, targetCatIds, threadId),
+            ...(worldContext ? { worldContext } : {}),
+            ...conciergeContextForCat(conciergeCtx, catId as string),
+          });
       const continuityCapsule = buildCapsuleFromRouteState({
         threadId,
         catId: catId as string,
@@ -822,6 +841,7 @@ export async function* routeSerial(
         );
       }
       if (
+        !isCasualProfile &&
         !isSerialReborn &&
         isSessionChainEnabled(catId) &&
         deps.invocationDeps.sessionChainStore &&
@@ -849,6 +869,12 @@ export async function* routeSerial(
       }
 
       let deliveryBoundaryId: string | undefined;
+      let diagnosticModePrompt = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt ?? '';
+      let diagnosticContextText = '';
+      let diagnosticContextSegmentName = 'contextHistory';
+      let diagnosticExplicitCurrentMessage = '';
+      let diagnosticContextBudget: ContextBudget | undefined;
+      let diagnosticEffectiveContextBudget: number | undefined;
       if (incrementalMode) {
         // Serial incremental mode depends on AgentRouter having appended current user message first.
         // We still explicitly include `message` when that message is not present in unseen rows.
@@ -856,7 +882,9 @@ export async function* routeSerial(
         // A+ fix: calculate effective context budget by deducting ALL system parts from maxPromptTokens.
         // Without this, context (up to maxContextTokens=160k) + system parts (~15-20k) can exceed maxPromptTokens.
         const catModePromptForBudget = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
-        const incBudget = getCatContextBudget(catId as string);
+        const incBudget = getPromptProfileContextBudget(catId as string, routePromptProfile);
+        diagnosticModePrompt = catModePromptForBudget ?? '';
+        diagnosticContextBudget = incBudget;
         const incSystemTokens = estimateTokens(
           [staticIdentity, invocationContext, catModePromptForBudget, bootstrapContext, mcpInstructions]
             .filter(Boolean)
@@ -867,6 +895,7 @@ export async function* routeSerial(
           Math.max(0, incBudget.maxPromptTokens - incSystemTokens - incMessageTokens - 200),
           incBudget.maxContextTokens,
         );
+        diagnosticEffectiveContextBudget = effectiveContextBudget;
 
         const inc = await assembleIncrementalContext(
           deps,
@@ -924,20 +953,28 @@ export async function* routeSerial(
         /* @segment R2 — Mode System Prompt (per-cat) */
         const catModePrompt = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
         const parts = [invocationContext, catModePrompt, bootstrapContext, mcpInstructions].filter(Boolean);
+        diagnosticModePrompt = catModePrompt ?? '';
+        diagnosticContextSegmentName = 'incrementalContext';
+        diagnosticContextText = inc.contextText;
         if (inc.contextText) parts.push(inc.contextText);
         // F35 fix: only inject raw message when it was genuinely absent from unseen rows.
         // Defensive guard: if the current message ID is already present anywhere in
         // the assembled context text, do not append the raw message again.
-        if (shouldAppendExplicitCurrentMessage(inc, currentUserMessageId)) parts.push(message);
+        if (shouldAppendExplicitCurrentMessage(inc, currentUserMessageId)) {
+          diagnosticExplicitCurrentMessage = message;
+          parts.push(message);
+        }
         prompt = parts.join('\n\n---\n\n');
       } else {
         // Per-cat context budget (Phase 4.0): assemble context with cat-specific limits
         let catContextHistory = contextHistory; // fallback to legacy pre-assembled
         if (history && history.length > 0 && !contextHistory) {
-          const budget = getCatContextBudget(catId as string);
+          const budget = getPromptProfileContextBudget(catId as string, routePromptProfile);
+          diagnosticContextBudget = budget;
           // F8: token-based budget — estimate non-context tokens, remainder goes to context
           // A+ fix: include catModePrompt + bootstrapContext in system parts estimate (P2-1)
           const catModePromptLegacyForBudget = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
+          diagnosticModePrompt = catModePromptLegacyForBudget ?? '';
           const systemPartsTokens = estimateTokens(
             [staticIdentity, invocationContext, catModePromptLegacyForBudget, bootstrapContext, mcpInstructions]
               .filter(Boolean)
@@ -945,6 +982,7 @@ export async function* routeSerial(
           );
           const promptTokens = estimateTokens(prompt);
           const budgetForContext = Math.max(0, budget.maxPromptTokens - systemPartsTokens - promptTokens - 200);
+          diagnosticEffectiveContextBudget = Math.min(budgetForContext, budget.maxContextTokens);
           const { contextText, messageCount } = assembleContext(history, {
             maxMessages: budget.maxMessages,
             maxContentLength: budget.maxContentLengthPerMsg,
@@ -965,6 +1003,8 @@ export async function* routeSerial(
         }
 
         const catModePromptLegacy = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
+        diagnosticModePrompt = catModePromptLegacy ?? '';
+        diagnosticContextText = catContextHistory ?? '';
         if (invocationContext || catModePromptLegacy || mcpInstructions || bootstrapContext) {
           const parts = [invocationContext, catModePromptLegacy, bootstrapContext, mcpInstructions].filter(Boolean);
           if (catContextHistory) parts.push(catContextHistory);
@@ -973,6 +1013,40 @@ export async function* routeSerial(
           prompt = `${catContextHistory}\n\n---\n\n${prompt}`;
         }
       }
+
+      const promptDiagnostics: RoutePromptSegmentDiagnostics | undefined = shouldRecordPromptSegmentDiagnostics(
+        diagnosticModePrompt,
+      )
+        ? {
+            routeStrategy: 'serial',
+            mode: isCasualModePrompt(diagnosticModePrompt) ? 'casual' : 'other',
+            threadId,
+            catId: catId as string,
+            incrementalMode,
+            nativeL0Provider: hasNativeL0,
+            mcpAvailable,
+            ...(diagnosticContextBudget ? { contextBudget: diagnosticContextBudget } : {}),
+            ...(diagnosticEffectiveContextBudget !== undefined
+              ? { effectiveContextBudget: diagnosticEffectiveContextBudget }
+              : {}),
+            routeSegments: [
+              promptTextSegment(
+                'routeMessageSystemPrompt',
+                staticIdentity,
+                hasNativeL0
+                  ? 'pack-only message-system appendix; full L0 is provider-native'
+                  : 'full static identity for non-native L0 provider',
+              ),
+              promptTextSegment('invocationContext', invocationContext),
+              promptTextSegment('modeSystemPrompt', diagnosticModePrompt),
+              promptTextSegment('bootstrapContext', bootstrapContext),
+              promptTextSegment('mcpFallbackInstructions', mcpInstructions),
+              promptTextSegment(diagnosticContextSegmentName, diagnosticContextText),
+              promptTextSegment('explicitCurrentMessage', diagnosticExplicitCurrentMessage),
+              promptTextSegment('routePromptFinal', prompt, 'final prompt assembled by route layer before invoke'),
+            ],
+          }
+        : undefined;
 
       let textContent = '';
       const thinkingChunks: string[] = [];
@@ -1203,6 +1277,8 @@ export async function* routeSerial(
         ...(targetUploadDir ? { uploadDir: targetUploadDir } : {}),
         ...(catSignal ? { signal: catSignal } : {}),
         ...(staticIdentity ? { systemPrompt: staticIdentity } : {}),
+        promptProfile: routePromptProfile,
+        ...(promptDiagnostics ? { promptDiagnostics } : {}),
         ...(options.parentInvocationId ? { parentInvocationId: options.parentInvocationId } : {}),
         continuityCapsule,
         // F121: Pass A2A trigger message ID for auto-replyTo threading
@@ -1696,6 +1772,7 @@ export async function* routeSerial(
           threadId,
           ...(catSignal ? { signal: catSignal } : {}),
           ...(staticIdentity ? { systemPrompt: staticIdentity } : {}),
+          promptProfile: routePromptProfile,
           ...(options.parentInvocationId ? { parentInvocationId: options.parentInvocationId } : {}),
           continuityCapsule,
           ...(streamReplyTo ? { a2aTriggerMessageId: streamReplyTo } : {}),

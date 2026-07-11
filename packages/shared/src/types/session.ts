@@ -12,6 +12,7 @@ import type { CatId } from './ids.js';
 import type { CatHandoffNote } from './session-handoff-proposal.js';
 
 export type SessionStatus = 'active' | 'sealing' | 'sealed';
+export type SessionPromptProfile = 'development' | 'casual';
 
 export interface SessionRecord {
   readonly id: string;
@@ -24,6 +25,8 @@ export interface SessionRecord {
   readonly threadId: string;
   readonly catId: CatId;
   readonly userId: string;
+  /** Prompt/control profile this provider session was created under. Missing legacy records behave as development. */
+  promptProfile?: SessionPromptProfile;
   /** Chain sequence number (0-based) */
   readonly seq: number;
   status: SessionStatus;

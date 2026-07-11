@@ -101,6 +101,23 @@ describe('SessionChainStore', () => {
     assert.equal(active.status, 'active');
   });
 
+  test('promptProfile isolates active sessions for the same cat+thread', async () => {
+    const store = await createStore();
+    const dev = store.create(BASE_INPUT);
+    const casual = store.create({
+      ...BASE_INPUT,
+      cliSessionId: 'cli-sess-casual',
+      promptProfile: 'casual',
+    });
+
+    assert.equal(store.getActive('opus', 'thread-1')?.id, dev.id);
+    assert.equal(store.getActive('opus', 'thread-1', 'casual')?.id, casual.id);
+    assert.equal(store.getChain('opus', 'thread-1').length, 1);
+    assert.equal(store.getChain('opus', 'thread-1', 'casual').length, 1);
+    assert.equal(casual.promptProfile, 'casual');
+    assert.equal(dev.promptProfile, undefined);
+  });
+
   test('getActive() returns null when no active session', async () => {
     const store = await createStore();
     assert.equal(store.getActive('opus', 'thread-1'), null);

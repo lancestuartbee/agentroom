@@ -64,6 +64,8 @@ export class KimiAgentService implements AgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
+    const isCasualProfile = options?.promptProfile === 'casual';
+    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
     const requestedModel = options?.callbackEnv?.CAT_CAFE_KIMI_MODEL_OVERRIDE ?? this.model;
     const effectiveModel = resolveKimiModelAlias(requestedModel, options?.callbackEnv);
     const metadata: MessageMetadata = { provider: 'kimi', model: effectiveModel };
@@ -88,7 +90,7 @@ export class KimiAgentService implements AgentService {
     // before the not-found early-return (kimi/kimi-cli both absent + mcpServerPath set),
     // the temp dir would leak — finally cleanup (line ~440) is gated by the try block below
     // and the early-return jumps over it. Source clowder-ai#944 has the same regression.
-    const tempMcpConfig = this.mcpServerPath
+    const tempMcpConfig = !isCasualProfile && this.mcpServerPath
       ? writeMcpConfigFile(workingDirectory, this.mcpServerPath, options?.callbackEnv)
       : null;
     const modelConfig = readKimiModelConfigInfo(effectiveModel, options?.callbackEnv);
@@ -105,13 +107,13 @@ export class KimiAgentService implements AgentService {
     const args: string[] = isLegacy
       ? ['--print', '--output-format', 'stream-json']
       : ['--output-format', 'stream-json'];
-    if (options?.sessionId) {
-      args.push('--session', options.sessionId);
-      metadata.sessionId = options.sessionId;
+    if (effectiveSessionId) {
+      args.push('--session', effectiveSessionId);
+      metadata.sessionId = effectiveSessionId;
       yield {
         type: 'session_init',
         catId: this.catId,
-        sessionId: options.sessionId,
+        sessionId: effectiveSessionId,
         metadata,
         timestamp: Date.now(),
       };
@@ -123,7 +125,7 @@ export class KimiAgentService implements AgentService {
       }
       if (tempMcpConfig) {
         args.push('--mcp-config-file', tempMcpConfig);
-      } else {
+      } else if (!isCasualProfile) {
         args.push(...buildProjectMcpArgs(workingDirectory));
       }
       for (const dir of imageAccessDirs) {
@@ -141,7 +143,7 @@ export class KimiAgentService implements AgentService {
 
     // User-defined CLI args from the member editor (#567).
     const userParts: string[] = [];
-    for (const arg of options?.cliConfigArgs ?? []) {
+    for (const arg of isCasualProfile ? [] : (options?.cliConfigArgs ?? [])) {
       userParts.push(...arg.trim().split(/\s+/));
     }
     if (userParts.length > 0) {
@@ -160,7 +162,7 @@ export class KimiAgentService implements AgentService {
     }
 
     try {
-      let emittedSessionInit = Boolean(options?.sessionId);
+      let emittedSessionInit = Boolean(effectiveSessionId);
       let sawThinking = false;
       let emittedImageCapability = false;
       let hadCliError = false;
@@ -173,7 +175,7 @@ export class KimiAgentService implements AgentService {
           : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
         ...(options?.invocationId && this.rawArchive.getPath

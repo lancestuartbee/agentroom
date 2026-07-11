@@ -34,12 +34,25 @@ export function DirectoryPickerModal({
   existingProjects,
   onSelect,
   onCancel,
+  initialMode = 'development',
+  modeOptions,
+  heading = '新建对话',
+  submitLabel,
+  allowLobby = true,
 }: {
   existingProjects: string[];
   onSelect: (opts: NewThreadOptions) => void;
   onCancel: () => void;
+  initialMode?: ThreadMode;
+  modeOptions?: ThreadMode[];
+  heading?: string;
+  submitLabel?: string;
+  allowLobby?: boolean;
 }) {
-  const [threadMode, setThreadMode] = useState<ThreadMode>('development');
+  const availableModes = modeOptions ?? (['development', 'casual'] as ThreadMode[]);
+  const [threadMode, setThreadMode] = useState<ThreadMode>(
+    availableModes.includes(initialMode) ? initialMode : (availableModes[0] ?? 'development'),
+  );
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [sessionInputs, setSessionInputs] = useState<Record<string, string>>({});
   const [bindExpanded, setBindExpanded] = useState(false);
@@ -113,12 +126,12 @@ export function DirectoryPickerModal({
       selectWithOptions(undefined);
       return;
     }
-    if (selectedPath === null) {
+    if (selectedPath === null || (!allowLobby && selectedPath === 'lobby')) {
       console.warn('[DirectoryPicker] selectedPath is null — button should be disabled');
       return;
     }
     selectWithOptions(selectedPath === 'lobby' ? undefined : selectedPath);
-  }, [selectedPath, selectWithOptions, threadMode]);
+  }, [allowLobby, selectedPath, selectWithOptions, threadMode]);
 
   // F113: Handle directory selection from the web-based browser
   const handleBrowserSelect = useCallback(
@@ -181,7 +194,7 @@ export function DirectoryPickerModal({
   const [catsExpanded, setCatsExpanded] = useState(false);
   const catSummary = selectedCats.length > 0 ? `已选 ${selectedCats.length} 只猫` : '';
   const isCasualMode = threadMode === 'casual';
-  const createButtonLabel = isCasualMode ? '创建闲聊' : '创建对话';
+  const createButtonLabel = submitLabel ?? (isCasualMode ? '创建闲聊' : '创建对话');
 
   useEffect(() => {
     if (!isCasualMode) return;
@@ -206,7 +219,7 @@ export function DirectoryPickerModal({
         {/* ── Header + Title ── */}
         <div className="px-5 pt-4 pb-3 border-b border-cafe-subtle">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-cafe-black">新建对话</h2>
+            <h2 className="text-base font-semibold text-cafe-black">{heading}</h2>
             <button
               type="button"
               onClick={onCancel}
@@ -229,25 +242,24 @@ export function DirectoryPickerModal({
             maxLength={200}
             className="w-full text-sm px-3 py-2 rounded-lg border border-cafe bg-cafe-surface focus:outline-none focus:ring-1 focus:ring-cafe-accent"
           />
-          <div className="mt-3 inline-flex rounded-lg border border-cafe bg-cafe-surface p-0.5">
-            {[
-              ['development', '开发协作'],
-              ['casual', '闲聊'],
-            ].map(([mode, label]) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setThreadMode(mode as ThreadMode)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  threadMode === mode
-                    ? 'bg-cafe-accent text-[var(--cafe-surface)]'
-                    : 'text-cafe-secondary hover:bg-[var(--console-hover-bg)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {availableModes.length > 1 && (
+            <div className="mt-3 inline-flex rounded-lg border border-cafe bg-cafe-surface p-0.5">
+              {availableModes.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setThreadMode(mode)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    threadMode === mode
+                      ? 'bg-cafe-accent text-[var(--cafe-surface)]'
+                      : 'text-cafe-secondary hover:bg-[var(--console-hover-bg)]'
+                  }`}
+                >
+                  {mode === 'development' ? '开发协作' : mode === 'casual' ? '闲聊' : '圆桌会议'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {isCasualMode && (
@@ -317,14 +329,16 @@ export function DirectoryPickerModal({
               </button>
             ))}
 
-            <button
-              type="button"
-              onClick={() => handleSelectPath('lobby')}
-              className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === 'lobby' ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
-            >
-              <span className="text-base">🏠</span>
-              <span>大厅 (无项目)</span>
-            </button>
+            {allowLobby && (
+              <button
+                type="button"
+                onClick={() => handleSelectPath('lobby')}
+                className={`w-full text-left px-3 py-2.5 text-sm text-cafe-secondary hover:bg-cafe-surface rounded-lg transition-colors flex items-center gap-2 ${selectedPath === 'lobby' ? 'ring-2 ring-cafe-accent bg-cafe-surface' : ''}`}
+              >
+                <span className="text-base">🏠</span>
+                <span>大厅 (无项目)</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -512,7 +526,7 @@ export function DirectoryPickerModal({
             <button
               type="button"
               onClick={confirmCreate}
-              disabled={!isCasualMode && selectedPath === null}
+              disabled={!isCasualMode && (selectedPath === null || (!allowLobby && selectedPath === 'lobby'))}
               className="ml-auto px-5 py-2 rounded-lg bg-cafe-accent hover:bg-cafe-interactive text-[var(--cafe-surface)] text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {createButtonLabel}

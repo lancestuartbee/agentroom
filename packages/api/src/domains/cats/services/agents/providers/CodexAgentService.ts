@@ -414,7 +414,13 @@ export class CodexAgentService implements AgentService {
    */
   private async compileDeveloperInstructionsArgs(
     cliModel: string,
+    options?: AgentServiceOptions,
   ): Promise<{ args: string[] } | { error: string; metadata: MessageMetadata }> {
+    const nativeSystemPromptOverride =
+      options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined;
+    if (nativeSystemPromptOverride) {
+      return { args: ['--config', `developer_instructions=${toTomlString(nativeSystemPromptOverride)}`] };
+    }
     try {
       const compiledL0 = await this.l0CompilerFn({ catId: this.catId as string });
       return { args: ['--config', `developer_instructions=${toTomlString(compiledL0)}`] };
@@ -427,6 +433,8 @@ export class CodexAgentService implements AgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
+    const isCasualProfile = options?.promptProfile === 'casual';
+    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
     // Codex CLI has no system prompt flag; prepend identity to prompt text
     const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_OPENAI_MODEL_OVERRIDE ?? this.model;
@@ -447,15 +455,16 @@ export class CodexAgentService implements AgentService {
           `model_auto_compact_token_limit=${ctxConfig.autoCompactTokenLimit}`,
         ]
       : [];
-    const catCafeMcpArgs = buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
-    const gitRepoArgs = buildGitRepoArgs(options?.workingDirectory);
+    const catCafeMcpArgs = isCasualProfile ? [] : buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
+    const gitRepoArgs = isCasualProfile ? ['--skip-git-repo-check'] : buildGitRepoArgs(options?.workingDirectory);
+    const casualRuntimeArgs = isCasualProfile ? ['--ignore-user-config', '--ignore-rules', '--ephemeral'] : [];
     // User-defined CLI args from the member editor (#567) — passed as-is, no implicit wrapping.
     // Each entry is split by whitespace (e.g. "--config model_reasoning_effort=\"low\"").
     // F203 Phase C / 砚砚 P1: strip reserved system config keys (developer_instructions,
     // carries L0) before dedup — otherwise dedup() would skip the system push and the
     // L0 would be silently overridden by any cliConfigArgs entry with the same key.
     const userConfigArgs = stripReservedSystemConfigs(
-      (options?.cliConfigArgs ?? []).flatMap((arg) => arg.trim().split(/\s+/)),
+      (isCasualProfile ? [] : (options?.cliConfigArgs ?? [])).flatMap((arg) => arg.trim().split(/\s+/)),
       this.catId as string,
     );
     // Collect user --config / -c keys so system-injected duplicates can be
@@ -516,7 +525,7 @@ export class CodexAgentService implements AgentService {
 
     // F203 Phase C: compile per-cat L0 → OpenAI `developer` role args.
     // fail-closed (generator contract, mirrors the CLI-not-found path below).
-    const l0Result = await this.compileDeveloperInstructionsArgs(cliModel);
+    const l0Result = await this.compileDeveloperInstructionsArgs(cliModel, options);
     if ('error' in l0Result) {
       yield {
         type: 'error' as const,
@@ -559,11 +568,11 @@ export class CodexAgentService implements AgentService {
       return out;
     };
 
-    const args: string[] = options?.sessionId
+    const args: string[] = effectiveSessionId
       ? [
           'exec',
           'resume',
-          options.sessionId,
+          effectiveSessionId,
           '--json',
           ...dedup(modelArgs),
           ...dedup(reasoningArgs),
@@ -571,6 +580,7 @@ export class CodexAgentService implements AgentService {
           ...dedup(approvalArgs),
           ...dedup(developerInstructionsArgs),
           ...dedup(customProviderArgs),
+          ...casualRuntimeArgs,
           ...userConfigArgs,
           ...gitRepoArgs,
           ...catCafeMcpArgs,
@@ -585,11 +595,11 @@ export class CodexAgentService implements AgentService {
           ...dedup(contextWindowArgs),
           '--sandbox',
           sandboxMode,
-          '--add-dir',
-          '.git',
+          ...(isCasualProfile ? [] : ['--add-dir', '.git']),
           ...dedup(approvalArgs),
           ...dedup(developerInstructionsArgs),
           ...dedup(customProviderArgs),
+          ...casualRuntimeArgs,
           ...userConfigArgs,
           ...gitRepoArgs,
           ...catCafeMcpArgs,
@@ -679,7 +689,7 @@ export class CodexAgentService implements AgentService {
           model: cliModel,
           originalModel: effectiveModel,
           customBaseUrl: customBaseUrl ? redactUrlForLog(customBaseUrl) : null,
-          sessionId: options?.sessionId ?? null,
+          sessionId: effectiveSessionId ?? null,
           invocationId: options?.invocationId ?? null,
           cwd: options?.workingDirectory ?? null,
           authMode,
@@ -701,7 +711,7 @@ export class CodexAgentService implements AgentService {
         env: codexEnv,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.invocationId && this.rawArchive.getPath
           ? { rawArchivePath: this.rawArchive.getPath(options.invocationId) }
           : {}),

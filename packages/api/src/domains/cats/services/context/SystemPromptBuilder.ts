@@ -299,6 +299,12 @@ const PROVIDER_LABELS: Record<string, string> = {
   google: 'Google',
 };
 
+function compactPromptLine(value: string | undefined, maxChars: number): string {
+  const compact = value?.replace(/\s+/g, ' ').trim() ?? '';
+  if (compact.length <= maxChars) return compact;
+  return `${compact.slice(0, Math.max(0, maxChars - 1)).trimEnd()}...`;
+}
+
 /**
  * @segment S13 — MCP tools section (loaded from template)
  * Skills-as-source-of-truth: MCP tools section is minimal.
@@ -422,6 +428,46 @@ export interface StaticIdentityOptions {
    * Used by compiled-preview to show which segment generated which content.
    */
   annotateSegments?: boolean;
+}
+
+export interface CasualStaticIdentityOptions {
+  reportsDir?: string | undefined;
+}
+
+/**
+ * Build the lightweight identity/control layer for casual conversations.
+ * This intentionally excludes development governance, review gates, SOP,
+ * teammate roster, workflow triggers, pack guardrails, and MCP documentation.
+ */
+export function buildCasualStaticIdentity(catId: CatId, options?: CasualStaticIdentityOptions): string {
+  const config = getConfig(catId as string);
+  if (!config) return '';
+
+  const providerLabel = PROVIDER_LABELS[config.clientId] ?? config.clientId;
+  const nameLabel = config.nickname
+    ? `${config.displayName}/${config.nickname} (${config.name})`
+    : `${config.displayName} (${config.name})`;
+  const role = compactPromptLine(config.roleDescription, 110);
+  const personality = compactPromptLine(config.personality, 110);
+  const reportsDir = compactPromptLine(options?.reportsDir, 500);
+
+  return [
+    '[Casual profile]',
+    `你是 ${nameLabel}，当前模型/提供方：${providerLabel}。`,
+    role ? `日常背景/关注点：${role}` : '',
+    personality ? `说话倾向：${personality}` : '',
+    '当前是闲聊模式，不是开发协作、代码审查、任务执行或圆桌审议。',
+    '自然回应用户，默认使用用户使用的语言；保持克制、清楚的个人表达，但不要反复强调工作职责。',
+    '避免夸张口癖、卖萌、emoji 和过度拟人化表达，除非用户明确要求这种风格。',
+    '不要主动切回开发工作流、质量门禁、SOP、交接、路由、任务管理或“开发时我会……”这类表述，除非用户明确在聊这些内容。',
+    '没有被明确要求时，不调用工具、不读写文件、不运行命令、不发起 A2A/任务/交接。',
+    '只有当用户明确要求搜索当前信息、读取指定文件、保存/导出内容或生成报告时，才使用完成该动作所必需的工具。',
+    reportsDir ? `如需保存 Markdown 报告或对话产物，只写入共享目录：${reportsDir}` : '',
+    reportsDir ? '保存后直接给出绝对路径；不要写入 API 包目录、provider 私有目录或 agent 私有目录。' : '',
+    '诚实说明不确定性，不声称完成未实际执行的操作。',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**

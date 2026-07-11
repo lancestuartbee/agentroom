@@ -75,6 +75,7 @@ import { DEFAULT_CLI_TIMEOUT_MS, resolveCliTimeoutMs } from '../../../../../util
 import { findMonorepoRoot, isSameProject } from '../../../../../utils/monorepo-root.js';
 import { pathsEqual, validateProjectPathDetailed } from '../../../../../utils/project-path.js';
 import { tcpProbe } from '../../../../../utils/tcp-probe.js';
+import { estimateTokens } from '../../../../../utils/token-counter.js';
 import { registerMarkdownArtifactsFromThreadDirectory } from '../../../../../utils/thread-artifact-registration.js';
 import type { AgentPaneRegistry } from '../../../../terminal/agent-pane-registry.js';
 import type { TmuxGateway } from '../../../../terminal/tmux-gateway.js';
@@ -99,6 +100,16 @@ import {
   writeOpenCodeRuntimeConfig,
 } from '../providers/opencode-config-template.js';
 import { appendTranscriptPathHints } from '../providers/transcript-path-hints.js';
+import {
+  PROMPT_SEGMENT_DIAGNOSTICS_NATIVE_ENV,
+  promptDeltaSegment,
+  promptTextSegment,
+  promptUnmeasuredSegment,
+  shouldMeasureNativePromptSegmentDiagnostics,
+  sumMeasuredPromptTokens,
+  type PromptDiagnosticSegment,
+  type RoutePromptSegmentDiagnostics,
+} from '../routing/prompt-segment-diagnostics.js';
 import { buildContextManagementHint, queueContextHint, takeContextHintPrefix } from './context-management-hint.js';
 
 const log = createModuleLogger('invoke');
@@ -156,7 +167,7 @@ import type { ISessionSealer } from '../../session/SessionSealer.js';
 import type { TranscriptSessionInfo, TranscriptWriter } from '../../session/TranscriptWriter.js';
 import type { ISessionChainStore } from '../../stores/ports/SessionChainStore.js';
 import type { IThreadStore } from '../../stores/ports/ThreadStore.js';
-import type { AgentMessage, AgentService, AgentServiceOptions } from '../../types.js';
+import type { AgentMessage, AgentService, AgentServiceOptions, PromptProfile } from '../../types.js';
 import { hasL0CompilerSeam } from '../../types.js';
 import type { InvocationRegistry } from '../invocation/InvocationRegistry.js';
 import { completeCapsuleForSeal, type RouteStateContinuityCapsule } from './CollaborationContinuityCapsule.js';
@@ -255,8 +266,8 @@ export function _resetStaticIdentityRegistryRevisionForTests(): void {
   _staticIdentityRegistryRevision.clear();
 }
 
-function sessionIdentityKey(userId: string, catId: CatId, threadId: string): string {
-  return `${userId}:${catId as string}:${threadId}`;
+function sessionIdentityKey(userId: string, catId: CatId, threadId: string, promptProfile?: PromptProfile): string {
+  return `${userId}:${catId as string}:${threadId}:${promptProfile ?? 'development'}`;
 }
 
 function normalizeSessionWorkspacePath(workingDirectory: string): string {
@@ -587,6 +598,8 @@ export interface InvocationParams {
   readonly isLastCat: boolean;
   /** Static identity prompt — prepended to prompt on new sessions (gated by F-BLOAT logic) */
   readonly systemPrompt?: string;
+  /** Prompt/control profile selected by the thread mode. Defaults to development. */
+  readonly promptProfile?: PromptProfile;
   /** F108 fix: InvocationRecordStore's parent invocation ID for worklist key alignment */
   readonly parentInvocationId?: string;
   /** F121: The A2A trigger message ID for auto-replyTo */
@@ -597,6 +610,8 @@ export interface InvocationParams {
   readonly invocationSpanRef?: { current?: import('@opentelemetry/api').Span };
   /** #502 PR2: structured route control state to persist on threshold seal. */
   readonly continuityCapsule?: RouteStateContinuityCapsule;
+  /** Debug-only token accounting for prompt segments. Does not affect prompt contents. */
+  readonly promptDiagnostics?: RoutePromptSegmentDiagnostics;
 }
 
 /**
@@ -610,6 +625,8 @@ export interface InvocationParams {
 export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationParams): AsyncIterable<AgentMessage> {
   const { registry, sessionManager, threadStore, apiUrl } = deps;
   const { catId, service, prompt, userId, threadId, isLastCat, signal: callerSignal } = params;
+  const promptProfile = params.promptProfile ?? 'development';
+  const sessionPromptProfile = promptProfile === 'development' ? undefined : promptProfile;
 
   // F198 Bug #3: a bg carrier has no stable per-conversation sessionId — the
   // daemon forks a fresh UUID every `--bg --resume` round. Derive a stable
@@ -618,7 +635,9 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
   // rotating cliSessionId. Non-bg services are untouched (usesChainKeyResume
   // defaults false → bgChainKey stays undefined and every existing path runs).
   const isBgCarrier = service.usesChainKeyResume?.() ?? false;
-  const bgChainKey = isBgCarrier ? `bg:${threadId}:${catId}` : undefined;
+  const bgChainKey = isBgCarrier
+    ? `bg:${threadId}:${catId}${sessionPromptProfile ? `:profile:${sessionPromptProfile}` : ''}`
+    : undefined;
 
   const { invocationId, callbackToken } = await registry.create(
     userId,
@@ -860,12 +879,19 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F152: Emit invocation start through OTel log pipeline
     emitOtelLog('INFO', 'invocation_started', { [AGENT_ID]: catId, [OPERATION_NAME]: 'invoke' }, invocationSpan);
 
+    const useProviderSession = promptProfile !== 'casual';
     let sessionId: string | undefined;
-    try {
-      sessionId = await preflightRace(sessionManager.get(userId, catId, threadId), 'sessionManager.get', signal);
-    } catch (err) {
-      // Redis read failure or preflight timeout — continue without session
-      log.warn({ catId, threadId, invocationId, err }, 'Session get failed (timeout or Redis), proceeding without');
+    if (useProviderSession) {
+      try {
+        sessionId = await preflightRace(
+          sessionManager.get(userId, catId, threadId, sessionPromptProfile),
+          'sessionManager.get',
+          signal,
+        );
+      } catch (err) {
+        // Redis read failure or preflight timeout — continue without session
+        log.warn({ catId, threadId, invocationId, err }, 'Session get failed (timeout or Redis), proceeding without');
+      }
     }
 
     // R8 P1: Read-side short-circuit — if sessionChainStore has sealed/sealing sessions
@@ -881,7 +907,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F33-fix: Always check chain even when sessionManager returns nothing.
     // The PATCH bind endpoint writes to sessionChainStore but not sessionManager,
     // so a freshly-bound session would be missed if we gate on sessionId being truthy.
-    const sessionChainActive = isSessionChainEnabled(catId);
+    const sessionChainActive = useProviderSession && isSessionChainEnabled(catId);
     let activeSessionRecordForResume: SessionRecord | null = null;
     if (isBgCarrier && bgChainKey && deps.sessionChainStore && sessionChainActive) {
       // F198 Bug #3: bg resolves its resume target via the chainKey record's
@@ -912,7 +938,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       }
       try {
         const chain = await preflightRace(
-          Promise.resolve(deps.sessionChainStore.getChain(catId, threadId)),
+          Promise.resolve(deps.sessionChainStore.getChain(catId, threadId, sessionPromptProfile)),
           'getChain',
           signal,
         );
@@ -996,11 +1022,12 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
 
     const catConfig = catRegistry.tryGet(catId as string)?.config;
     const provider = catConfig?.clientId;
+    const nativeL0Provider = service.injectsL0Natively?.() ?? false;
     const requiresThreadWorkspace = providerRequiresThreadWorkspace(provider);
     if (provider === 'opencode' && mutexKey && deps.sessionChainStore && sessionChainActive && !isBgCarrier) {
       try {
         const chain = await preflightRace(
-          Promise.resolve(deps.sessionChainStore.getChain(catId, threadId)),
+          Promise.resolve(deps.sessionChainStore.getChain(catId, threadId, sessionPromptProfile)),
           'getChainAfterMutex',
           signal,
         );
@@ -1195,7 +1222,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           'OpenCode resume workspace guard dropped stale session',
         );
         sessionId = undefined;
-        sessionManager.delete(userId, catId, threadId).catch(() => {});
+        sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
         yield {
           type: 'system_info' as const,
           catId,
@@ -1607,6 +1634,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     const mcpServerPath = configuredMcpServerPath
       ? resolve(process.cwd(), configuredMcpServerPath)
       : resolveDefaultClaudeMcpServerPath();
+    const nativeSystemPromptOverride =
+      promptProfile === 'casual' && nativeL0Provider ? params.systemPrompt?.trim() || undefined : undefined;
 
     // F203 Phase I: compile L0 for OpenCode BEFORE the runtime config condition.
     // OpenCodeAgentService.injectsL0Natively() = true, so the route layer does
@@ -1627,7 +1656,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         // the undefined branch is unreachable post-guard — avoids biome noNonNullAssertion.
         const compilerFn = (hasL0CompilerSeam(service) && service.l0CompilerFn) || compileL0ViaSubprocess;
 
-        const l0Content = await compilerFn({ catId: catId as string });
+        const l0Content = nativeSystemPromptOverride ?? (await compilerFn({ catId: catId as string }));
         // Write compiled L0 into the runtime config dir (created below or reused).
         const safeCatId = (catId as string).replace(/[^a-zA-Z0-9._-]+/g, '-');
         const safeInvocationId = invocationId.replace(/[^a-zA-Z0-9._-]+/g, '-');
@@ -1771,17 +1800,19 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // so we intentionally do NOT pass systemPrompt in options to avoid double injection.
     const isResume = !!sessionId;
     const canSkipOnResume = isSessionChainEnabled(catId);
-    const compressionKey = `${userId}:${catId as string}:${threadId}`;
+    const compressionKey = sessionIdentityKey(userId, catId, threadId, sessionPromptProfile);
     const forceReinjection = _needsReinjection.delete(compressionKey);
     const registryRevision = catRegistry.getRevision();
-    const identityKey = sessionIdentityKey(userId, catId, threadId);
+    const identityKey = sessionIdentityKey(userId, catId, threadId, sessionPromptProfile);
     const lastStaticIdentityRevision = _staticIdentityRegistryRevision.get(identityKey);
     const registryChangedSinceStaticIdentity =
       canSkipOnResume &&
       isResume &&
       lastStaticIdentityRevision !== undefined &&
       lastStaticIdentityRevision !== registryRevision;
-    const injectSystemPrompt = !canSkipOnResume || !isResume || forceReinjection || registryChangedSinceStaticIdentity;
+    const forceCasualMessageSystemPrompt = false;
+    const injectSystemPrompt =
+      forceCasualMessageSystemPrompt || !canSkipOnResume || !isResume || forceReinjection || registryChangedSinceStaticIdentity;
     if (canSkipOnResume) {
       if (injectSystemPrompt) {
         _staticIdentityRegistryRevision.set(identityKey, registryRevision);
@@ -1793,17 +1824,17 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // Prepend staticIdentity to prompt when injection is needed
     // F070-P2: missionPrefix (dispatch context) is prepended for external projects
     const promptWithMission = missionPrefix ? `${missionPrefix}\n\n${prompt}` : prompt;
+    const prependMessageSystemPrompt = Boolean(injectSystemPrompt && params.systemPrompt && !nativeSystemPromptOverride);
 
-    let effectivePrompt =
-      injectSystemPrompt && params.systemPrompt
-        ? `${params.systemPrompt}\n\n---\n\n${promptWithMission}`
-        : `${promptWithMission}`;
+    let effectivePrompt = prependMessageSystemPrompt
+      ? `${params.systemPrompt}\n\n---\n\n${promptWithMission}`
+      : `${promptWithMission}`;
 
     // F225 软层: deliver a pending context-management hint into the cat's actual
     // prompt (a system_info output can't reach cat cognition — see
     // context-management-hint). Queued on the prior warn turn; independent of
     // injectSystemPrompt so it lands even on resumes that skip identity re-injection.
-    const contextHintPrefix = takeContextHintPrefix(compressionKey);
+    const contextHintPrefix = promptProfile === 'casual' ? null : takeContextHintPrefix(compressionKey);
     if (contextHintPrefix) {
       effectivePrompt = `${contextHintPrefix}\n\n---\n\n${effectivePrompt}`;
     }
@@ -1816,13 +1847,83 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // turns. ADR-038 contract is "每轮注入生效" → must mirror F225 pattern
     // (independent of injectSystemPrompt). Staging content goes to runtime
     // prompt path, NOT compiled native L0 (砚砚 PR #2221 R1 P2 boundary).
-    const stagingPrepend = buildStagingPrepend(catId);
+    const stagingPrepend = promptProfile === 'casual' ? '' : buildStagingPrepend(catId);
     if (stagingPrepend) {
       effectivePrompt = `${stagingPrepend}\n\n---\n\n${effectivePrompt}`;
     }
 
     /* @segment M2 — Transcript Path Hints */
-    effectivePrompt = appendTranscriptPathHints(effectivePrompt, TRANSCRIPT_DIR, threadId);
+    const beforeTranscriptPathHints = effectivePrompt;
+    if (promptProfile !== 'casual') {
+      effectivePrompt = appendTranscriptPathHints(effectivePrompt, TRANSCRIPT_DIR, threadId);
+    }
+
+    if (params.promptDiagnostics) {
+      const messageSystemPromptNote = prependMessageSystemPrompt
+        ? 'prepended into message-channel prompt on this invocation'
+        : nativeSystemPromptOverride
+          ? 'sent through native system prompt override on this invocation'
+          : 'not prepended on this resume turn; provider/session may still retain it';
+      const nativeL0Segment = await buildNativeL0DiagnosticSegment(
+        catId as string,
+        params.promptDiagnostics.nativeL0Provider,
+        nativeSystemPromptOverride,
+      );
+      const runtimeSegments: PromptDiagnosticSegment[] = [
+        ...(nativeL0Segment ? [nativeL0Segment] : []),
+        promptTextSegment('messageSystemPromptParam', params.systemPrompt, messageSystemPromptNote),
+        promptTextSegment('missionPrefix', missionPrefix),
+        promptTextSegment('contextHintPrefix', contextHintPrefix),
+        promptTextSegment('stagingPrepend', stagingPrepend),
+        promptDeltaSegment(
+          'transcriptPathHints',
+          beforeTranscriptPathHints,
+          effectivePrompt,
+          'delta added by appendTranscriptPathHints',
+        ),
+        promptTextSegment('effectivePromptFinal', effectivePrompt, 'final message-channel prompt sent to service.invoke'),
+      ];
+      const effectivePromptTokens = estimateTokens(effectivePrompt);
+      const nativeL0Tokens = nativeL0Segment?.estimatedTokens ?? null;
+      const routeComponentSegments = params.promptDiagnostics.routeSegments.filter((s) => s.name !== 'routePromptFinal');
+      const routePromptFinalTokens =
+        params.promptDiagnostics.routeSegments.find((s) => s.name === 'routePromptFinal')?.estimatedTokens ?? null;
+      const runtimeComponentSegments = runtimeSegments.filter((s) => s.name !== 'effectivePromptFinal');
+      log.info(
+        {
+          f: 'prompt-segment-diagnostics',
+          threadId,
+          catId: catId as string,
+          invocationId,
+          routeStrategy: params.promptDiagnostics.routeStrategy,
+          mode: params.promptDiagnostics.mode,
+          incrementalMode: params.promptDiagnostics.incrementalMode,
+          nativeL0Provider: params.promptDiagnostics.nativeL0Provider,
+          mcpAvailable: params.promptDiagnostics.mcpAvailable,
+          contextBudget: params.promptDiagnostics.contextBudget ?? null,
+          effectiveContextBudget: params.promptDiagnostics.effectiveContextBudget ?? null,
+          injectionDecision: {
+            isResume,
+            canSkipOnResume,
+            forceReinjection,
+            registryChangedSinceStaticIdentity,
+            injectedMessageSystemPrompt: prependMessageSystemPrompt,
+          },
+          routeSegments: params.promptDiagnostics.routeSegments,
+          runtimeSegments,
+          totals: {
+            routeComponentTokens: sumMeasuredPromptTokens(routeComponentSegments),
+            routePromptFinalTokens,
+            runtimeComponentTokens: sumMeasuredPromptTokens(runtimeComponentSegments),
+            effectivePromptTokens,
+            nativeL0Tokens,
+            measuredEffectivePlusNativeTokens:
+              nativeL0Tokens == null ? null : effectivePromptTokens + nativeL0Tokens,
+          },
+        },
+        'Prompt segment diagnostics',
+      );
+    }
 
     capturePromptIfEnabled({
       catId: catId as string,
@@ -1841,7 +1942,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       // fetch the compiled L0 and stamp it onto `nativeSystemPrompt`. Hot
       // path stays non-blocking — the bridge handles fetch async + fail-safe
       // (see comment block in prompt-capture-bridge.ts).
-      nativeL0Provider: service.injectsL0Natively?.() ?? false,
+      nativeL0Provider,
     });
 
     // F089 Phase 2+3: Create tmux spawn override for agent-in-pane execution
@@ -1878,6 +1979,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       ...(signal ? { signal } : {}),
       ...(spawnCliOverride ? { spawnCliOverride } : {}),
       invocationId,
+      promptProfile,
+      ...(nativeSystemPromptOverride ? { nativeSystemPrompt: nativeSystemPromptOverride } : {}),
       ...(sessionId ? { cliSessionId: sessionId } : {}),
       ...(isResume && !injectSystemPrompt && params.systemPrompt
         ? { resumeFallbackSystemPrompt: params.systemPrompt }
@@ -1918,7 +2021,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         const activeRec =
           isBgCarrier && bgChainKey
             ? await deps.sessionChainStore.getByChainKey(bgChainKey)
-            : await deps.sessionChainStore.getActive(catId, threadId);
+            : await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
         if (!activeRec) return;
         userVisibleOutputSessionIds.add(activeRec.id);
         if ((activeRec.messageCount ?? 0) !== 0) return;
@@ -2081,7 +2184,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
             // Update SessionRecord (best-effort): persist health + usage snapshot
             if (deps.sessionChainStore) {
               try {
-                const activeRecord = await deps.sessionChainStore.getActive(catId, threadId);
+                const activeRecord = await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
                 if (activeRecord) {
                   const u = msg.metadata?.usage!;
                   await deps.sessionChainStore.update(activeRecord.id, {
@@ -2102,7 +2205,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
             // F-BLOAT: Detect context compression for re-injection on next turn.
             // When usedTokens drops >60% from previous known value, the CLI
             // auto-compacted its context. Flag for systemPrompt re-injection.
-            const cKey = `${userId}:${catId as string}:${threadId}`;
+            const cKey = sessionIdentityKey(userId, catId, threadId, sessionPromptProfile);
             const prevFill = _prevContextFill.get(cKey);
             _prevContextFill.set(cKey, usedTokens);
             if (prevFill && usedTokens < prevFill * 0.4) {
@@ -2129,7 +2232,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                 const skipAutoSealForApproxApiKey = isAnthropicApiKey && health.source === 'approx';
                 const skipAutoSealForApiKeyCompress = isAnthropicApiKey && strategy.strategy === 'compress';
                 if (!skipAutoSealForApproxApiKey && !skipAutoSealForApiKeyCompress) {
-                  const activeRecord = await deps.sessionChainStore.getActive(catId, threadId);
+                  const activeRecord = await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
                   const action = shouldTakeAction(
                     health.fillRatio,
                     health.windowTokens,
@@ -2149,7 +2252,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                       // (consumed at effectivePrompt assembly, ~line 1538). Nudges the cat
                       // to run the context-self-management 3-axis self-check — NOT "handoff
                       // now" (handoff-vs-compress is the cat's judgment). cKey matches the
-                      // compressionKey used there: `${userId}:${catId}:${threadId}`.
+                      // profile-scoped compressionKey used during prompt assembly.
                       queueContextHint(
                         cKey,
                         buildContextManagementHint({
@@ -2187,7 +2290,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                           // gone). Clear so the deferred-execution block below
                           // does not double-seal.
                           pendingMidStreamSeal = null;
-                          sessionManager.delete(userId, catId, threadId).catch(() => {});
+                          sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
                           const sealTimestamp = Date.now();
                           const continuityCapsule = params.continuityCapsule
                             ? completeCapsuleForSeal(params.continuityCapsule, {
@@ -2284,10 +2387,12 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           { cliSessionId: msg.sessionId, threadId, catId, userId, invocationId },
           'Session init: binding session',
         );
-        try {
-          await sessionManager.store(userId, catId, threadId, msg.sessionId);
-        } catch {
-          // Redis write failure — session won't persist, but chain continues
+        if (useProviderSession) {
+          try {
+            await sessionManager.store(userId, catId, threadId, msg.sessionId, sessionPromptProfile);
+          } catch {
+            // Redis write failure — session won't persist, but chain continues
+          }
         }
 
         // F198 Phase C P1-1: register bg carrier daemon session for Hub observability.
@@ -2330,6 +2435,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                 threadId,
                 catId,
                 userId,
+                ...(sessionPromptProfile ? { promptProfile: sessionPromptProfile } : {}),
                 chainKey: bgChainKey,
               });
               if (params.continuityCapsule) {
@@ -2343,7 +2449,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           }
         } else if (deps.sessionChainStore && sessionChainActive) {
           try {
-            const existing = await deps.sessionChainStore.getActive(catId, threadId);
+            const existing = await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
             if (existing) {
               if (existing.cliSessionId !== msg.sessionId) {
                 if (msg.ephemeralSession) {
@@ -2430,6 +2536,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                       threadId,
                       catId,
                       userId,
+                      ...(sessionPromptProfile ? { promptProfile: sessionPromptProfile } : {}),
                     });
                     if (inheritedFailures > 0) {
                       await deps.sessionChainStore.update(newRec.id, {
@@ -2459,6 +2566,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                 threadId,
                 catId,
                 userId,
+                ...(sessionPromptProfile ? { promptProfile: sessionPromptProfile } : {}),
               });
               if (params.continuityCapsule) {
                 await deps.sessionChainStore.update(newRec.id, {
@@ -2473,7 +2581,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
 
         if (deps.runtimeSessionStore && deps.sessionChainStore && sessionChainActive) {
           try {
-            const activeRec = await deps.sessionChainStore.getActive(catId, threadId);
+            const activeRec = await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
             if (activeRec) {
               await syncAntigravityRuntimeMetadata({
                 runtimeSessionStore: deps.runtimeSessionStore,
@@ -2496,7 +2604,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         let sessionSeq: number | undefined;
         if (deps.sessionChainStore && sessionChainActive) {
           try {
-            const activeRec = await deps.sessionChainStore.getActive(catId, threadId);
+            const activeRec = await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
             sessionSeq = activeRec != null ? activeRec.seq + 1 : undefined;
           } catch {
             /* best-effort */
@@ -2570,7 +2678,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           }
         } else if (deps.sessionChainStore && sessionChainActive) {
           try {
-            const activeRec = await deps.sessionChainStore.getActive(catId, threadId);
+            const activeRec = await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
             if (activeRec) {
               if (!userVisibleOutputCountedSessionIds.has(activeRec.id)) {
                 const newCount = (activeRec.messageCount ?? 0) + 1;
@@ -2643,7 +2751,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
               reason: pending.reason,
             });
             if (sealResult.accepted) {
-              sessionManager.delete(userId, catId, threadId).catch(() => {});
+              sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
               const sealTimestamp = Date.now();
               const continuityCapsule = params.continuityCapsule
                 ? completeCapsuleForSeal(params.continuityCapsule, {
@@ -2799,7 +2907,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       // F24 Phase C: Record event to transcript buffer (best-effort)
       if (deps.transcriptWriter && deps.sessionChainStore && sessionChainActive) {
         try {
-          const activeRec = await deps.sessionChainStore.getActive(catId, threadId);
+          const activeRec = await deps.sessionChainStore.getActive(catId, threadId, sessionPromptProfile);
           if (activeRec) {
             const sessInfo: TranscriptSessionInfo = {
               sessionId: activeRec.id,
@@ -3048,14 +3156,18 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
             // F215 AC-C1: Seal malformed session before fresh retry.
             if (suppressedMalformedError && deps.sessionSealer && deps.sessionChainStore) {
               try {
-                const activeRec = await deps.sessionChainStore.getActive(catId as CatId, threadId);
+                const activeRec = await deps.sessionChainStore.getActive(
+                  catId as CatId,
+                  threadId,
+                  sessionPromptProfile,
+                );
                 if (activeRec) {
                   const sealResult = await deps.sessionSealer.requestSeal({
                     sessionId: activeRec.id,
                     reason: 'malformed_toolcall',
                   });
                   if (sealResult.accepted) {
-                    sessionManager.delete(userId, catId, threadId).catch(() => {});
+                    sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
                     deps.sessionSealer.finalize({ sessionId: activeRec.id }).catch(() => {});
                     log.info(
                       { catId, threadId, invocationId, sessionId: activeRec.id },
@@ -3148,7 +3260,11 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           if (deps.sessionChainStore && !didResetRestoreFailures) {
             didResetRestoreFailures = true; // only reset once per invocation
             try {
-              const activeRec = await deps.sessionChainStore.getActive(catId as CatId, threadId);
+              const activeRec = await deps.sessionChainStore.getActive(
+                catId as CatId,
+                threadId,
+                sessionPromptProfile,
+              );
               if (activeRec && (activeRec.consecutiveRestoreFailures ?? 0) > 0) {
                 await deps.sessionChainStore.update(activeRec.id, {
                   consecutiveRestoreFailures: 0,
@@ -3187,14 +3303,18 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           'cat retrying invoke (session self-heal)',
         );
         try {
-          await sessionManager.delete(userId, catId, threadId);
+          await sessionManager.delete(userId, catId, threadId, sessionPromptProfile);
         } catch {
           // Redis delete failure — best-effort only
         }
         // F118 AC-C6: Increment consecutive restore failure counter
         if (deps.sessionChainStore) {
           try {
-            const activeRec = await deps.sessionChainStore.getActive(catId as CatId, threadId);
+            const activeRec = await deps.sessionChainStore.getActive(
+              catId as CatId,
+              threadId,
+              sessionPromptProfile,
+            );
             if (activeRec) {
               await deps.sessionChainStore.update(activeRec.id, {
                 consecutiveRestoreFailures: (activeRec.consecutiveRestoreFailures ?? 0) + 1,
@@ -3475,5 +3595,35 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       emitOtelLog('INFO', 'invocation_completed', { [AGENT_ID]: catId, [STATUS]: 'ok' }, invocationSpan);
     }
     invocationSpan.end();
+  }
+}
+
+async function buildNativeL0DiagnosticSegment(
+  catId: string,
+  nativeL0Provider: boolean,
+  nativeSystemPromptOverride?: string,
+): Promise<PromptDiagnosticSegment | undefined> {
+  if (!nativeL0Provider) return undefined;
+  if (nativeSystemPromptOverride) {
+    return promptTextSegment(
+      'nativeL0ProviderSystemPrompt',
+      nativeSystemPromptOverride,
+      'provider-native channel using prompt profile override',
+    );
+  }
+  if (!shouldMeasureNativePromptSegmentDiagnostics()) {
+    return promptUnmeasuredSegment(
+      'nativeL0ProviderSystemPrompt',
+      true,
+      `provider-native channel; set ${PROMPT_SEGMENT_DIAGNOSTICS_NATIVE_ENV}=1 to measure compiled L0 tokens`,
+    );
+  }
+
+  try {
+    const nativeL0 = await compileL0ViaSubprocess({ catId });
+    return promptTextSegment('nativeL0ProviderSystemPrompt', nativeL0, 'provider-native channel');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return promptUnmeasuredSegment('nativeL0ProviderSystemPrompt', true, `native L0 measurement failed: ${message}`);
   }
 }

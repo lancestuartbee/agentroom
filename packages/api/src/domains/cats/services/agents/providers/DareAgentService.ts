@@ -87,6 +87,7 @@ export class DareAgentService implements AgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
+    const isCasualProfile = options?.promptProfile === 'casual';
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_DARE_MODEL_OVERRIDE ?? this.model;
     // Runtime mode: require resolvable DARE module path to avoid opaque "No module named client".
     // Unit tests pass spawnFn and may not provide a real filesystem path; skip hard check there.
@@ -119,10 +120,10 @@ export class DareAgentService implements AgentService {
     const args = this.buildArgs(
       prompt,
       options?.workingDirectory,
-      options?.sessionId,
+      isCasualProfile ? undefined : options?.sessionId,
       endpoint,
       effectiveModel,
-      options?.cliConfigArgs,
+      isCasualProfile ? undefined : options?.cliConfigArgs,
     );
     // P1-1: cwd must ALWAYS be darePath (where `python -m client` can find the module).
     // Thread's workingDirectory goes to --workspace instead.
@@ -143,7 +144,7 @@ export class DareAgentService implements AgentService {
         env: childEnv,
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
       };

@@ -71,6 +71,71 @@ describe('Thread API', () => {
     assert.equal(body.projectPath, 'default');
   });
 
+  it('POST /api/threads/:id/upgrade creates a development thread with source background', async () => {
+    const workspaceRoot = await createTempWorkspace();
+    process.env.CAT_CAFE_WORKSPACE_ROOT = workspaceRoot;
+
+    const { MessageStore } = await import('../dist/domains/cats/services/stores/ports/MessageStore.js');
+    const { threadsRoutes } = await import('../dist/routes/threads.js');
+    const { ThreadStore } = await import('../dist/domains/cats/services/stores/ports/ThreadStore.js');
+
+    const localThreadStore = new ThreadStore();
+    const localMessageStore = new MessageStore();
+    const localApp = Fastify();
+    await localApp.register(threadsRoutes, { threadStore: localThreadStore, messageStore: localMessageStore });
+    await localApp.ready();
+
+    const source = localThreadStore.create('alice', 'Idea chat');
+    localThreadStore.updateThreadMode(source.id, 'casual');
+    localMessageStore.append({
+      userId: 'alice',
+      catId: null,
+      content: '我们刚才讨论了一个插件化桌面客户端想法。',
+      mentions: [],
+      timestamp: Date.now(),
+      threadId: source.id,
+    });
+
+    const res = await localApp.inject({
+      method: 'POST',
+      url: `/api/threads/${source.id}/upgrade`,
+      payload: {
+        userId: 'alice',
+        targetMode: 'development',
+        projectPath: workspaceRoot,
+        title: 'Desktop client implementation',
+      },
+    });
+
+    assert.equal(res.statusCode, 201);
+    const body = JSON.parse(res.body);
+    assert.equal(body.thread.mode, 'development');
+    assert.equal(body.thread.projectPath, workspaceRoot);
+    assert.equal(body.thread.parentThreadId, source.id);
+
+    const messages = localMessageStore.getByThread(body.thread.id, 10, 'alice');
+    assert.equal(messages.length, 1);
+    assert.match(messages[0].content, /升级背景/);
+    assert.match(messages[0].content, /插件化桌面客户端/);
+
+    await localApp.close();
+  });
+
+  it('POST /api/threads/:id/upgrade keeps roundtable as an explicit placeholder', async () => {
+    const source = threadStore.create('alice', 'Roundtable idea');
+    threadStore.updateThreadMode(source.id, 'casual');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/threads/${source.id}/upgrade`,
+      payload: { userId: 'alice', targetMode: 'roundtable' },
+    });
+
+    assert.equal(res.statusCode, 501);
+    const body = JSON.parse(res.body);
+    assert.equal(body.code, 'ROUNDTABLE_NOT_IMPLEMENTED');
+  });
+
   it('POST /api/threads binds bootcamp threads without projectPath to CAT_CAFE_WORKSPACE_ROOT', async () => {
     const workspaceRoot = await createTempWorkspace();
     process.env.CAT_CAFE_WORKSPACE_ROOT = workspaceRoot;

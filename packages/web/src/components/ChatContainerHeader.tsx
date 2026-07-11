@@ -17,6 +17,7 @@ interface ChatContainerHeaderProps {
   onOpenMobileStatus: () => void;
   statusPanelOpen: boolean;
   onToggleStatusPanel: () => void;
+  onUpgradeFromCasual?: () => void;
   /** F092: Default cat for voice companion */
   defaultCatId: string;
 }
@@ -34,8 +35,12 @@ export function ChatContainerHeader({
   onOpenMobileStatus,
   statusPanelOpen,
   onToggleStatusPanel,
+  onUpgradeFromCasual,
   defaultCatId,
 }: ChatContainerHeaderProps) {
+  const currentThread = useChatStore((s) => s.threads.find((t) => t.id === threadId));
+  const canUpgradeFromCasual = currentThread?.mode === 'casual' && !!onUpgradeFromCasual;
+
   return (
     <header className="safe-area-top">
       <div className="px-5 py-3 flex items-center gap-2">
@@ -66,6 +71,16 @@ export function ChatContainerHeader({
             </div>
           </div>
         </div>
+        {canUpgradeFromCasual && (
+          <button
+            type="button"
+            onClick={onUpgradeFromCasual}
+            className="hidden sm:inline-flex items-center px-2.5 py-1.5 rounded-lg border border-cafe bg-cafe-surface text-xs font-medium text-cafe-secondary hover:bg-[var(--console-hover-bg)] transition-colors"
+            title="基于当前闲聊内容创建开发协作会话"
+          >
+            升级到开发
+          </button>
+        )}
         <ExportButton threadId={threadId} />
         <ChatVoiceFeatureControls threadId={threadId} defaultCatId={defaultCatId} />
         {authPendingCount > 0 && (

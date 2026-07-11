@@ -483,6 +483,8 @@ export class GeminiAgentService implements AgentService {
   }
 
   private async *invokeGeminiCLI(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
+    const isCasualProfile = options?.promptProfile === 'casual';
+    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_GEMINI_MODEL_OVERRIDE ?? this.model;
     const metadata: MessageMetadata = { provider: 'google', model: effectiveModel };
 
@@ -500,8 +502,8 @@ export class GeminiAgentService implements AgentService {
     // Prefer resume when sessionId is available so Gemini follows the same
     // session semantics as Claude/Codex (session-chain + self-heal).
     const modelArgs = effectiveModel ? ['--model', effectiveModel] : [];
-    const args: string[] = options?.sessionId
-      ? ['--resume', options?.sessionId!, ...modelArgs, '-p', effectivePrompt, '-o', 'stream-json', '-y']
+    const args: string[] = effectiveSessionId
+      ? ['--resume', effectiveSessionId, ...modelArgs, '-p', effectivePrompt, '-o', 'stream-json', '-y']
       : [...modelArgs, '-p', effectivePrompt, '-o', 'stream-json', '-y'];
     for (const dir of imageAccessDirs) {
       args.push('--include-directories', dir);
@@ -509,7 +511,7 @@ export class GeminiAgentService implements AgentService {
 
     // User-defined CLI args from the member editor (#567).
     const userParts: string[] = [];
-    for (const arg of options?.cliConfigArgs ?? []) {
+    for (const arg of isCasualProfile ? [] : (options?.cliConfigArgs ?? [])) {
       userParts.push(...arg.trim().split(/\s+/));
     }
     if (userParts.length > 0) {
@@ -554,7 +556,7 @@ export class GeminiAgentService implements AgentService {
           : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
       };
@@ -713,6 +715,7 @@ export class GeminiAgentService implements AgentService {
   }
 
   private async *invokeAntigravityCLI(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
+    const isCasualProfile = options?.promptProfile === 'casual';
     const yieldedToolCallIds = new Set<string>();
     const yieldedToolResults = new Set<string>();
     const requestedModelOverride = options?.callbackEnv?.CAT_CAFE_GEMINI_MODEL_OVERRIDE;
@@ -793,7 +796,7 @@ export class GeminiAgentService implements AgentService {
     if (printTimeout) {
       args.push('--print-timeout', printTimeout);
     }
-    const requestedSessionId = options?.sessionId;
+    const requestedSessionId = isCasualProfile ? undefined : options?.sessionId;
     let emittedSessionInit = false;
     if (requestedSessionId) {
       metadata.sessionId = requestedSessionId;
@@ -824,7 +827,7 @@ export class GeminiAgentService implements AgentService {
     args.push('--print', effectivePrompt);
 
     const userParts: string[] = [];
-    for (const arg of options?.cliConfigArgs ?? []) {
+    for (const arg of isCasualProfile ? [] : (options?.cliConfigArgs ?? [])) {
       userParts.push(...arg.trim().split(/\s+/));
     }
     const filteredUserParts = removeValuedCliFlags(userParts, ANTIGRAVITY_USER_BLOCKED_FLAGS);
@@ -1016,7 +1019,7 @@ export class GeminiAgentService implements AgentService {
         ...(childEnv ? { env: childEnv } : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
-        ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
+        ...(!isCasualProfile && options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
         ...(options?.livenessProbe ? { livenessProbe: options.livenessProbe } : {}),
         ...(options?.parentSpan ? { parentSpan: options.parentSpan } : {}),
       };
@@ -1191,7 +1194,7 @@ export class GeminiAgentService implements AgentService {
       // 新 cascade db；任何环节失败（无 db / 无 final）→ resumedFinalText=null，classify fail-open
       // 保留现有 stdout。
       let resumedFinalText: string | null = null;
-      if (options?.sessionId) {
+      if (requestedSessionId) {
         const dbPath = locateAgyTrajectoryDb({
           logText: agyLogText,
           appDataDir: agyAppDataDir,
@@ -1205,7 +1208,7 @@ export class GeminiAgentService implements AgentService {
       const parsedPlainText = classifyAntigravityCliPlainText({
         stdout,
         stderr,
-        resumed: Boolean(options?.sessionId),
+        resumed: Boolean(requestedSessionId),
         agyLogText,
         resumedFinalText,
       });
@@ -1278,7 +1281,7 @@ export class GeminiAgentService implements AgentService {
                 eventCount: 1,
                 eventTypes: ['plain_text_empty'],
                 model: metadata.model,
-                sessionId: options?.sessionId ?? metadata.sessionId,
+                sessionId: requestedSessionId ?? metadata.sessionId,
                 exitCode,
                 stderrPresent,
                 ...(stderrPresent ? { stderrExcerpt: stderr } : {}),
@@ -1329,7 +1332,7 @@ export class GeminiAgentService implements AgentService {
             firstEventAt: timeoutEvent.firstEventAt,
             lastEventAt: timeoutEvent.lastEventAt,
             invocationId: timeoutEvent.invocationId ?? options?.invocationId,
-            cliSessionId: timeoutEvent.cliSessionId ?? options?.cliSessionId,
+            cliSessionId: timeoutEvent.cliSessionId ?? (isCasualProfile ? undefined : options?.cliSessionId),
             rawArchivePath: timeoutEvent.rawArchivePath,
           }),
           timestamp: Date.now(),

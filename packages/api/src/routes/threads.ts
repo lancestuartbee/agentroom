@@ -7,7 +7,7 @@
  * DELETE /api/threads/:id  - 删除对话
  */
 
-import type { CatId, ThreadAudience } from '@cat-cafe/shared';
+import type { CatId, ThreadAudience, ThreadMode } from '@cat-cafe/shared';
 import { catIdSchema, DEFAULT_THREAD_MODE, normalizeThreadAudience, THREAD_MODES } from '@cat-cafe/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -23,7 +23,7 @@ import type { IBacklogStore } from '../domains/cats/services/stores/ports/Backlo
 import type { DeliveryCursorStore } from '../domains/cats/services/stores/ports/DeliveryCursorStore.js';
 import type { IDraftStore } from '../domains/cats/services/stores/ports/DraftStore.js';
 import type { IMemoryStore } from '../domains/cats/services/stores/ports/MemoryStore.js';
-import type { IMessageStore } from '../domains/cats/services/stores/ports/MessageStore.js';
+import type { IMessageStore, StoredMessage } from '../domains/cats/services/stores/ports/MessageStore.js';
 import type { ITaskStore } from '../domains/cats/services/stores/ports/TaskStore.js';
 import type { IThreadReadStateStore } from '../domains/cats/services/stores/ports/ThreadReadStateStore.js';
 import type {
@@ -33,6 +33,7 @@ import type {
   Thread,
   ThreadRoutingPolicyV1,
 } from '../domains/cats/services/stores/ports/ThreadStore.js';
+import { DEFAULT_THREAD_ID } from '../domains/cats/services/stores/ports/ThreadStore.js';
 import { createModuleLogger } from '../infrastructure/logger.js';
 import { validateProjectPath } from '../utils/project-path.js';
 import { resolveUserId } from '../utils/request-identity.js';
@@ -138,6 +139,18 @@ const createThreadSchema = z
   })
   .strict();
 
+const upgradeThreadSchema = z
+  .object({
+    /** Legacy fallback only; preferred identity source is X-Cat-Cafe-User header. */
+    userId: z.string().min(1).max(100).optional(),
+    /** Roundtable is accepted at the API boundary but returns 501 until its control flow is implemented. */
+    targetMode: z.enum(['development', 'roundtable']),
+    title: z.string().trim().min(1).max(200).optional(),
+    projectPath: z.string().min(1).max(500).optional(),
+    preferredCats: z.array(catIdSchema()).max(10).optional(),
+  })
+  .strict();
+
 const listThreadsSchema = z.object({
   projectPath: z.string().min(1).max(500).optional(),
   q: z.string().trim().min(1).max(200).optional(),
@@ -193,6 +206,40 @@ function parseOptionalBooleanQuery(value: string | boolean | undefined): boolean
   if (normalized === 'true' || normalized === '1') return true;
   if (normalized === 'false' || normalized === '0') return false;
   return undefined;
+}
+
+function truncateInline(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function buildModeUpgradeBackground(
+  sourceThread: Thread,
+  sourceMessages: StoredMessage[],
+  targetMode: ThreadMode,
+): string {
+  const targetLabel = targetMode === 'development' ? '开发协作' : '圆桌会议';
+  const recentLines = sourceMessages
+    .filter((msg) => !msg.deletedAt && msg.content.trim().length > 0 && msg.userId !== 'system')
+    .slice(-16)
+    .map((msg) => {
+      const speaker = msg.catId ? `Agent ${msg.catId}` : 'User';
+      return `- ${speaker}: ${truncateInline(msg.content, 420)}`;
+    });
+
+  return [
+    '[升级背景]',
+    `这个新会话由闲聊会话升级为${targetLabel}。`,
+    `来源会话: ${sourceThread.title ?? sourceThread.id} (${sourceThread.id})`,
+    `来源模式: ${sourceThread.mode ?? DEFAULT_THREAD_MODE}`,
+    `目标模式: ${targetMode}`,
+    '',
+    '请把下面内容只作为背景，不要继承旧闲聊会话的 provider session、工具状态或模式设定。',
+    '',
+    '最近讨论摘录:',
+    ...(recentLines.length > 0 ? recentLines : ['- (来源会话暂无可用消息摘录)']),
+  ].join('\n');
 }
 
 export function sanitizeThreadForResponse(thread: Thread, _userId: string): Thread {
@@ -384,6 +431,91 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
 
     reply.status(201);
     return sanitizeThreadForResponse(thread, userId);
+  });
+
+  // POST /api/threads/:id/upgrade - 从轻量会话升级为新的正式会话
+  app.post('/api/threads/:id/upgrade', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parseResult = upgradeThreadSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      reply.status(400);
+      return { error: 'Invalid request body', details: parseResult.error.issues };
+    }
+
+    const { userId: legacyUserId, targetMode, title, projectPath, preferredCats } = parseResult.data;
+    const userId = resolveUserId(request, { fallbackUserId: legacyUserId });
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required (session cookie or X-Cat-Cafe-User header)' };
+    }
+
+    const sourceThread = await threadStore.get(id);
+    if (!sourceThread || sourceThread.deletedAt) {
+      reply.status(404);
+      return { error: 'Thread not found' };
+    }
+    if (sourceThread.createdBy !== userId && sourceThread.id !== DEFAULT_THREAD_ID) {
+      reply.status(403);
+      return { error: 'Thread does not belong to this user' };
+    }
+    if ((sourceThread.mode ?? DEFAULT_THREAD_MODE) !== 'casual') {
+      reply.status(400);
+      return {
+        error: 'Only casual threads can be upgraded in this flow',
+        code: 'SOURCE_MODE_NOT_UPGRADABLE',
+      };
+    }
+    if (targetMode === 'roundtable') {
+      reply.status(501);
+      return {
+        error: 'Roundtable upgrade is reserved but not implemented yet',
+        code: 'ROUNDTABLE_NOT_IMPLEMENTED',
+      };
+    }
+    if (!projectPath || projectPath === 'default') {
+      reply.status(400);
+      return {
+        error: 'projectPath is required when upgrading casual chat to development collaboration',
+        code: 'PROJECT_PATH_REQUIRED',
+      };
+    }
+
+    const resolvedProjectPath = await resolveCreateThreadProjectPath(projectPath, undefined);
+    if (!resolvedProjectPath.ok || !resolvedProjectPath.projectPath) {
+      reply.status(resolvedProjectPath.ok ? 400 : resolvedProjectPath.statusCode);
+      return {
+        error: resolvedProjectPath.ok
+          ? 'Invalid projectPath: development upgrade requires a real project directory'
+          : resolvedProjectPath.error,
+      };
+    }
+
+    const fallbackTitle = sourceThread.title ? `开发协作: ${sourceThread.title}` : '开发协作升级会话';
+    let targetThread = await threadStore.create(userId, title ?? fallbackTitle, resolvedProjectPath.projectPath, id);
+    await threadStore.updateThreadMode(targetThread.id, targetMode);
+    if (preferredCats && preferredCats.length > 0) {
+      await threadStore.updatePreferredCats(targetThread.id, preferredCats as CatId[]);
+    }
+
+    if (messageStore) {
+      const sourceMessages = await messageStore.getByThread(id, 32, userId);
+      await messageStore.append({
+        userId,
+        catId: null,
+        content: buildModeUpgradeBackground(sourceThread, sourceMessages, targetMode),
+        mentions: [],
+        timestamp: Date.now(),
+        threadId: targetThread.id,
+      });
+      await threadStore.updateLastActive(targetThread.id);
+    }
+
+    targetThread = (await threadStore.get(targetThread.id)) ?? targetThread;
+    reply.status(201);
+    return {
+      thread: sanitizeThreadForResponse(targetThread, userId),
+      sourceThread: sanitizeThreadForResponse(sourceThread, userId),
+    };
   });
 
   // GET /api/threads - 列出用户的对话

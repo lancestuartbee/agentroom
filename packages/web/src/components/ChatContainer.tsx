@@ -70,7 +70,9 @@ import { SplitPaneView } from './SplitPaneView';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { ThreadExecutionBar } from './ThreadExecutionBar';
 import { ThreadSidebar } from './ThreadSidebar';
+import { DirectoryPickerModal, type NewThreadOptions } from './ThreadSidebar/DirectoryPickerModal';
 import { assignDocumentRoute, pushThreadRouteWithHistory } from './ThreadSidebar/thread-navigation';
+import { getProjectPaths } from './ThreadSidebar/thread-utils';
 import { VoteActiveBar } from './VoteActiveBar';
 import { type VoteConfig, VoteConfigModal } from './VoteConfigModal';
 import { WorkspacePanel } from './WorkspacePanel';
@@ -173,6 +175,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   const [statusPanelOpen, setStatusPanelOpen] = useState(true);
   const [mobileStatusOpen, setMobileStatusOpen] = useState(false);
   const [showBootcampList, setShowBootcampList] = useState(false);
+  const [showUpgradePicker, setShowUpgradePicker] = useState(false);
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const editingCat = editingCatId ? (getCatById(editingCatId) ?? null) : null;
   const [coCreatorEditorOpen, setCoCreatorEditorOpen] = useState(false);
@@ -342,6 +345,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   const setCurrentProject = useChatStore((s) => s.setCurrentProject);
   const storeThreads = useChatStore((s) => s.threads);
   const setThreads = useChatStore((s) => s.setThreads);
+  const existingProjectPaths = useMemo(() => getProjectPaths(storeThreads), [storeThreads]);
   const handleSkipFirstRunQuest = useCallback(() => {
     // #707: Persist skip to localStorage so refreshing doesn't re-trigger
     try {
@@ -837,6 +841,44 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
     [navigateToThread, setThreads],
   );
 
+  const handleUpgradeToDevelopment = useCallback(
+    async (opts: NewThreadOptions) => {
+      if (!opts.projectPath) return;
+      try {
+        const res = await apiFetch(`/api/threads/${encodeURIComponent(threadId)}/upgrade`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetMode: 'development',
+            projectPath: opts.projectPath,
+            ...(opts.title ? { title: opts.title } : {}),
+            ...(opts.preferredCats?.length ? { preferredCats: opts.preferredCats } : {}),
+          }),
+        });
+        if (!res.ok) {
+          console.error('[upgradeToDevelopment] POST /api/threads/:id/upgrade failed:', res.status, await res.text());
+          return;
+        }
+        const body = (await res.json()) as { thread: Thread };
+        setShowUpgradePicker(false);
+        setCurrentProject(opts.projectPath);
+        try {
+          const listRes = await apiFetch('/api/threads');
+          if (listRes.ok) {
+            const data = (await listRes.json()) as { threads: Thread[] };
+            setThreads(data.threads);
+          }
+        } catch {
+          // Navigation is the priority; sidebar refresh can recover later.
+        }
+        navigateToThread(body.thread.id);
+      } catch (err) {
+        console.error('[upgradeToDevelopment] exception:', err);
+      }
+    },
+    [navigateToThread, setCurrentProject, setThreads, threadId],
+  );
+
   const handleSearchKnowledge = useCallback(() => {
     const fromParam = threadId ? `?from=${encodeURIComponent(threadId)}` : '';
     assignDocumentRoute(`/memory/search${fromParam}`, typeof window !== 'undefined' ? window : undefined);
@@ -918,8 +960,21 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
               setStatusPanelOpen(true);
             }
           }}
+          onUpgradeFromCasual={() => setShowUpgradePicker(true)}
           defaultCatId={targetCats[0] || 'opus'}
         />
+        {showUpgradePicker && (
+          <DirectoryPickerModal
+            existingProjects={existingProjectPaths}
+            onSelect={handleUpgradeToDevelopment}
+            onCancel={() => setShowUpgradePicker(false)}
+            initialMode="development"
+            modeOptions={['development']}
+            heading="升级到开发协作"
+            submitLabel="创建开发会话"
+            allowLobby={false}
+          />
+        )}
 
         {intentMode === 'ideate' && <ParallelStatusBar onStop={handleStop} threadId={threadId} />}
         {showThinkingIndicator && <ThinkingIndicator onCancel={cancelInvocation} threadId={threadId} />}

@@ -3,9 +3,8 @@
  * All cats respond independently to the same message.
  */
 
-import type { CatConfig, CatId } from '@cat-cafe/shared';
+import type { CatConfig, CatId, ContextBudget } from '@cat-cafe/shared';
 import { catRegistry, resolveWorkflowSopSkill } from '@cat-cafe/shared';
-import { getCatContextBudget } from '../../../../../config/cat-budgets.js';
 import { getConfigSessionStrategy, isSessionChainEnabled } from '../../../../../config/cat-config-loader.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import {
@@ -55,6 +54,12 @@ import { accumulateTextAggregate } from '../text-aggregation.js';
 import { type ContextEvalInput, extractContextEvalSignals } from './context-eval.js';
 import { buildBriefingMessage } from './format-briefing.js';
 import { extractRichFromText, isValidRichBlock } from './rich-block-extract.js';
+import {
+  isCasualModePrompt,
+  promptTextSegment,
+  shouldRecordPromptSegmentDiagnostics,
+  type RoutePromptSegmentDiagnostics,
+} from './prompt-segment-diagnostics.js';
 import type { RouteOptions, RouteStrategyDeps } from './route-helpers.js';
 import {
   assembleIncrementalContext,
@@ -71,6 +76,11 @@ import {
 } from './route-helpers.js';
 import { appendThinkingChunk, renderThinkingChunks } from './thinking-chunks.js';
 import { buildVoteTally, checkVoteCompletion, extractVoteFromText, VOTE_RESULT_SOURCE } from './vote-intercept.js';
+import {
+  buildPromptProfileStaticIdentity,
+  getPromptProfileContextBudget,
+  resolvePromptProfile,
+} from './casual-prompt-profile.js';
 
 const log = createModuleLogger('route-parallel');
 
@@ -93,11 +103,14 @@ export async function* routeParallel(
     currentUserMessageId,
     modeSystemPrompt,
     modeSystemPromptByCat,
+    promptProfile: requestedPromptProfile,
   } = options;
   const thinkingMode = options.thinkingMode ?? 'play';
   // P2-3 fix: also consider default MCP server path (ClaudeAgentService has fallback resolution)
   const mcpServerPath = process.env.CAT_CAFE_MCP_SERVER_PATH || resolveDefaultClaudeMcpServerPath();
   const incrementalMode = Boolean(currentUserMessageId && deps.deliveryCursorStore);
+  const routePromptProfile = resolvePromptProfile(requestedPromptProfile, modeSystemPrompt);
+  const isCasualProfile = routePromptProfile === 'casual';
 
   const degradationMsgs: AgentMessage[] = [];
   const boundaryByCat = new Map<CatId, string | undefined>();
@@ -213,16 +226,19 @@ export async function* routeParallel(
       const hasNativeL0 = service.injectsL0Natively?.() ?? false;
       // Staging is injected in invoke-single-cat independently of staticIdentity
       // (Cloud R2 P1 #2237 L1099). See route-serial.ts for the architecture rationale.
-      const staticIdentity = hasNativeL0
-        ? buildStaticIdentityPackOnly(catId, { packBlocks })
-        : buildStaticIdentity(catId, { mcpAvailable, packBlocks });
+      const staticIdentity = buildPromptProfileStaticIdentity(catId, threadId, routePromptProfile, () =>
+        hasNativeL0
+          ? buildStaticIdentityPackOnly(catId, { packBlocks })
+          : buildStaticIdentity(catId, { mcpAvailable, packBlocks }),
+      );
       // F041: inject HTTP callback only when MCP is NOT actually available (fallback)
-      const mcpInstructions = needsMcpInjection(mcpAvailable, catConfig?.clientId)
-        ? buildMcpCallbackInstructions({
-            currentCatId: catId as string,
-            teammates: teammates.map((id) => id as string),
-          })
-        : '';
+      const mcpInstructions =
+        !isCasualProfile && needsMcpInjection(mcpAvailable, catConfig?.clientId)
+          ? buildMcpCallbackInstructions({
+              currentCatId: catId as string,
+              teammates: teammates.map((id) => id as string),
+            })
+          : '';
       // F091: Inject linked signal articles into context
       let activeSignals:
         | readonly {
@@ -235,7 +251,7 @@ export async function* routeParallel(
             relatedDiscussions?: readonly { sessionId: string; snippet: string; score: number }[] | undefined;
           }[]
         | undefined;
-      if (deps.invocationDeps.signalArticleLookup) {
+      if (!isCasualProfile && deps.invocationDeps.signalArticleLookup) {
         try {
           const signals = await deps.invocationDeps.signalArticleLookup(threadId);
           if (signals.length > 0) activeSignals = signals;
@@ -250,7 +266,7 @@ export async function* routeParallel(
       // off: skip entirely
       let alwaysOnDocs: readonly { anchor: string; title: string; summary: string }[] | undefined;
       let alwaysOnInjectionMode: 'off' | 'shadow' | 'on' = 'off';
-      if (deps.evidenceStore) {
+      if (!isCasualProfile && deps.evidenceStore) {
         try {
           const { freezeFlags } = await import('../../../../../domains/memory/f163-types.js');
           const f163Flags = freezeFlags();
@@ -269,22 +285,24 @@ export async function* routeParallel(
         }
       }
 
-      const invocationContext = buildInvocationContext({
-        catId,
-        mode: 'parallel',
-        teammates,
-        mcpAvailable,
-        ...(promptTags && promptTags.length > 0 ? { promptTags } : {}),
-        ...(activeParticipants.length > 0 ? { activeParticipants } : {}),
-        ...(routingPolicy ? { routingPolicy } : {}),
-        ...(sopStageHint ? { sopStageHint } : {}),
-        ...(activeSignals ? { activeSignals } : {}),
-        ...(voiceMode ? { voiceMode } : {}),
-        ...(bootcampState ? { bootcampState, threadId, bootcampMemberCount } : {}),
-        ...(alwaysOnDocs && alwaysOnInjectionMode === 'on' ? { alwaysOnDocs } : {}),
-        ...guideContextForCat(guideCtx, catId, targetCatIds, threadId),
-        ...conciergeContextForCat(conciergeCtx, catId as string),
-      });
+      const invocationContext = isCasualProfile
+        ? ''
+        : buildInvocationContext({
+            catId,
+            mode: 'parallel',
+            teammates,
+            mcpAvailable,
+            ...(promptTags && promptTags.length > 0 ? { promptTags } : {}),
+            ...(activeParticipants.length > 0 ? { activeParticipants } : {}),
+            ...(routingPolicy ? { routingPolicy } : {}),
+            ...(sopStageHint ? { sopStageHint } : {}),
+            ...(activeSignals ? { activeSignals } : {}),
+            ...(voiceMode ? { voiceMode } : {}),
+            ...(bootcampState ? { bootcampState, threadId, bootcampMemberCount } : {}),
+            ...(alwaysOnDocs && alwaysOnInjectionMode === 'on' ? { alwaysOnDocs } : {}),
+            ...guideContextForCat(guideCtx, catId, targetCatIds, threadId),
+            ...conciergeContextForCat(conciergeCtx, catId as string),
+          });
       const continuityCapsule = buildCapsuleFromRouteState({
         threadId,
         catId: catId as string,
@@ -314,6 +332,7 @@ export async function* routeParallel(
         );
       }
       if (
+        !isCasualProfile &&
         !isParReborn &&
         isSessionChainEnabled(catId) &&
         deps.invocationDeps.sessionChainStore &&
@@ -341,10 +360,18 @@ export async function* routeParallel(
       }
 
       let prompt: string;
+      let diagnosticModePrompt = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt ?? '';
+      let diagnosticContextText = '';
+      let diagnosticContextSegmentName = 'contextHistory';
+      let diagnosticExplicitCurrentMessage = '';
+      let diagnosticContextBudget: ContextBudget | undefined;
+      let diagnosticEffectiveContextBudget: number | undefined;
       if (incrementalMode) {
         // A+ fix: calculate effective context budget by deducting ALL system parts from maxPromptTokens.
         const parCatModePromptForBudget = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
-        const parIncBudget = getCatContextBudget(catId as string);
+        const parIncBudget = getPromptProfileContextBudget(catId as string, routePromptProfile);
+        diagnosticModePrompt = parCatModePromptForBudget ?? '';
+        diagnosticContextBudget = parIncBudget;
         const parIncSystemTokens = estimateTokens(
           [staticIdentity, invocationContext, parCatModePromptForBudget, bootstrapCtx, mcpInstructions]
             .filter(Boolean)
@@ -355,6 +382,7 @@ export async function* routeParallel(
           Math.max(0, parIncBudget.maxPromptTokens - parIncSystemTokens - parIncMessageTokens - 200),
           parIncBudget.maxContextTokens,
         );
+        diagnosticEffectiveContextBudget = parEffectiveContextBudget;
 
         const inc = await assembleIncrementalContext(
           deps,
@@ -412,20 +440,28 @@ export async function* routeParallel(
         /* @segment R2 — Mode System Prompt (per-cat) */
         const parCatModePrompt = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
         const parts = [invocationContext, parCatModePrompt, bootstrapCtx, mcpInstructions].filter(Boolean);
+        diagnosticModePrompt = parCatModePrompt ?? '';
+        diagnosticContextSegmentName = 'incrementalContext';
+        diagnosticContextText = inc.contextText;
         if (inc.contextText) parts.push(inc.contextText);
         // F35 fix: only inject raw message when it was genuinely absent from unseen rows.
         // Defensive guard: if the current message ID is already present anywhere in
         // the assembled context text, do not append the raw message again.
-        if (shouldAppendExplicitCurrentMessage(inc, currentUserMessageId)) parts.push(message);
+        if (shouldAppendExplicitCurrentMessage(inc, currentUserMessageId)) {
+          diagnosticExplicitCurrentMessage = message;
+          parts.push(message);
+        }
         prompt = parts.join('\n\n---\n\n');
       } else {
         // Per-cat context budget (Phase 4.0)
         let catContextHistory = contextHistory;
         if (history && history.length > 0 && !contextHistory) {
-          const budget = getCatContextBudget(catId as string);
+          const budget = getPromptProfileContextBudget(catId as string, routePromptProfile);
+          diagnosticContextBudget = budget;
           // F8: token-based budget — estimate non-context tokens, remainder goes to context
           // A+ fix: include catModePrompt + bootstrapCtx in system parts estimate (P2-1)
           const parCatModePromptLegacyForBudget = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
+          diagnosticModePrompt = parCatModePromptLegacyForBudget ?? '';
           const parSystemTokens = estimateTokens(
             [staticIdentity, invocationContext, parCatModePromptLegacyForBudget, bootstrapCtx, mcpInstructions]
               .filter(Boolean)
@@ -433,6 +469,7 @@ export async function* routeParallel(
           );
           const parPromptTokens = estimateTokens(message);
           const budgetForContext = Math.max(0, budget.maxPromptTokens - parSystemTokens - parPromptTokens - 200);
+          diagnosticEffectiveContextBudget = Math.min(budgetForContext, budget.maxContextTokens);
           const { contextText, messageCount } = assembleContext(history, {
             maxMessages: budget.maxMessages,
             maxContentLength: budget.maxContentLengthPerMsg,
@@ -453,6 +490,8 @@ export async function* routeParallel(
         }
 
         const parCatModePromptLegacy = modeSystemPromptByCat?.[catId as string] ?? modeSystemPrompt;
+        diagnosticModePrompt = parCatModePromptLegacy ?? '';
+        diagnosticContextText = catContextHistory ?? '';
         if (invocationContext || parCatModePromptLegacy || mcpInstructions || bootstrapCtx) {
           const parts = [invocationContext, parCatModePromptLegacy, bootstrapCtx, mcpInstructions].filter(Boolean);
           if (catContextHistory) parts.push(catContextHistory);
@@ -468,6 +507,40 @@ export async function* routeParallel(
       if (conciergeSearchContextString && conciergeContextForCat(conciergeCtx, catId as string)?.conciergeConfig) {
         prompt = `${prompt}\n${conciergeSearchContextString}`;
       }
+
+      const promptDiagnostics: RoutePromptSegmentDiagnostics | undefined = shouldRecordPromptSegmentDiagnostics(
+        diagnosticModePrompt,
+      )
+        ? {
+            routeStrategy: 'parallel',
+            mode: isCasualModePrompt(diagnosticModePrompt) ? 'casual' : 'other',
+            threadId,
+            catId: catId as string,
+            incrementalMode,
+            nativeL0Provider: hasNativeL0,
+            mcpAvailable,
+            ...(diagnosticContextBudget ? { contextBudget: diagnosticContextBudget } : {}),
+            ...(diagnosticEffectiveContextBudget !== undefined
+              ? { effectiveContextBudget: diagnosticEffectiveContextBudget }
+              : {}),
+            routeSegments: [
+              promptTextSegment(
+                'routeMessageSystemPrompt',
+                staticIdentity,
+                hasNativeL0
+                  ? 'pack-only message-system appendix; full L0 is provider-native'
+                  : 'full static identity for non-native L0 provider',
+              ),
+              promptTextSegment('invocationContext', invocationContext),
+              promptTextSegment('modeSystemPrompt', diagnosticModePrompt),
+              promptTextSegment('bootstrapContext', bootstrapCtx),
+              promptTextSegment('mcpFallbackInstructions', mcpInstructions),
+              promptTextSegment(diagnosticContextSegmentName, diagnosticContextText),
+              promptTextSegment('explicitCurrentMessage', diagnosticExplicitCurrentMessage),
+              promptTextSegment('routePromptFinal', prompt, 'final prompt assembled by route layer before invoke'),
+            ],
+          }
+        : undefined;
 
       // F-parallel-cancel: each concurrent cat listens to ITS OWN slot signal, not the
       // shared primaryController.signal — canceling one cat must not abort its siblings.
@@ -490,6 +563,8 @@ export async function* routeParallel(
         ...(targetUploadDir ? { uploadDir: targetUploadDir } : {}),
         ...(catSignal ? { signal: catSignal } : {}),
         ...(staticIdentity ? { systemPrompt: staticIdentity } : {}),
+        promptProfile: routePromptProfile,
+        ...(promptDiagnostics ? { promptDiagnostics } : {}),
         // F194 Phase Z2 (砚砚 catch 2026-05-09)：parallel route 必须传 parentInvocationId，
         // 与 route-serial.ts:725 对齐。否则 child registry record 缺 parentInvocationId →
         // helper namespace bridge 失效 → ideate/parallel 场景气泡又裂。

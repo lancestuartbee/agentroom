@@ -16,6 +16,7 @@ import type {
   CatHandoffNote,
   CatId,
   ContextHealth,
+  SessionPromptProfile,
   SessionRecord,
   SessionStatus,
   SessionUsageSnapshot,
@@ -33,7 +34,8 @@ const DEFAULT_TTL_SECONDS = 0; // persistent — set >0 via env to enable expiry
  * ARGV[1] = id, ARGV[2] = cliSessionId, ARGV[3] = threadId, ARGV[4] = catId,
  * ARGV[5] = userId, ARGV[6] = now, ARGV[7] = reuseExistingCliSession flag,
  * ARGV[8] = chainKey value ('' = none, KEYS[5] left untouched)
- * ARGV[9] = workingDirectory ('' = none), ARGV[10] = workspaceFingerprint ('' = none)
+ * ARGV[9] = workingDirectory ('' = none), ARGV[10] = workspaceFingerprint ('' = none),
+ * ARGV[11] = promptProfile ('' = legacy/development)
  *
  * Returns: {'existing', existingId} when cliSessionId is already claimed,
  *          {'created', id, seq} when a new record is created.
@@ -55,6 +57,7 @@ if ARGV[8] ~= '' then
 end
 if ARGV[9] ~= '' then redis.call('HSET', KEYS[3], 'workingDirectory', ARGV[9]) end
 if ARGV[10] ~= '' then redis.call('HSET', KEYS[3], 'workspaceFingerprint', ARGV[10]) end
+if ARGV[11] ~= '' then redis.call('HSET', KEYS[3], 'promptProfile', ARGV[11]) end
 ${DEFAULT_TTL_SECONDS > 0 ? `redis.call('EXPIRE', KEYS[3], ${DEFAULT_TTL_SECONDS})` : '-- persistent mode: no EXPIRE'}
 redis.call('ZADD', KEYS[2], seq, ARGV[1])
 ${DEFAULT_TTL_SECONDS > 0 ? `redis.call('EXPIRE', KEYS[2], ${DEFAULT_TTL_SECONDS})` : '-- persistent mode: no EXPIRE'}
@@ -91,8 +94,8 @@ export class RedisSessionChainStore implements ISessionChainStore {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const id = randomUUID();
       const now = String(Date.now());
-      const activeKey = SessionChainKeys.active(input.catId, input.threadId);
-      const chainSetKey = SessionChainKeys.chain(input.catId, input.threadId);
+      const activeKey = SessionChainKeys.active(input.catId, input.threadId, input.promptProfile);
+      const chainSetKey = SessionChainKeys.chain(input.catId, input.threadId, input.promptProfile);
       const detailKey = SessionChainKeys.detail(id);
       // F198 Bug #3: chainKey index key. When input has no chainKey we still
       // pass a placeholder 5th key to keep numkeys fixed; the Lua guards on
@@ -117,6 +120,7 @@ export class RedisSessionChainStore implements ISessionChainStore {
         input.chainKey ?? '',
         input.workingDirectory ?? '',
         input.workspaceFingerprint ?? '',
+        input.promptProfile && input.promptProfile !== 'development' ? input.promptProfile : '',
       )) as [string, string, string?];
 
       const [status, recordId, seqRaw] = result;
@@ -134,6 +138,7 @@ export class RedisSessionChainStore implements ISessionChainStore {
         threadId: input.threadId,
         catId: input.catId as CatId,
         userId: input.userId,
+        ...(input.promptProfile && input.promptProfile !== 'development' ? { promptProfile: input.promptProfile } : {}),
         seq,
         status: 'active',
         messageCount: 0,
@@ -154,16 +159,20 @@ export class RedisSessionChainStore implements ISessionChainStore {
     return this.hydrate(data);
   }
 
-  async getActive(catId: CatId, threadId: string): Promise<SessionRecord | null> {
-    const activeId = await this.redis.get(SessionChainKeys.active(catId, threadId));
+  async getActive(
+    catId: CatId,
+    threadId: string,
+    promptProfile?: SessionPromptProfile,
+  ): Promise<SessionRecord | null> {
+    const activeId = await this.redis.get(SessionChainKeys.active(catId, threadId, promptProfile));
     if (!activeId) return null;
     const record = await this.get(activeId);
     if (!record || record.status !== 'active') return null;
     return record;
   }
 
-  async getChain(catId: CatId, threadId: string): Promise<SessionRecord[]> {
-    const ids = await this.redis.zrange(SessionChainKeys.chain(catId, threadId), 0, -1);
+  async getChain(catId: CatId, threadId: string, promptProfile?: SessionPromptProfile): Promise<SessionRecord[]> {
+    const ids = await this.redis.zrange(SessionChainKeys.chain(catId, threadId, promptProfile), 0, -1);
     if (!ids.length) return [];
 
     const pipeline = this.redis.pipeline();
@@ -187,8 +196,10 @@ export class RedisSessionChainStore implements ISessionChainStore {
     // Since we can't easily enumerate by threadId with sorted sets,
     // we use a secondary approach: scan detail hashes.
     // For Phase A this is acceptable (low volume); Phase B+ can add a thread index.
-    const pattern = `session-chain:*:${threadId}`;
-    const chainKeys = await this.scanKeys(pattern);
+    const chainKeys = [
+      ...(await this.scanKeys(`session-chain:*:${threadId}`)),
+      ...(await this.scanKeys(`session-chain:*:${threadId}:profile:*`)),
+    ];
 
     const allIds: string[] = [];
     for (const chainKey of chainKeys) {
@@ -248,7 +259,8 @@ export class RedisSessionChainStore implements ISessionChainStore {
       const catId = await this.redis.hget(detailKey, 'catId');
       const threadId = await this.redis.hget(detailKey, 'threadId');
       if (catId && threadId) {
-        const activeKey = SessionChainKeys.active(catId, threadId);
+        const promptProfile = (await this.redis.hget(detailKey, 'promptProfile')) as SessionPromptProfile | null;
+        const activeKey = SessionChainKeys.active(catId, threadId, promptProfile ?? undefined);
         if (patch.status === 'active') {
           if (DEFAULT_TTL_SECONDS > 0) {
             await this.redis.set(activeKey, id, 'EX', DEFAULT_TTL_SECONDS);
@@ -370,6 +382,7 @@ export class RedisSessionChainStore implements ISessionChainStore {
       threadId: data.threadId!,
       catId: data.catId as CatId,
       userId: data.userId!,
+      ...(data.promptProfile ? { promptProfile: data.promptProfile as SessionPromptProfile } : {}),
       ...(data.workingDirectory ? { workingDirectory: data.workingDirectory } : {}),
       ...(data.workspaceFingerprint ? { workspaceFingerprint: data.workspaceFingerprint } : {}),
       seq: parseInt(data.seq!, 10),

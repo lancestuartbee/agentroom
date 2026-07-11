@@ -205,6 +205,13 @@ export class ClaudeBgCarrierService implements AgentService {
     return l0Path;
   }
 
+  private writeNativeSystemPromptOverrideToTempFile(content: string): string {
+    const l0Dir = mkdtempSync(join(tmpdir(), 'cat-cafe-l0-'));
+    const l0Path = join(l0Dir, 'system-prompt-l0.md');
+    writeFileSync(l0Path, content, 'utf8');
+    return l0Path;
+  }
+
   /**
    * Launch a `claude --bg <prompt>` background job and resolve once the
    * daemon supervisor has acknowledged the dispatch with a short id.
@@ -213,7 +220,13 @@ export class ClaudeBgCarrierService implements AgentService {
    * reject instead of hanging.
    */
   async startJob(prompt: string, options?: AgentServiceOptions): Promise<StartJobResult> {
-    const l0Path = await this.compileL0ToTempFile();
+    const isCasualProfile = options?.promptProfile === 'casual';
+    const effectiveSessionId = isCasualProfile ? undefined : options?.sessionId;
+    const nativeSystemPromptOverride =
+      options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined;
+    const l0Path = nativeSystemPromptOverride
+      ? this.writeNativeSystemPromptOverrideToTempFile(nativeSystemPromptOverride)
+      : await this.compileL0ToTempFile();
     return new Promise<StartJobResult>((resolve, reject) => {
       // Critical: even with --bg, the child inherits parent env unless we
       // explicitly strip CLAUDE_CODE_ENTRYPOINT. Otherwise transcript entrypoint
@@ -273,8 +286,8 @@ export class ClaudeBgCarrierService implements AgentService {
       // record's latestResumeSessionId. Spike 2026-06-03 (3-turn real run):
       // `claude --bg --resume <uuid>` restores history with NO replay/cross-talk.
       // Guard non-UUID ids (e.g. the 8-hex daemon shortId) — the daemon rejects them.
-      if (options?.sessionId && UUID_PATTERN.test(options.sessionId)) {
-        args.push('--resume', options.sessionId);
+      if (effectiveSessionId && UUID_PATTERN.test(effectiveSessionId)) {
+        args.push('--resume', effectiveSessionId);
       }
       // #840: write the append-system-prompt payload (pack blocks + briefing) to
       // a temp file so it rides `--append-system-prompt-file <path>` instead of
@@ -308,7 +321,7 @@ export class ClaudeBgCarrierService implements AgentService {
       //
       // Windows: claude CLI treats inline JSON as a file path → write JSON
       // to a temp file. POSIX: pass JSON inline (matches ClaudeAgentService).
-      if (options?.callbackEnv && this.mcpServerPath) {
+      if (!isCasualProfile && options?.callbackEnv && this.mcpServerPath) {
         const IS_WINDOWS = process.platform === 'win32';
         if (IS_WINDOWS) {
           if (!this.mcpConfigFilePath || !existsSync(this.mcpConfigFilePath)) {

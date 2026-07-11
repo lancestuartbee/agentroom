@@ -703,6 +703,7 @@ export type {
   ContextManagementHint,
   SealReason,
   SealResult,
+  SessionPromptProfile,
   SessionRecord,
   SessionStatus,
   SessionStrategy,
