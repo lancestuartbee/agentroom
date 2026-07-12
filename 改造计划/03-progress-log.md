@@ -350,3 +350,9 @@ git diff --check
 - API build 通过。
 - Codex provider + casual prompt 定向测试共 52 个通过。
 - `git diff --check` 通过。
+
+遗留事项：
+
+- Codex 真常驻 carrier 暂缓，详见 `11-codex-app-server-carrier.md`。
+- 触发条件是后续 Codex/GPT agent 的 token/cache 成本再次成为主要瓶颈。
+- 当前先保留 `codex exec resume` 路径，不在本阶段引入 app-server JSON-RPC client。
