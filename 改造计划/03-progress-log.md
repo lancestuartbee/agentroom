@@ -297,3 +297,56 @@ git diff --check
 - 这些字段不再进入子进程环境，也不再影响启动签名。
 - 保留账号/模型/模式相关环境变量，避免影响 subscription/api_key 选择。
 - 加强 `claude-stream-json-carrier.test.js`：两轮 casual 调用带不同 invocation/token，仍必须只 spawn 一个 Claude 进程。
+
+真实验证结果：
+
+- 修复后同一 casual 线程内 Claude Code CLI PID 稳定为 `5018`。
+- Claude sessionId 继续稳定为 `41de0f1a-93f2-4c84-a98a-330c388c8db8`。
+- 最近三轮 cache 命中率保持高位：
+  - `input=24268` / `cacheRead=23989` / `cacheCreation=277`，命中约 `98.9%`
+  - `input=24967` / `cacheRead=24266` / `cacheCreation=699`，命中约 `97.2%`
+  - `input=25768` / `cacheRead=24965` / `cacheCreation=801`，命中约 `96.9%`
+- 结论：Claude Code casual carrier 已解决“同一线程频繁重启 CLI 导致 cache 不稳定”的主要问题。后续成本波动主要来自输出长度、上下文增长和 Claude Code 自身运行时注入。
+
+验证：
+
+```bash
+corepack pnpm --filter @cat-cafe/api build
+CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT=1 bash ./packages/api/scripts/with-test-home.sh node --test packages/api/test/claude-stream-json-carrier.test.js packages/api/test/claude-carrier-factory.test.js
+git diff --check
+```
+
+### Codex casual CLI 轻量化修复
+
+背景：
+
+- Codex 当前路径仍是 `codex exec` / `codex exec resume`，不是常驻 OS 进程。
+- casual 模式已经跳过 Cat Cafe MCP，并使用 `--ignore-user-config --ignore-rules`，同一线程通过 sessionId resume 来提高 prompt cache 命中。
+- 进一步检查 `codex app-server` 后确认它是完整 JSON-RPC 客户端协议，会暴露审批、文件、进程、认证刷新等 server request 面；不适合在本轮直接替换 casual carrier，需要单独设计协议适配和安全策略。
+
+调整：
+
+- `CodexAgentService` 的 casual 路径不再继承 OpenAI provider 默认 `xhigh` reasoning effort。
+- casual Codex effort 以 `medium` 为上限：
+  - 显式配置为 `low` 时保留 `low`。
+  - 其他 `medium/high/max/xhigh` 均降为 `medium`。
+- 开发协作模式不受影响，仍保留既有 effort 配置和 MCP 注入逻辑。
+- casual 子进程环境中过滤一次性 callback 凭证：
+  - `CAT_CAFE_INVOCATION_ID`
+  - `CAT_CAFE_CALLBACK_TOKEN`
+- 这些字段不再进入 Codex child env，减少每轮动态噪音和凭证暴露面。
+- Antigravity / agy 暂不改动；当前没有发现类似 Claude stream-json 或 Codex app-server 的低风险常驻协议。
+
+验证：
+
+```bash
+corepack pnpm --filter @cat-cafe/api build
+CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT=1 bash ./packages/api/scripts/with-test-home.sh node --import ./packages/api/test/helpers/setup-cat-registry.js --test packages/api/test/codex-agent-service.test.js packages/api/test/casual-prompt-profile.test.js
+git diff --check
+```
+
+结果：
+
+- API build 通过。
+- Codex provider + casual prompt 定向测试共 52 个通过。
+- `git diff --check` 通过。

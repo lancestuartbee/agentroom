@@ -19,7 +19,11 @@ import { existsSync } from 'node:fs';
 import { dirname, join, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type CatId, createCatId } from '@cat-cafe/shared';
-import { getCatContextWindowConfig, getCatEffort } from '../../../../../config/cat-config-loader.js';
+import {
+  type CliEffortLevel,
+  getCatContextWindowConfig,
+  getCatEffort,
+} from '../../../../../config/cat-config-loader.js';
 import { getCatModel } from '../../../../../config/cat-models.js';
 import { getCodexApprovalPolicy, getCodexSandboxMode } from '../../../../../config/codex-cli.js';
 import { estimateCostFromTokens } from '../../../../../config/model-pricing.js';
@@ -103,6 +107,22 @@ function applyAuthMode(env: Record<string, string>, authMode: CodexAuthMode): Re
 
 const MAX_RECENT_STREAM_ERRORS = 5;
 const MAX_STREAM_ERROR_LENGTH = 240;
+const CASUAL_MAX_EFFORT: CliEffortLevel = 'medium';
+const VOLATILE_CALLBACK_ENV_KEYS = ['CAT_CAFE_INVOCATION_ID', 'CAT_CAFE_CALLBACK_TOKEN'] as const;
+
+function resolveCodexEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
+  const configured = getCatEffort(catId, undefined, 'openai');
+  if (options?.promptProfile !== 'casual') return configured;
+  return configured === 'low' ? 'low' : CASUAL_MAX_EFFORT;
+}
+
+function stripVolatileCallbackEnv(env: Record<string, string | null>): Record<string, string | null> {
+  const next = { ...env };
+  for (const key of VOLATILE_CALLBACK_ENV_KEYS) {
+    next[key] = null;
+  }
+  return next;
+}
 
 function collectCodexStreamError(event: unknown, recentErrors: string[]): void {
   if (typeof event !== 'object' || event === null) return;
@@ -443,7 +463,7 @@ export class CodexAgentService implements AgentService {
 
     const sandboxMode = getCodexSandboxMode();
     const approvalPolicy = getCodexApprovalPolicy();
-    const effortLevel = getCatEffort(this.catId as string, undefined, 'openai');
+    const effortLevel = resolveCodexEffort(this.catId as string, options);
     const reasoningArgs = ['--config', `model_reasoning_effort="${effortLevel}"`];
     const approvalArgs = ['--config', `approval_policy="${approvalPolicy}"`];
     const ctxConfig = getCatContextWindowConfig(this.catId as string);
@@ -635,7 +655,7 @@ export class CodexAgentService implements AgentService {
         }
       }
       const homeIsolated = authMode === 'api_key' && !!customBaseUrl;
-      const codexEnv = applyAuthMode(rawEnv, authMode);
+      let codexEnv = applyAuthMode(rawEnv, authMode);
 
       // Diagnostic logging: critical env state for debugging CLI startup failures
       log.info(
@@ -664,6 +684,9 @@ export class CodexAgentService implements AgentService {
           if (customBaseUrl && (k === 'OPENAI_BASE_URL' || k === 'OPENAI_API_BASE')) continue;
           codexEnv[k] = v;
         }
+      }
+      if (isCasualProfile) {
+        codexEnv = stripVolatileCallbackEnv(codexEnv);
       }
 
       const semanticCompletionController = new AbortController();

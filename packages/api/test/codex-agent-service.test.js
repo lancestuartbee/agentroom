@@ -260,6 +260,10 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
           promptProfile: 'casual',
           nativeSystemPrompt: '[Casual profile]\nminimal identity',
           workingDirectory,
+          callbackEnv: {
+            CAT_CAFE_INVOCATION_ID: 'inv-casual-1',
+            CAT_CAFE_CALLBACK_TOKEN: 'tok-casual-1',
+          },
         }),
       );
 
@@ -270,12 +274,21 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
       await promise;
 
       const args = spawnFn.mock.calls[0].arguments[1];
+      const spawnOpts = spawnFn.mock.calls[0].arguments[2];
       assert.ok(args.includes('--ignore-user-config'));
       assert.ok(args.includes('--ignore-rules'));
+      assert.ok(args.includes('model_reasoning_effort="medium"'), 'casual Codex effort must be capped at medium');
+      assert.equal(
+        args.includes('model_reasoning_effort="xhigh"'),
+        false,
+        'casual Codex must not use xhigh effort by default',
+      );
       assert.equal(args.includes('--ephemeral'), false, 'casual carrier mode must persist a resumable CLI session');
       assert.ok(args.includes('--skip-git-repo-check'));
       assert.equal(args.includes('--add-dir'), false, 'casual mode must not grant .git write access');
       assert.equal(args.includes('.git'), false, 'casual mode must not add .git as a writable directory');
+      assert.equal(spawnOpts.env.CAT_CAFE_INVOCATION_ID, undefined, 'casual child env must drop invocation id');
+      assert.equal(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, undefined, 'casual child env must drop callback token');
       assert.equal(
         args.some((arg) => String(arg).includes('mcp_servers.')),
         false,
