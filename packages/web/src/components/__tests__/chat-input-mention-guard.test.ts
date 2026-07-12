@@ -15,6 +15,10 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatInput } from '@/components/ChatInput';
+import type { Thread } from '@/stores/chat-types';
+import { useChatStore } from '@/stores/chatStore';
+
+const mockApiFetch = vi.hoisted(() => vi.fn());
 
 // ── Mocks ──
 vi.mock('@/components/icons/SendIcon', () => ({
@@ -28,6 +32,7 @@ vi.mock('@/components/icons/AttachIcon', () => ({
 }));
 vi.mock('@/components/ImagePreview', () => ({ ImagePreview: () => null }));
 vi.mock('@/utils/compressImage', () => ({ compressImage: (f: File) => Promise.resolve(f) }));
+vi.mock('@/utils/api-client', () => ({ apiFetch: mockApiFetch }));
 
 // Controllable useCatData mock — swap cats mid-test via mockCats
 const mockCats = { current: buildCatsWithPatterns() };
@@ -102,6 +107,8 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   mockCats.current = buildCatsWithPatterns();
+  mockApiFetch.mockResolvedValue({ ok: false });
+  useChatStore.setState({ threads: [] });
 });
 
 afterEach(() => {
@@ -136,6 +143,19 @@ function pressKey(key: string) {
   act(() => {
     ta.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
   });
+}
+
+function makeThread(overrides: Partial<Thread>): Thread {
+  return {
+    id: 'thread-test',
+    projectPath: 'default',
+    title: 'Test thread',
+    createdBy: 'default-user',
+    participants: [],
+    lastActiveAt: 1,
+    createdAt: 1,
+    ...overrides,
+  } as Thread;
 }
 
 describe('ChatInput mention menu guards', () => {
@@ -190,5 +210,72 @@ describe('ChatInput mention menu guards', () => {
 
     const ta = getTextarea();
     expect(ta.value).toContain('缅因');
+  });
+
+  it('casual thread mention menu only shows preferred cats and @all', () => {
+    useChatStore.setState({
+      threads: [
+        makeThread({
+          id: 'thread-casual',
+          mode: 'casual',
+          preferredCats: ['codex'],
+          participants: ['codex'],
+        }),
+      ],
+    });
+    render({ threadId: 'thread-casual' });
+
+    typeInTextarea('@');
+
+    expect(container.textContent).toContain('@缅因猫');
+    expect(container.textContent).toContain('@all');
+    expect(container.textContent).not.toContain('@布偶猫');
+    expect(container.textContent).not.toContain('@thread');
+  });
+
+  it('does not fall back to full mention candidates while thread metadata is missing', () => {
+    render({ threadId: 'thread-not-loaded' });
+
+    typeInTextarea('@');
+
+    expect(container.textContent).toContain('无匹配猫猫');
+    expect(container.textContent).not.toContain('@布偶猫');
+    expect(container.textContent).not.toContain('@缅因猫');
+    expect(container.textContent).not.toContain('@thread');
+  });
+
+  it('hydrates stale thread metadata before showing scoped casual mention candidates', async () => {
+    useChatStore.setState({
+      threads: [makeThread({ id: 'thread-stale', participants: [] })],
+    });
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () =>
+        makeThread({
+          id: 'thread-stale',
+          mode: 'casual',
+          preferredCats: ['codex'],
+          participants: [],
+        }),
+    });
+
+    render({ threadId: 'thread-stale' });
+    typeInTextarea('@');
+
+    expect(container.textContent).toContain('无匹配猫猫');
+    expect(container.textContent).not.toContain('@布偶猫');
+    expect(container.textContent).not.toContain('@缅因猫');
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    typeInTextarea('@');
+
+    expect(container.textContent).toContain('@缅因猫');
+    expect(container.textContent).toContain('@all');
+    expect(container.textContent).not.toContain('@布偶猫');
+    expect(container.textContent).not.toContain('@thread');
   });
 });

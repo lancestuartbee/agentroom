@@ -71,7 +71,7 @@ import { ThinkingIndicator } from './ThinkingIndicator';
 import { ThreadExecutionBar } from './ThreadExecutionBar';
 import { ThreadSidebar } from './ThreadSidebar';
 import { DirectoryPickerModal, type NewThreadOptions } from './ThreadSidebar/DirectoryPickerModal';
-import { assignDocumentRoute, pushThreadRouteWithHistory } from './ThreadSidebar/thread-navigation';
+import { assignDocumentRoute, CHAT_THREAD_ROUTE_EVENT, pushThreadRouteWithHistory } from './ThreadSidebar/thread-navigation';
 import { getProjectPaths } from './ThreadSidebar/thread-utils';
 import { VoteActiveBar } from './VoteActiveBar';
 import { type VoteConfig, VoteConfigModal } from './VoteConfigModal';
@@ -160,11 +160,26 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   const altActionName = useGameStore((s) => s.altActionName);
   const overlayMinimized = useGameStore((s) => s.overlayMinimized);
 
-  // Export mode: ?export=true triggers print-friendly layout (no scroll containers)
-  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const isExport = searchParams?.get('export') === 'true';
-  // AC-6: research=multi hint from Signal study "多猫研究" button
-  const isResearchMode = searchParams?.get('research') === 'multi';
+  // Query-driven modes are synced after mount so SSR and hydration first paint
+  // share the same structure.
+  const [routeOptions, setRouteOptions] = useState({ isExport: false, isResearchMode: false });
+  useEffect(() => {
+    const syncRouteOptions = () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      setRouteOptions({
+        isExport: searchParams.get('export') === 'true',
+        isResearchMode: searchParams.get('research') === 'multi',
+      });
+    };
+    syncRouteOptions();
+    window.addEventListener('popstate', syncRouteOptions);
+    window.addEventListener(CHAT_THREAD_ROUTE_EVENT, syncRouteOptions);
+    return () => {
+      window.removeEventListener('popstate', syncRouteOptions);
+      window.removeEventListener(CHAT_THREAD_ROUTE_EVENT, syncRouteOptions);
+    };
+  }, []);
+  const { isExport, isResearchMode } = routeOptions;
   const { clearTasks } = useTaskStore();
   const { cats, getCatById, refresh: refreshCats, isLoading, hasFetched } = useCatData();
   const workspaceWorktreeId = useChatStore((s) => s.workspaceWorktreeId);
@@ -655,6 +670,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
         <MessageActions key={msg.id} message={msg} threadId={threadId}>
           <ChatMessage
             message={msg}
+            threadId={threadId}
             getCatById={getCatById}
             onEditCat={handleEditCat}
             onEditCoCreator={handleEditCoCreator}
@@ -728,6 +744,29 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
       setSplitPaneTarget(threadId);
     }
   }, [viewMode, splitPaneThreadIds.length, threadId, setSplitPaneThreadIds, setSplitPaneTarget]);
+
+  const lastSplitRouteSyncRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (viewMode !== 'split' || threadId === 'default') return;
+    if (lastSplitRouteSyncRef.current === threadId && splitPaneThreadIds.includes(threadId)) return;
+    lastSplitRouteSyncRef.current = threadId;
+
+    if (splitPaneThreadIds.includes(threadId)) {
+      setSplitPaneTarget(threadId);
+      return;
+    }
+
+    const next = [...splitPaneThreadIds];
+    if (next.length < 4) {
+      next.push(threadId);
+    } else {
+      const currentTarget = useChatStore.getState().splitPaneTargetId;
+      const targetIdx = currentTarget ? next.indexOf(currentTarget) : -1;
+      next[targetIdx >= 0 ? targetIdx : 0] = threadId;
+    }
+    setSplitPaneThreadIds(next.filter(Boolean));
+    setSplitPaneTarget(threadId);
+  }, [viewMode, threadId, splitPaneThreadIds, setSplitPaneThreadIds, setSplitPaneTarget]);
 
   useEffect(() => {
     if (viewMode === 'split' && splitPaneThreadIds.length > 0) {

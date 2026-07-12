@@ -89,6 +89,8 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
 /* ── File path → VSCode link ──────────────────────────────── */
 const PROJECT_ROOT = process.env.NEXT_PUBLIC_PROJECT_ROOT ?? '';
+const AGENTROOM_REPORT_FILE_PATH_RE =
+  /(?:^|\s)`?((?:\/[^\s`]+)*\/Documents\/AgentRoom\/profiles\/[^/\s`]+\/threads\/[^/\s`]+\/reports\/[^\n\r`<>()\[\]]+?\.(?:markdown|md))(?:`?)/gi;
 const FILE_PATH_RE = /(?:^|\s)`?((?:\/[\w.@-]+)+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
 const REL_PATH_RE = /(?:^|\s)`?((?:packages|src|docs|tests?)\/[\w./@-]+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
 const WT_TAG_RE = /^\s*\[wt:([a-zA-Z0-9_/-]+)\]/;
@@ -109,24 +111,32 @@ function normalizeLocalFileHref(href: string): string {
   }
 }
 
+function decodeLocalPathHref(href: string): string {
+  try {
+    return decodeURI(href);
+  } catch {
+    return href;
+  }
+}
+
 function isExternalHref(href: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(href);
 }
 
 function isRelativeMarkdownReportHref(href: string): boolean {
-  const clean = stripMarkdownFragment(href);
+  const clean = decodeLocalPathHref(stripMarkdownFragment(href));
   if (!clean || clean.startsWith('/') || clean.startsWith('#') || isExternalHref(clean)) return false;
   return /\.(md|markdown)$/i.test(clean);
 }
 
 function isAgentRoomReportPath(href: string): boolean {
-  const clean = normalizeLocalFileHref(href);
+  const clean = decodeLocalPathHref(normalizeLocalFileHref(href));
   return AGENTROOM_REPORT_PATH_RE.test(clean) && /\.(md|markdown)$/i.test(clean);
 }
 
 function resolveArtifactReportDownloadHref(href: string | undefined, threadId: string | undefined): string | null {
   if (!href || !threadId) return null;
-  const clean = normalizeLocalFileHref(href);
+  const clean = decodeLocalPathHref(normalizeLocalFileHref(href));
   if (!clean) return null;
   if (!isRelativeMarkdownReportHref(clean) && !isAgentRoomReportPath(clean)) return null;
   return `${API_URL}/api/artifact-store/threads/${encodeURIComponent(threadId)}/download-path?path=${encodeURIComponent(clean)}`;
@@ -251,7 +261,7 @@ function ArtifactReportLink({
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       } catch (err) {
         console.error('[MarkdownContent] Failed to download artifact report', err);
-        window.open(href, '_blank', 'noopener,noreferrer');
+        window.alert?.('下载失败：文件可能已移动、删除，或不属于当前对话产物目录。');
       } finally {
         setDownloading(false);
       }
@@ -279,15 +289,15 @@ function ArtifactReportLink({
 function linkifyFilePaths(text: string, artifactThreadId?: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let lastIdx = 0;
-  const combined = new RegExp(`${FILE_PATH_RE.source}|${REL_PATH_RE.source}`, 'g');
+  const combined = new RegExp(`${AGENTROOM_REPORT_FILE_PATH_RE.source}|${FILE_PATH_RE.source}|${REL_PATH_RE.source}`, 'gi');
   let m: RegExpExecArray | null;
 
   combined.lastIndex = 0;
   while ((m = combined.exec(text)) !== null) {
     const fullMatch = m[0];
     const leading = fullMatch.match(/^\s/)?.[0] ?? '';
-    const path = m[1] ?? m[3];
-    const line = m[2] ?? m[4];
+    const path = m[1] ?? m[2] ?? m[4];
+    const line = m[3] ?? m[5];
     if (!path) continue;
 
     const start = m.index + leading.length;

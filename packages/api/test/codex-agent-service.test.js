@@ -299,6 +299,45 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
     }
   });
 
+  test('casual prompt profile upgrades read-only sandbox to workspace-write for shared artifacts', async () => {
+    const oldSandbox = process.env.CAT_CODEX_SANDBOX_MODE;
+    process.env.CAT_CODEX_SANDBOX_MODE = 'read-only';
+
+    const proc = createMockProcess();
+    const spawnFn = createMockSpawnFn(proc);
+    const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn, model: 'gpt-5.3-codex' });
+    const workingDirectory = mkdtempSync(join(import.meta.dirname ?? '.', 'codex-casual-writable-workdir-'));
+
+    try {
+      const promise = collect(
+        service.invoke('hello writable casual', {
+          promptProfile: 'casual',
+          nativeSystemPrompt: '[Casual profile]\nminimal identity',
+          workingDirectory,
+        }),
+      );
+
+      emitCodexEvents(proc, [
+        { type: 'thread.started', thread_id: 'thread-casual-writable' },
+        { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } },
+      ]);
+      await promise;
+
+      const args = spawnFn.mock.calls[0].arguments[1];
+      const sandboxFlagIndex = args.indexOf('--sandbox');
+      assert.ok(sandboxFlagIndex >= 0, 'fresh casual Codex exec must set sandbox explicitly');
+      assert.equal(args[sandboxFlagIndex + 1], 'workspace-write');
+      assert.equal(args.includes('read-only'), false, 'casual Codex must not start a read-only CLI session');
+    } finally {
+      rmSync(workingDirectory, { recursive: true, force: true });
+      if (oldSandbox === undefined) {
+        delete process.env.CAT_CODEX_SANDBOX_MODE;
+      } else {
+        process.env.CAT_CODEX_SANDBOX_MODE = oldSandbox;
+      }
+    }
+  });
+
   test('casual prompt profile resumes Codex CLI session without restoring heavy config', async () => {
     const proc = createMockProcess();
     const spawnFn = createMockSpawnFn(proc);
@@ -623,7 +662,7 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
     try {
       const proc = createMockProcess();
       const spawnFn = createMockSpawnFn(proc);
-      const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn });
+      const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn, model: 'gpt-5.3-codex' });
 
       const promise = collect(service.invoke('configurable'));
       emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 'thread-config' }]);
@@ -657,7 +696,7 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
     try {
       const proc = createMockProcess();
       const spawnFn = createMockSpawnFn(proc);
-      const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn });
+      const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn, model: 'gpt-5.3-codex' });
 
       const promise = collect(service.invoke('fallback'));
       emitCodexEvents(proc, [{ type: 'thread.started', thread_id: 'thread-fallback' }]);

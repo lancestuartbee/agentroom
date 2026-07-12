@@ -115,6 +115,23 @@ describe('casual mode routing', () => {
     assert.deepEqual(threadStore.get(thread.id).audience, { mode: 'all' });
   });
 
+  test('preferredCats also constrain explicit casual mentions', async () => {
+    const { router, threadStore } = await createRouterWithThreadStore();
+    const thread = threadStore.create('user-1', 'Casual room');
+    threadStore.updateThreadMode(thread.id, 'casual');
+    threadStore.updatePreferredCats(thread.id, ['codex']);
+
+    const outOfScope = await router.resolveTargetsAndIntent('@opus 你怎么看？', thread.id, { persist: true });
+    assert.deepEqual(outOfScope.targetCats, ['codex']);
+    assert.equal(outOfScope.hasMentions, false);
+    assert.deepEqual(threadStore.get(thread.id).audience, { mode: 'all' });
+
+    const inScope = await router.resolveTargetsAndIntent('@codex 你怎么看？', thread.id, { persist: true });
+    assert.deepEqual(inScope.targetCats, ['codex']);
+    assert.equal(inScope.hasMentions, true);
+    assert.deepEqual(threadStore.get(thread.id).audience, { mode: 'selected', agentIds: ['codex'] });
+  });
+
   test('development mode keeps legacy single-agent fallback', async () => {
     const { router, threadStore } = await createRouterWithThreadStore();
     const thread = threadStore.create('user-1', 'Development room');

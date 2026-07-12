@@ -337,6 +337,7 @@ interface CliOutputBlockProps {
   thinkingMode?: 'debug' | 'play';
   defaultExpanded?: boolean;
   breedColor?: string;
+  artifactThreadId?: string;
 }
 
 export function CliOutputBlock({
@@ -345,6 +346,7 @@ export function CliOutputBlock({
   thinkingMode,
   defaultExpanded = false,
   breedColor,
+  artifactThreadId,
 }: CliOutputBlockProps) {
   const isExport =
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('export') === 'true';
@@ -466,7 +468,10 @@ export function CliOutputBlock({
                 className="font-mono text-xs leading-relaxed cli-output-md"
               >
                 <span style={{ color: 'var(--cat-msg-inset-text)' }}>
-                  <MarkdownContent content={textEvents.map((e) => e.content).join('\n')} />
+                  <MarkdownContent
+                    content={textEvents.map((e) => e.content).join('\n')}
+                    artifactThreadId={artifactThreadId}
+                  />
                 </span>
               </div>
             </>

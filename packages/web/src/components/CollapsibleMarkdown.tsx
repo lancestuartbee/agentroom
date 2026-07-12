@@ -6,7 +6,15 @@ import { MarkdownContent } from './MarkdownContent';
 
 const COLLAPSED_MAX_HEIGHT = 320;
 
-export function CollapsibleMarkdown({ content, className }: { content: string; className?: string }) {
+export function CollapsibleMarkdown({
+  content,
+  className,
+  artifactThreadId,
+}: {
+  content: string;
+  className?: string;
+  artifactThreadId?: string;
+}) {
   const fold = shouldFoldText(content);
   const [expanded, setExpanded] = useState(false);
   const collapsed = fold && !expanded;
@@ -26,7 +34,7 @@ export function CollapsibleMarkdown({ content, className }: { content: string; c
   const toggle = useCallback(() => setExpanded((v) => !v), []);
 
   if (!fold) {
-    return <MarkdownContent content={content} className={className} />;
+    return <MarkdownContent content={content} className={className} artifactThreadId={artifactThreadId} />;
   }
 
   return (
@@ -35,7 +43,7 @@ export function CollapsibleMarkdown({ content, className }: { content: string; c
         className="overflow-hidden transition-[max-height] duration-200"
         style={collapsed ? { maxHeight: COLLAPSED_MAX_HEIGHT } : undefined}
       >
-        <MarkdownContent content={content} className={className} />
+        <MarkdownContent content={content} className={className} artifactThreadId={artifactThreadId} />
       </div>
       <button
         type="button"

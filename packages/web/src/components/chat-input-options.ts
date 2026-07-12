@@ -9,32 +9,53 @@ export interface CatOption {
   insert: string;
   color: string; // CSS color (var or hex) for inline style
   avatar: string;
-  /** Group mention (e.g. @thread, @all) — renders group icon instead of cat avatar */
+  /** Group mention (e.g. @all, @thread) — renders group icon instead of cat avatar */
   isGroup?: boolean;
 }
 
-/** Static group mention shortcuts — shown at top of autocomplete.
+interface MentionThreadScope {
+  mode?: 'casual' | 'roundtable' | 'development';
+  preferredCats?: string[];
+  participants?: string[];
+}
+
+export interface BuildCatOptionsOptions {
+  casual?: boolean;
+}
+
+/** Static group mention shortcuts — shown after individual cats in autocomplete.
  *  Aligned with backend AgentRouter.parseGroupMentions patterns. */
-const STATIC_GROUP_MENTIONS: CatOption[] = [
-  {
-    id: 'thread',
-    label: '@thread',
-    desc: '本帖全体参与猫猫',
-    insert: '@thread ',
-    color: GROUP_MENTION_COLOR,
-    avatar: '',
-    isGroup: true,
-  },
-  {
-    id: 'all',
-    label: '@all',
-    desc: '全体猫猫',
-    insert: '@all ',
-    color: GROUP_MENTION_COLOR,
-    avatar: '',
-    isGroup: true,
-  },
-];
+const THREAD_GROUP_MENTION: CatOption = {
+  id: 'thread',
+  label: '@thread',
+  desc: '本帖全体参与猫猫',
+  insert: '@thread ',
+  color: GROUP_MENTION_COLOR,
+  avatar: '',
+  isGroup: true,
+};
+
+const ALL_GROUP_MENTION: CatOption = {
+  id: 'all',
+  label: '@all',
+  desc: '全体猫猫',
+  insert: '@all ',
+  color: GROUP_MENTION_COLOR,
+  avatar: '',
+  isGroup: true,
+};
+
+const CASUAL_ALL_GROUP_MENTION: CatOption = {
+  id: 'all',
+  label: '@all',
+  desc: '本会话全部猫猫',
+  insert: '@all ',
+  color: GROUP_MENTION_COLOR,
+  avatar: '',
+  isGroup: true,
+};
+
+const DEFAULT_GROUP_MENTIONS: CatOption[] = [THREAD_GROUP_MENTION, ALL_GROUP_MENTION];
 
 /** Build breed-scoped group mention options (e.g. @全体布偶猫) from cat data.
  *  Only generates options for breeds with 2+ available cats. */
@@ -77,8 +98,17 @@ function isAvailable(cat: CatData): boolean {
   return cat.roster?.available !== false;
 }
 
-export function buildCatOptions(cats: CatData[]): CatOption[] {
-  const breedGroups = buildBreedGroupOptions(cats);
+export function scopeCatsForMentionOptions(cats: CatData[], thread?: MentionThreadScope | null): CatData[] {
+  if (thread?.mode !== 'casual') return cats;
+  const scopedIds = thread.preferredCats?.length ? thread.preferredCats : thread.participants;
+  if (!scopedIds?.length) return cats;
+
+  const allowed = new Set(scopedIds);
+  return cats.filter((cat) => allowed.has(cat.id));
+}
+
+export function buildCatOptions(cats: CatData[], options: BuildCatOptionsOptions = {}): CatOption[] {
+  const breedGroups = options.casual ? [] : buildBreedGroupOptions(cats);
   const individuals = cats
     .filter((cat) => cat.mentionPatterns.length > 0 && isAvailable(cat))
     .map((cat) => ({
@@ -89,10 +119,11 @@ export function buildCatOptions(cats: CatData[]): CatOption[] {
       color: catColorVar(cat.id, 'primary'),
       avatar: cat.avatar,
     }));
+  const groupMentions = options.casual ? [CASUAL_ALL_GROUP_MENTION] : DEFAULT_GROUP_MENTIONS;
   // Group mentions (@thread, @all, @全体xx猫) are low-frequency — put them
   // at the bottom so individual cats occupy the prime visible slots.
   // Users can still reach groups via arrow-up or by typing the filter text.
-  return [...individuals, ...STATIC_GROUP_MENTIONS, ...breedGroups];
+  return [...individuals, ...groupMentions, ...breedGroups];
 }
 
 /** Build whisper target options from dynamic cat data.

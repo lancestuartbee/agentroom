@@ -62,6 +62,7 @@ export function ThinkingContent({
   defaultExpanded = false,
   expandInExport = true,
   breedColor,
+  artifactThreadId,
 }: {
   content: string;
   className?: string;
@@ -69,6 +70,7 @@ export function ThinkingContent({
   defaultExpanded?: boolean;
   expandInExport?: boolean;
   breedColor?: string;
+  artifactThreadId?: string;
 }) {
   const isExport =
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('export') === 'true';
@@ -125,7 +127,7 @@ export function ThinkingContent({
             style={{ padding: '8px 12px 10px 12px', color: 'var(--cat-msg-inset-text)' }}
             className="text-xs leading-relaxed cli-output-md"
           >
-            <MarkdownContent content={content} className={className} />
+            <MarkdownContent content={content} className={className} artifactThreadId={artifactThreadId} />
           </div>
         </div>
       )}

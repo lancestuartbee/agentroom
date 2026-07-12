@@ -6,14 +6,21 @@ import { reconnectGame } from '@/hooks/useGameReconnect';
 import { useIMEGuard } from '@/hooks/useIMEGuard';
 import { usePathCompletion } from '@/hooks/usePathCompletion';
 import type { UploadStatus, WhisperOptions } from '@/hooks/useSendMessage';
-import type { DeliveryMode } from '@/stores/chat-types';
+import type { DeliveryMode, Thread } from '@/stores/chat-types';
 import { useChatStore } from '@/stores/chatStore';
 import { useInputHistoryStore } from '@/stores/inputHistoryStore';
 import { apiFetch } from '@/utils/api-client';
 import { compressImage } from '@/utils/compressImage';
 import { ChatInputActionButton } from './ChatInputActionButton';
 import { ChatInputMenus } from './ChatInputMenus';
-import { buildCatOptions, type CatOption, detectMenuTrigger, GAME_LIST, WEREWOLF_MODES } from './chat-input-options';
+import {
+  buildCatOptions,
+  type CatOption,
+  detectMenuTrigger,
+  GAME_LIST,
+  scopeCatsForMentionOptions,
+  WEREWOLF_MODES,
+} from './chat-input-options';
 import { deriveImageLifecycleStatus, isImageLifecycleBlockingSend } from './chat-input-upload-state';
 import { GameLobby, type GameStartPayload } from './game/GameLobby';
 import { HistorySearchModal } from './HistorySearchModal';
@@ -43,6 +50,24 @@ export {
 } from './thread-drafts';
 
 const MAX_IMAGE_DRAFT_THREADS = 5;
+
+function hasMentionRoutingMetadata(thread: Thread | null | undefined): thread is Thread {
+  if (!thread?.mode) return false;
+  if (thread.mode !== 'casual') return true;
+  return (
+    Array.isArray(thread.preferredCats) ||
+    (Array.isArray(thread.participants) && thread.participants.length > 0) ||
+    !!thread.audience
+  );
+}
+
+function mergeThreadMetadata(existing: Thread[], thread: Thread): Thread[] {
+  const idx = existing.findIndex((item) => item.id === thread.id);
+  if (idx < 0) return [thread, ...existing];
+  const next = [...existing];
+  next[idx] = { ...existing[idx], ...thread };
+  return next;
+}
 
 interface ChatInputProps {
   /** Thread ID for draft persistence — drafts are saved per-thread */
@@ -74,7 +99,19 @@ export function ChatInput({
 }: ChatInputProps) {
   const { cats } = useCatData();
   const ime = useIMEGuard();
-  const catOptions = useMemo(() => buildCatOptions(cats), [cats]);
+  const storeThread = useChatStore((s) =>
+    threadId ? s.threads.find((thread) => thread.id === threadId) : undefined,
+  );
+  const setThreads = useChatStore((s) => s.setThreads);
+  const [fetchedThread, setFetchedThread] = useState<Thread | null>(null);
+  const currentThread = fetchedThread?.id === threadId ? fetchedThread : storeThread;
+  const isCasualThread = currentThread?.mode === 'casual';
+  const mentionCats = useMemo(() => scopeCatsForMentionOptions(cats, currentThread), [cats, currentThread]);
+  const hasThreadMetadata = !threadId || hasMentionRoutingMetadata(currentThread);
+  const catOptions = useMemo(
+    () => (hasThreadMetadata ? buildCatOptions(mentionCats, { casual: isCasualThread }) : []),
+    [hasThreadMetadata, mentionCats, isCasualThread],
+  );
   // F108 Scene 2: whisper-eligible cats (CatData[] for WhisperCatSelector)
   const whisperCats = useMemo(() => cats.filter((c) => c.roster?.available !== false), [cats]);
 
@@ -144,6 +181,27 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageLifecycleStatus = deriveImageLifecycleStatus(isPreparingImages, uploadStatus);
   const sendTemporarilyDisabled = isImageLifecycleBlockingSend(imageLifecycleStatus);
+
+  useEffect(() => {
+    if (!threadId || fetchedThread?.id === threadId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch(`/api/threads/${threadId}`);
+        if (!res.ok) return;
+        const thread = (await res.json()) as Thread;
+        if (cancelled || thread.id !== threadId) return;
+        setFetchedThread(thread);
+        const currentThreads = useChatStore.getState().threads;
+        setThreads(mergeThreadMetadata(currentThreads, thread));
+      } catch {
+        // Best-effort metadata hydration; keep mention candidates empty until store/API recovers.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [threadId, storeThread, fetchedThread?.id, setThreads]);
 
   // F63-AC15: consume pendingChatInsert (ComposerDraftInsert) from workspace (thread-guarded)
   // #706: restores text, image attachments, and quote state from recall-edit

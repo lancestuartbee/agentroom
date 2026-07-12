@@ -39,6 +39,9 @@ function buildContentSecurityPolicy() {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  env: {
+    NEXT_PUBLIC_ENABLE_PWA_IN_DEV: enablePwaInDev ? '1' : '0',
+  },
   experimental: { proxyTimeout: 120_000 },
   // 允许 Tailscale 网段设备访问 dev server 的 /_next/* 资源
   allowedDevOrigins: ['100.0.0.0/8'],
@@ -48,6 +51,12 @@ const nextConfig = {
     // needs middleware (future work). Production keeps blocking 'unsafe-eval'.
     const csp = buildContentSecurityPolicy();
     return [
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
+        ],
+      },
       {
         source: '/:path*',
         headers: [

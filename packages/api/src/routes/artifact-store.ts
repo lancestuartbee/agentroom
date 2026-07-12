@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { ThreadArtifactDTO } from '@cat-cafe/shared';
@@ -120,16 +120,49 @@ function stripLinkFragment(raw: string): string {
   return raw.split('#')[0]?.trim() ?? '';
 }
 
-function resolveThreadReportDownloadPath(threadId: string, rawPath: string, env: ArtifactStoreEnv): string | null {
+async function canonicalPathForExistingOrRaw(path: string): Promise<string> {
+  return realpath(path).catch(() => path);
+}
+
+async function resolveThreadReportDownloadPath(
+  threadId: string,
+  rawPath: string,
+  env: ArtifactStoreEnv,
+): Promise<string | null> {
   const paths = resolveThreadArtifactPaths(threadId, env);
   const cleanPath = stripLinkFragment(expandHomePath(rawPath, env));
   if (!cleanPath) return null;
 
   const candidate = isAbsolute(cleanPath) ? resolve(cleanPath) : resolve(paths.reportsDir, cleanPath);
-  if (!isInside(paths.profileRoot, candidate) || !isInside(paths.reportsDir, candidate)) {
-    return null;
+  const canonicalRoot = await canonicalPathForExistingOrRaw(paths.root);
+  const canonicalCandidate = await canonicalPathForExistingOrRaw(candidate);
+
+  if (!isInside(canonicalRoot, canonicalCandidate)) return null;
+
+  const canonicalReportsDir = await canonicalPathForExistingOrRaw(paths.reportsDir);
+  if (isInside(canonicalReportsDir, canonicalCandidate)) {
+    return candidate;
   }
-  return candidate;
+
+  if (isAbsolute(cleanPath)) {
+    const rootRelative = relative(canonicalRoot, canonicalCandidate);
+    const parts = rootRelative.split(/[\\/]+/);
+    const threadSegment = sanitizeArtifactPathSegment(threadId, 'thread');
+    const reportsRoot =
+      parts[0] === 'profiles' &&
+      parts[1] &&
+      parts[2] === 'threads' &&
+      parts[3] === threadSegment &&
+      parts[4] === 'reports'
+        ? join(canonicalRoot, 'profiles', parts[1], 'threads', threadSegment, 'reports')
+        : null;
+
+    if (reportsRoot && isInside(reportsRoot, canonicalCandidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function contentTypeForPath(path: string): string {
@@ -138,6 +171,29 @@ function contentTypeForPath(path: string): string {
   if (lower.endsWith('.txt') || lower.endsWith('.log') || lower.endsWith('.csv')) return 'text/plain; charset=utf-8';
   if (lower.endsWith('.json')) return 'application/json; charset=utf-8';
   return 'application/octet-stream';
+}
+
+function encodeRfc5987Value(input: string): string {
+  return encodeURIComponent(input).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function asciiHeaderFilename(input: string): string {
+  const normalized = basename(input)
+    .normalize('NFKD')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[^\x20-\x7E]+/g, '-')
+    .replace(/["\\;]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/-+/g, '-')
+    .replace(/^[ .-]+|[ .-]+$/g, '')
+    .slice(0, 180);
+  return normalized || 'download';
+}
+
+function contentDispositionAttachment(filename: string): string {
+  const safeName = basename(filename).replace(/[\r\n\t]+/g, ' ').trim() || 'download';
+  const fallback = asciiHeaderFilename(safeName);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987Value(safeName)}`;
 }
 
 async function guardThreadAccess(
@@ -415,7 +471,7 @@ export const artifactStoreRoutes: FastifyPluginAsync<ArtifactStoreRoutesOptions>
 
       const content = await readFile(metadata.absolutePath, 'utf-8');
       reply.header('Content-Type', 'text/markdown; charset=utf-8');
-      reply.header('Content-Disposition', `attachment; filename="${basename(metadata.filename)}"`);
+      reply.header('Content-Disposition', contentDispositionAttachment(metadata.filename));
       return content;
     },
   );
@@ -433,7 +489,7 @@ export const artifactStoreRoutes: FastifyPluginAsync<ArtifactStoreRoutesOptions>
         return { error: 'Invalid artifact path', details: parsed.error.flatten() };
       }
 
-      const absolutePath = resolveThreadReportDownloadPath(threadId, parsed.data.path, artifactEnv(opts));
+      const absolutePath = await resolveThreadReportDownloadPath(threadId, parsed.data.path, artifactEnv(opts));
       if (!absolutePath) {
         reply.status(403);
         return { error: 'Artifact path is outside this thread reports directory' };
@@ -446,7 +502,7 @@ export const artifactStoreRoutes: FastifyPluginAsync<ArtifactStoreRoutesOptions>
       }
 
       reply.header('Content-Type', contentTypeForPath(absolutePath));
-      reply.header('Content-Disposition', `attachment; filename="${basename(absolutePath)}"`);
+      reply.header('Content-Disposition', contentDispositionAttachment(basename(absolutePath)));
       return reply.send(createReadStream(absolutePath));
     },
   );

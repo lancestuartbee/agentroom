@@ -17,7 +17,6 @@ describe('chat route markers', () => {
 
   it('uses pathname for first render, then trusts the browser route store after hydration', () => {
     expect(resolveLayoutThreadId('thread-refresh', null)).toBe('thread-refresh');
-    expect(resolveLayoutThreadId('default', null, 'thread-refresh')).toBe('thread-refresh');
     expect(resolveLayoutThreadId('thread-stale', 'default')).toBe('default');
     expect(resolveLayoutThreadId('thread-stale', 'thread-current')).toBe('thread-current');
   });

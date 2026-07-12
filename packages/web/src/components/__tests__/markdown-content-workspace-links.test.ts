@@ -129,6 +129,23 @@ describe('MarkdownContent workspace link rendering', () => {
     expect(html).toContain('Documents%2FAgentRoom%2Fprofiles%2Fopensource-6398%2Fthreads%2Fthread-1%2Freports%2Freport.md');
   });
 
+  it('renders bare AgentRoom report paths with Chinese filenames as downloads', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content:
+          '文件保存在这里：\n/Users/aidox/Documents/AgentRoom/profiles/default-6398/threads/thread_mrhzx4ueucwdg861/reports/烁烁_test.md',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread_mrhzx4ueucwdg861',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread_mrhzx4ueucwdg861/download-path');
+    expect(html).toContain(
+      'Documents%2FAgentRoom%2Fprofiles%2Fdefault-6398%2Fthreads%2Fthread_mrhzx4ueucwdg861%2Freports%2F%E7%83%81%E7%83%81_test.md',
+    );
+    expect(html).toContain('下载');
+  });
+
   it('renders file URI AgentRoom report links as downloads without leaking file scheme', () => {
     const html = renderToStaticMarkup(
       React.createElement(MarkdownContent, {
@@ -144,6 +161,22 @@ describe('MarkdownContent workspace link rendering', () => {
       '%2FUsers%2Faidox%2FDocuments%2FAgentRoom%2Fprofiles%2Fopensource-6398%2Fthreads%2Fthread-1%2Freports%2Fmagic-link-test.md',
     );
     expect(html).not.toContain('path=file%3A');
+  });
+
+  it('decodes encoded AgentRoom report markdown links before building download-path URLs', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content:
+          '[下载报告](/Users/aidox/Documents/AgentRoom/profiles/default-6398/threads/thread_mrhzx4ueucwdg861/reports/%E7%83%81%E7%83%81_test.md)',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread_mrhzx4ueucwdg861',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread_mrhzx4ueucwdg861/download-path');
+    expect(html).toContain('%E7%83%81%E7%83%81_test.md');
+    expect(html).not.toContain('%25E7%2583%2581%25E7%2583%2581_test.md');
+    expect(html).toContain('下载');
   });
 
   it('renders artifact-store content links as download links', () => {

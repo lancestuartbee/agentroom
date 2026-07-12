@@ -36,10 +36,10 @@ function formatTime(ts: number): string {
   return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-function renderContentBlocks(blocks: MessageContent[]) {
+function renderContentBlocks(blocks: MessageContent[], artifactThreadId?: string) {
   return blocks.map((block, i) => {
     if (block.type === 'text') {
-      return <MarkdownContent key={i} content={block.text} />;
+      return <MarkdownContent key={i} content={block.text} artifactThreadId={artifactThreadId} />;
     }
     if (block.type === 'image') {
       const src = block.url.startsWith('/uploads/') ? `${API_URL}${block.url}` : block.url;
@@ -210,7 +210,11 @@ export function ConnectorBubble({ message, threadId }: ConnectorBubbleProps) {
         color: 'var(--cat-msg-text, var(--cafe-text))',
       }}
     >
-      {hasBlocks ? renderContentBlocks(message.contentBlocks!) : <MarkdownContent content={message.content} />}
+      {hasBlocks ? (
+        renderContentBlocks(message.contentBlocks!, threadId)
+      ) : (
+        <MarkdownContent content={message.content} artifactThreadId={threadId} />
+      )}
       {richBlocks && richBlocks.length > 0 && <RichBlocks blocks={richBlocks} messageSource={message.source} />}
       {source.connector === 'hold-ball' && typeof source.meta?.taskId === 'string' && (
         <div className="mt-2 pt-2 border-t border-cafe-border">

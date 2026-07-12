@@ -25,7 +25,11 @@ import {
   getCatEffort,
 } from '../../../../../config/cat-config-loader.js';
 import { getCatModel } from '../../../../../config/cat-models.js';
-import { getCodexApprovalPolicy, getCodexSandboxMode } from '../../../../../config/codex-cli.js';
+import {
+  type CodexSandboxMode,
+  getCodexApprovalPolicy,
+  getCodexSandboxMode,
+} from '../../../../../config/codex-cli.js';
 import { estimateCostFromTokens } from '../../../../../config/model-pricing.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { formatCliExitError } from '../../../../../utils/cli-format.js';
@@ -114,6 +118,14 @@ function resolveCodexEffort(catId: string, options?: AgentServiceOptions): CliEf
   const configured = getCatEffort(catId, undefined, 'openai');
   if (options?.promptProfile !== 'casual') return configured;
   return configured === 'low' ? 'low' : CASUAL_MAX_EFFORT;
+}
+
+function resolveCodexSandboxMode(options?: AgentServiceOptions): CodexSandboxMode {
+  const configured = getCodexSandboxMode();
+  if (options?.promptProfile === 'casual' && configured === 'read-only') {
+    return 'workspace-write';
+  }
+  return configured;
 }
 
 function stripVolatileCallbackEnv(env: Record<string, string | null>): Record<string, string | null> {
@@ -461,7 +473,7 @@ export class CodexAgentService implements AgentService {
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
     const imageArgs = imagePaths.flatMap((path) => ['--image', path]);
 
-    const sandboxMode = getCodexSandboxMode();
+    const sandboxMode = resolveCodexSandboxMode(options);
     const approvalPolicy = getCodexApprovalPolicy();
     const effortLevel = resolveCodexEffort(this.catId as string, options);
     const reasoningArgs = ['--config', `model_reasoning_effort="${effortLevel}"`];

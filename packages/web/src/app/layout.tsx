@@ -3,8 +3,10 @@
  * bypass Next dev's flight CSS loader which chokes on class selectors and non-root CSS. */
 import type { Metadata, Viewport } from 'next';
 import { AppShell } from '@/components/AppShell';
+import { ArtifactDownloadLinkInterceptor } from '@/components/ArtifactDownloadLinkInterceptor';
 import { BrakeModal } from '@/components/BrakeModal';
 import { CatHueInjector } from '@/components/CatHueInjector';
+import { DevServiceWorkerCleanup } from '@/components/DevServiceWorkerCleanup';
 import { GuideOverlay } from '@/components/GuideOverlay';
 import { SessionBootstrap } from '@/components/SessionBootstrap';
 import { ThemeApplier } from '@/components/ThemeApplier';
@@ -56,6 +58,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
       </head>
       <body className="min-h-screen">
+        <DevServiceWorkerCleanup />
+        <ArtifactDownloadLinkInterceptor />
         <SessionBootstrap />
         <CatHueInjector />
         <ThemeProvider>

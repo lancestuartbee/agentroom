@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCatOptions, buildWhisperOptions } from '@/components/chat-input-options';
+import { buildCatOptions, buildWhisperOptions, scopeCatsForMentionOptions } from '@/components/chat-input-options';
 import type { CatData } from '@/hooks/useCatData';
 
 const FAKE_CATS: CatData[] = [
@@ -46,6 +46,51 @@ const MIXED_CATS: CatData[] = [
       available: false,
       evaluation: 'disabled for test',
     },
+  },
+];
+
+const RAGDOLL_CATS: CatData[] = [
+  {
+    id: 'sonnet',
+    displayName: '布偶猫',
+    variantLabel: 'Sonnet',
+    breedId: 'ragdoll',
+    breedDisplayName: '布偶猫',
+    color: { primary: '#9B7EBD', secondary: '#E8D5F5' },
+    mentionPatterns: ['sonnet'],
+    clientId: 'anthropic',
+    defaultModel: 'sonnet',
+    avatar: '/avatars/sonnet.png',
+    roleDescription: '轻量开发',
+    personality: 'focused',
+  },
+  {
+    id: 'opus',
+    displayName: '布偶猫',
+    variantLabel: 'Opus',
+    breedId: 'ragdoll',
+    breedDisplayName: '布偶猫',
+    color: { primary: '#9B7EBD', secondary: '#E8D5F5' },
+    mentionPatterns: ['opus'],
+    clientId: 'anthropic',
+    defaultModel: 'opus',
+    avatar: '/avatars/opus.png',
+    roleDescription: '深度开发',
+    personality: 'careful',
+  },
+  {
+    id: 'fable',
+    displayName: '布偶猫',
+    variantLabel: 'Fable',
+    breedId: 'ragdoll',
+    breedDisplayName: '布偶猫',
+    color: { primary: '#9B7EBD', secondary: '#E8D5F5' },
+    mentionPatterns: ['fable'],
+    clientId: 'anthropic',
+    defaultModel: 'fable',
+    avatar: '/avatars/fable.png',
+    roleDescription: '写作讨论',
+    personality: 'warm',
   },
 ];
 
@@ -100,5 +145,49 @@ describe('buildCatOptions vs buildWhisperOptions split', () => {
     expect(fast?.label).toBe('@布偶猫(快)');
     expect(fast?.insert).toBe(''); // no mentionPatterns → empty insert
     expect(options.map((option) => option.id)).not.toContain('spark');
+  });
+});
+
+describe('casual mention options', () => {
+  it('scopes casual mention cats to preferredCats', () => {
+    const scoped = scopeCatsForMentionOptions(RAGDOLL_CATS, {
+      mode: 'casual',
+      preferredCats: ['sonnet'],
+      participants: ['opus', 'fable'],
+    });
+
+    expect(scoped.map((cat) => cat.id)).toEqual(['sonnet']);
+  });
+
+  it('falls back to participants when casual preferredCats are absent', () => {
+    const scoped = scopeCatsForMentionOptions(RAGDOLL_CATS, {
+      mode: 'casual',
+      participants: ['sonnet'],
+    });
+
+    expect(scoped.map((cat) => cat.id)).toEqual(['sonnet']);
+  });
+
+  it('keeps legacy group mentions outside casual mode', () => {
+    const options = buildCatOptions(RAGDOLL_CATS);
+    expect(options.map((option) => option.insert)).toContain('@thread ');
+    expect(options.map((option) => option.insert)).toContain('@全体布偶猫 ');
+  });
+
+  it('shows only selected cats and @all in casual mode', () => {
+    const scoped = scopeCatsForMentionOptions(RAGDOLL_CATS, {
+      mode: 'casual',
+      preferredCats: ['sonnet'],
+    });
+    const options = buildCatOptions(scoped, { casual: true });
+    const optionIds = options.map((option) => option.id);
+    const inserts = options.map((option) => option.insert);
+
+    expect(optionIds).toEqual(['sonnet', 'all']);
+    expect(inserts).toContain('@all ');
+    expect(inserts).not.toContain('@thread ');
+    expect(inserts).not.toContain('@opus ');
+    expect(inserts).not.toContain('@fable ');
+    expect(inserts).not.toContain('@全体布偶猫 ');
   });
 });

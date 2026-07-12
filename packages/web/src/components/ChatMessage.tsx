@@ -70,6 +70,7 @@ function isConnectorSystemNotice(message: ChatMessageType): boolean {
 
 interface ChatMessageProps {
   message: ChatMessageType;
+  threadId?: string;
   getCatById: (id: string) => CatData | undefined;
   onEditCat?: (catId: string) => void;
   /** F056 follow-up: click co-creator avatar to open editor (consistent with cat avatar behavior). */
@@ -89,6 +90,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({
   message,
+  threadId,
   getCatById,
   onEditCat,
   onEditCoCreator,
@@ -98,6 +100,7 @@ export function ChatMessage({
   const coCreator = useCoCreatorConfig();
   const { state: ttsState, synthesize: ttsSynthesize, activeMessageId } = useTts();
   const currentThreadId = useChatStore((s) => s.currentThreadId);
+  const artifactThreadId = threadId ?? currentThreadId;
   const isLoadingThreads = useChatStore((s) => s.isLoadingThreads);
   const threads = useChatStore((s) => s.threads);
   const threadMessages = useChatStore((s) => s.messages);
@@ -331,7 +334,7 @@ export function ChatMessage({
     if (isConnectorSystemNotice(message)) {
       return <SystemNoticeBar message={message} />;
     }
-    return <ConnectorBubble message={message} threadId={currentThreadId} />;
+    return <ConnectorBubble message={message} threadId={artifactThreadId} />;
   }
 
   if (isUser) {
@@ -427,9 +430,9 @@ export function ChatMessage({
         bubbleStyle={!whisperActive ? { backgroundColor: coCreatorBubbleBg, color: coCreatorBubbleText } : undefined}
       >
         {hasBlocks ? (
-          <ContentBlocks blocks={message.contentBlocks!} />
+          <ContentBlocks blocks={message.contentBlocks!} artifactThreadId={artifactThreadId} />
         ) : (
-          <CollapsibleMarkdown content={message.content} />
+          <CollapsibleMarkdown content={message.content} artifactThreadId={artifactThreadId} />
         )}
       </MessageBubble>
     );
@@ -566,9 +569,13 @@ export function ChatMessage({
       footer={!message.isStreaming && message.metadata ? <MetadataBadge metadata={message.metadata} /> : undefined}
     >
       {hasCliBlock && isStreamOrigin ? null : !isStreamOrigin && hasBlocks ? (
-        <ContentBlocks blocks={message.contentBlocks!} />
+        <ContentBlocks blocks={message.contentBlocks!} artifactThreadId={artifactThreadId} />
       ) : !isStreamOrigin && hasTextContent ? (
-        <CollapsibleMarkdown content={mergedSpeechContent ?? message.content} className={catStyle?.font} />
+        <CollapsibleMarkdown
+          content={mergedSpeechContent ?? message.content}
+          className={catStyle?.font}
+          artifactThreadId={artifactThreadId}
+        />
       ) : message.isStreaming ? (
         <span className="text-xs text-cafe-secondary">Thinking...</span>
       ) : null}
@@ -584,6 +591,7 @@ export function ChatMessage({
           }
           expandInExport={false}
           breedColor={catData?.color.primary}
+          artifactThreadId={artifactThreadId}
         />
       )}
       {hasCliBlock && (
@@ -597,6 +605,7 @@ export function ChatMessage({
               : resolveBubbleExpanded(currentThread?.bubbleCli, globalBubbleDefaults.cliOutput)
           }
           breedColor={catData?.color.primary}
+          artifactThreadId={artifactThreadId}
         />
       )}
       {message.extra?.rich?.blocks && message.extra.rich.blocks.length > 0 && (

@@ -463,7 +463,10 @@ export function buildCasualStaticIdentity(catId: CatId, options?: CasualStaticId
     '没有被明确要求时，不调用工具、不读写文件、不运行命令、不发起 A2A/任务/交接。',
     '只有当用户明确要求搜索当前信息、读取指定文件、保存/导出内容或生成报告时，才使用完成该动作所必需的工具。',
     reportsDir ? `如需保存 Markdown 报告或对话产物，只写入共享目录：${reportsDir}` : '',
-    reportsDir ? '保存后直接给出绝对路径；不要写入 API 包目录、provider 私有目录或 agent 私有目录。' : '',
+    reportsDir
+      ? '实际保存成功后，在回复里用 Markdown 链接给出绝对路径，例如 [下载报告](绝对路径)；不要只说“已保存”。'
+      : '',
+    reportsDir ? '不要写入 API 包目录、provider 私有目录或 agent 私有目录。' : '',
     '诚实说明不确定性，不声称完成未实际执行的操作。',
   ]
     .filter(Boolean)

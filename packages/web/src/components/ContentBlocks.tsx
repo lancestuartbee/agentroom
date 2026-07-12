@@ -6,13 +6,13 @@ import { API_URL } from '@/utils/api-client';
 import { Lightbox } from './Lightbox';
 import { MarkdownContent } from './MarkdownContent';
 
-export function ContentBlocks({ blocks }: { blocks: MessageContent[] }) {
+export function ContentBlocks({ blocks, artifactThreadId }: { blocks: MessageContent[]; artifactThreadId?: string }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   return (
     <>
       {blocks.map((block, i) => {
         if (block.type === 'text') {
-          return <MarkdownContent key={i} content={block.text} />;
+          return <MarkdownContent key={i} content={block.text} artifactThreadId={artifactThreadId} />;
         }
         if (block.type === 'image') {
           const src = block.url.startsWith('/uploads/') ? `${API_URL}${block.url}` : block.url;

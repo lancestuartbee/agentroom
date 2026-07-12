@@ -39,6 +39,8 @@ describe('casual prompt profile', () => {
       assert.match(prompt, /\[Casual profile\]/);
       assert.match(prompt, /闲聊模式/);
       assert.match(prompt, /thread-example\/reports/);
+      assert.match(prompt, /Markdown 链接/);
+      assert.match(prompt, /\[下载报告\]\(绝对路径\)/);
       assert.doesNotMatch(prompt, /## 队友名册/);
       assert.doesNotMatch(prompt, /MCP 工具文档/);
       assert.doesNotMatch(prompt, /工作流触发点/);

@@ -200,6 +200,7 @@ export function ThreadSidebar({ onClose, className }: ThreadSidebarProps) {
           return;
         }
         const thread: Thread = await res.json();
+        setThreads([thread, ...threads.filter((existing) => existing.id !== thread.id)]);
 
         // F33: Bind external sessions after thread creation (best-effort, parallel)
         if (opts.sessionBindings?.length) {
@@ -233,7 +234,7 @@ export function ThreadSidebar({ onClose, className }: ThreadSidebarProps) {
         setIsCreating(false);
       }
     },
-    [setCurrentProject, navigateToThread, loadThreads, onClose],
+    [threads, setThreads, setCurrentProject, navigateToThread, loadThreads, onClose],
   );
 
   // F095 Phase D: Load trashed threads

@@ -854,6 +854,15 @@ export class AgentRouter {
     return this.getAllRoutableCats();
   }
 
+  private filterCasualMentionTargets(
+    thread: Thread | null | undefined,
+    catIds: Iterable<string | null | undefined>,
+  ): CatId[] {
+    const allowed = new Set(this.getCasualDefaultTargets(thread).map(String));
+    if (allowed.size === 0) return [];
+    return this.filterRoutableCats(catIds).filter((catId) => allowed.has(String(catId)));
+  }
+
   private getCasualTargetsForAudience(thread?: Thread | null): CatId[] {
     const audience = thread?.audience;
     if (audience?.mode === 'selected') {
@@ -890,7 +899,7 @@ export class AgentRouter {
         await this.persistCasualAudience(threadId, targetCats, { mode: 'all' });
       }
     } else if (allMentions.mentions.length > 0) {
-      targetCats = this.filterRoutableCats(allMentions.mentions);
+      targetCats = this.filterCasualMentionTargets(thread, allMentions.mentions);
       if (targetCats.length === 0) {
         targetCats = this.getCasualTargetsForAudience(thread);
         hasMentions = false;

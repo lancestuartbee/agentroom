@@ -879,6 +879,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F152: Emit invocation start through OTel log pipeline
     emitOtelLog('INFO', 'invocation_started', { [AGENT_ID]: catId, [OPERATION_NAME]: 'invoke' }, invocationSpan);
 
+    const catConfig = catRegistry.tryGet(catId as string)?.config;
+    const provider = catConfig?.clientId;
     const useProviderSession = true;
     const useSessionChain = promptProfile !== 'casual';
     let sessionId: string | undefined;
@@ -1021,8 +1023,6 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       }
     }
 
-    const catConfig = catRegistry.tryGet(catId as string)?.config;
-    const provider = catConfig?.clientId;
     const nativeL0Provider = service.injectsL0Natively?.() ?? false;
     const requiresThreadWorkspace = providerRequiresThreadWorkspace(provider);
     if (provider === 'opencode' && mutexKey && deps.sessionChainStore && sessionChainActive && !isBgCarrier) {
