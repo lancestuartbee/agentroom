@@ -4,6 +4,27 @@
 
 本轮改造在分支 `professional-collab-platform-refactor` 上进行。
 
+## 当前阶段状态
+
+截至 2026-07-12，闲聊模式第一阶段已经完成并通过真实前端/CLI 验证。
+
+已完成的主线：
+
+- 闲聊模式独立于项目目录，不再要求创建时选择项目。
+- 闲聊模式支持创建会话时选择参与 Agent。
+- 闲聊路由按会话成员和 audience 状态工作：无 @ 使用当前 audience，@ 单个成员后持续单聊，@all 恢复全员。
+- 闲聊 prompt profile 已从开发协作 L0 中拆出，只保留最小身份、语言/风格边界、必要工具边界和产物保存规则。
+- 闲聊产物统一落到本 thread 的 shared reports 目录，并能从产物面板和对话链接下载。
+- GPT/Codex 闲聊可写 sandbox、provider session 复用和下载原始文件名已修复。
+
+下一阶段建议从圆桌会议模式开始。新 session 恢复时建议按顺序阅读：
+
+1. `改造计划/README.md`
+2. `改造计划/01-session-modes.md`
+3. `改造计划/02-artifact-store.md`
+4. `改造计划/03-progress-log.md`
+5. `改造计划/11-codex-app-server-carrier.md`（仅当继续讨论 Codex 常驻 carrier）
+
 ## 总目标
 
 将当前系统从风格化较强、隐式规则较多的多 Agent 协作产品，收敛为一个可靠、专业、可解释、可验证的多前沿大模型开发团队平台。

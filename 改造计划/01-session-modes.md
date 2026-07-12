@@ -58,6 +58,163 @@
 
 ## 模式一：闲聊模式
 
+### 最终版设计（第一阶段已验收）
+
+闲聊模式第一阶段的定位已经收敛为：
+
+```text
+轻量、多模型观点、可指定成员、可保存 Markdown 产物、默认不进入开发协作链路。
+```
+
+它不是开发协作模式的“弱版本”，而是一条相对独立的控制流，只复用底层消息、线程、provider 调用、产物登记和前端面板等基础设施。
+
+#### 会话创建
+
+闲聊模式创建时不绑定项目目录。
+
+创建入口显示的是参与 Agent 选择，而不是项目路径选择：
+
+- 用户可以选择一位或多位 Agent 加入会话。
+- 选择结果写入 `Thread.preferredCats`，作为该闲聊会话的成员边界。
+- 如果没有显式选择成员，系统可以回退到已有参与者/默认可路由 Agent，但 UI 不应显示开发协作项目选择。
+
+#### 路由与 audience
+
+闲聊会话使用 `Thread.mode = casual` 和 `Thread.audience`。
+
+最终路由语义：
+
+- 无 @：使用当前 audience。
+- 初始 audience 默认为 `all`，含义是当前闲聊会话成员全员回复。
+- `@某个成员`：只让该成员回复，并把后续无 @ 对话保持在该成员上。
+- `@多个成员`：只让这些成员回复，并把后续无 @ 对话保持在这些成员上。
+- `@all` / `@全体`：恢复为当前闲聊会话成员全员回复，之后无 @ 继续全员。
+
+前端 `@` 候选必须按闲聊成员边界裁剪：
+
+- 只展示 `preferredCats` 中的个体成员。
+- 若 `preferredCats` 缺失，才退回 thread participants。
+- 只保留 `@all` 作为群体入口。
+- 不展示开发协作遗留的 `@thread`、品种全体或未加入会话的 Agent。
+
+后端也必须执行同样边界：
+
+- 用户手打未加入成员的 mention，不应绕过 casual membership。
+- 越界 mention 应退回当前 casual audience，而不是唤醒未加入会话的 Agent。
+
+#### Prompt / Context
+
+闲聊模式使用独立 `casual` prompt profile，不再复用完整开发协作 L0。
+
+保留：
+
+- 最小身份：是谁、来自哪个模型/提供方、日常背景/关注点、说话倾向。
+- 当前模式边界：这是闲聊，不是开发协作、代码审查、任务执行或圆桌审议。
+- 风格边界：自然、克制、清楚；不反复强调工作职责；避免过度拟人化。
+- 工具边界：无明确要求时不调用工具、不读写文件、不运行命令、不发起 A2A/任务/交接。
+- 产物边界：如需保存 Markdown 报告或对话产物，只写入共享 reports 目录，并在回复中给出 Markdown 链接。
+
+剔除：
+
+- 完整 SOP。
+- review gate / merge gate。
+- 开发质量门禁。
+- teammate roster。
+- MCP 工具说明。
+- A2A handoff 协议。
+- 项目治理和开发工作流触发点。
+
+上下文预算使用 casual 专属预算：
+
+```text
+maxPromptTokens: 3200
+maxContextTokens: 900
+maxMessages: 8
+maxContentLengthPerMsg: 1200
+```
+
+#### 工具与写入权限
+
+闲聊模式不是只读模式。
+
+默认行为：
+
+- 不主动调用工具。
+- 不主动写文件。
+- 不主动搜索。
+
+当用户明确要求时：
+
+- 可以搜索当前信息。
+- 可以读取用户指定文件。
+- 可以保存/导出 Markdown 报告。
+- 可以使用完成该动作必需的最小工具。
+
+GPT/Codex 闲聊可写策略：
+
+- 新建 casual Codex CLI session 时，如果全局 sandbox 是 `read-only`，自动提升为 `workspace-write`。
+- 不采用“检测到写意图后重启 CLI”的策略，避免破坏 session 复用和 prompt cache。
+- Codex casual provider session 使用版本化存储 key：`threadId::provider-session:codex-casual-writable-v1`，避免恢复历史 read-only casual session。
+
+#### Provider Session
+
+闲聊模式复用 provider session，但不启用开发协作的 session-chain/bootstrap/seal 控制流。
+
+原则：
+
+- `development` 和 `casual` 不跨 profile 复用 native/provider session。
+- 同一 `user + thread + cat + casual profile` 内尽量复用 provider session。
+- 复用目标是降低每轮 CLI cold start 和提高 prompt cache 命中。
+- 不把开发协作 MCP、用户成员编辑器里的额外 CLI args、完整工具配置带入 casual。
+
+已验证的短期优化：
+
+- Claude casual stream-json carrier 可在同一 thread + cat 内复用进程，并过滤每轮变化的 callback env。
+- Codex casual effort 以 `medium` 为上限，并过滤每轮变化的 callback env。
+- Codex app-server 常驻 carrier 暂缓，记录在 `11-codex-app-server-carrier.md`。
+
+#### 产物保存和下载
+
+闲聊模式不绑定项目目录，但每个 thread 有统一产物目录：
+
+```text
+~/Documents/AgentRoom/profiles/<profile-key>/threads/<threadId>/reports/
+```
+
+实际实现采用 CLI 友好的方式：
+
+- 调用 Agent 时，将 workingDirectory 设为当前 thread 的 `reports` 目录。
+- Agent 可以直接在该目录写 Markdown 文件。
+- 本轮结束后，平台扫描并登记该目录下新增/更新的 Markdown 产物。
+- 产物进入右侧 workspace/artifacts 面板。
+- 对话中的本地绝对路径、file URI、artifact-store content 链接和部分历史链接都会被转换为下载入口。
+- 下载使用后端 `Content-Disposition` 原始文件名，支持中文文件名，不再强制重命名。
+
+安全边界：
+
+- 只允许同一 thread 的 `reports` 目录内产物走下载。
+- 后端用 `realpath` 处理 macOS `AgentRoom` / `agentroom` 大小写或显示名差异。
+- 不允许任意本地路径下载。
+
+#### 模式升级
+
+第一阶段只支持闲聊升级到开发协作：
+
+- 不在原 thread 原地切换。
+- 创建新的开发协作 thread。
+- 要求选择项目目录。
+- 新 thread 写入来源闲聊背景摘要。
+- 旧闲聊 thread 和其中产物继续保留。
+
+闲聊升级到圆桌会议保留为产品方向，但圆桌控制流未实现前不开放可执行路径。
+
+#### 已知遗留
+
+- 平台侧 memory digest 尚未实现；当前闲聊主要依赖短上下文和 provider session。
+- provider 级工具物理隐藏还未彻底完成；第一阶段主要靠 prompt profile、MCP 裁剪、A2A depth 和 CLI 启动参数收缩。
+- 前端当前 audience 状态还没有作为清晰状态条展示。
+- Agent 自己写 Markdown 链接文字时可能包含“打开/下载”等动作词；当前判断为模型表达问题，不影响下载逻辑，暂不收紧 prompt。
+
 ### 当前实现状态（第一阶段）
 
 已完成：
@@ -161,7 +318,7 @@ type ThreadAudience =
 闲聊模式默认：
 
 ```text
-tools: none
+tools: none by default; minimal tools only on explicit user request
 A2A: off
 SOP/gate: off
 identity: minimal
@@ -209,6 +366,195 @@ tool policy:
 ```
 
 ## 模式二：圆桌会议模式
+
+### 下次开发接续版
+
+圆桌会议模式是闲聊模式之后的下一阶段重点。
+
+它要解决的问题不是“让所有 Agent 都各说一句”，而是：
+
+```text
+让多个前沿模型围绕同一议题独立判断、暴露分歧、互相回应、有限修正，并在不能说服所有人时保留少数意见。
+```
+
+设计底线：
+
+- 不走开发协作的自由 A2A。
+- 不让 Agent 随意 @ 其他 Agent 触发无限链路。
+- 不默认开放开发工具、写文件工具或项目目录。
+- 不强制伪共识。
+- 不把多数意见包装成“所有 Agent 已同意”。
+- 不为了结束流程抹掉少数意见。
+
+#### 产品入口
+
+创建会话时选择：
+
+```text
+圆桌会议
+```
+
+第一版建议要求用户明确选择参与 Agent：
+
+- `preferredCats` 作为固定圆桌成员。
+- 创建后成员默认不随路由变化。
+- 后续可以再设计“邀请新成员加入圆桌”，但不进入 v1。
+
+圆桌会议可以不绑定项目目录。
+
+若用户讨论的是开发任务，应先保持圆桌的讨论性质；只有当用户明确要落地执行时，再升级到开发协作 thread。
+
+#### 控制流
+
+圆桌会议应由平台控制阶段，而不是由 Agent 自由互相触发。
+
+第一版建议实现一个 `RoundtableController` 或等价服务：
+
+1. 接收用户议题和参与者。
+2. 创建/读取 `DeliberationBoard`。
+3. 按阶段调用每个参与 Agent。
+4. 收集结构化输出。
+5. 更新公共黑板。
+6. 决定进入下一阶段或输出最终结论。
+
+每个阶段的 Agent 调用仍可复用现有 provider service，但 prompt profile 应是 `roundtable_deliberation`，不是 `casual`，也不是 `development`。
+
+#### v1 阶段压缩方案
+
+早期设计中有 6 个阶段。为了第一版可落地，可以先实现 4 个阶段：
+
+```text
+1. independent_stance
+2. critique_and_revision
+3. consensus_vote
+4. final_summary
+```
+
+对应关系：
+
+- `independent_stance`：每个 Agent 独立给出立场，不读取其他 Agent 回答。
+- `critique_and_revision`：平台把初始观点整理成 board digest，每个 Agent 必须回应分歧并可修正立场。
+- `consensus_vote`：平台生成候选综合结论，每个 Agent 必须投 `accept / accept_with_conditions / reject`。
+- `final_summary`：平台输出共识、条件、少数意见、未解决分歧和下一步验证建议。
+
+如果第一版实现复杂度可控，再拆回完整 6 阶段。
+
+#### DeliberationBoard v1
+
+第一版 board 可以先存在 thread metadata / thread memory / message extra 中，不必一开始做独立数据库表。
+
+建议最小结构：
+
+```ts
+interface DeliberationBoardV1 {
+  id: string;
+  threadId: string;
+  topic: string;
+  participants: string[];
+  phase:
+    | 'independent_stance'
+    | 'critique_and_revision'
+    | 'consensus_vote'
+    | 'final_summary';
+  stances: Array<{
+    catId: string;
+    position: string;
+    reasons: string[];
+    risks: string[];
+    confidence?: number;
+  }>;
+  critiques: Array<{
+    catId: string;
+    agreesWith: string[];
+    disagreesWith: string[];
+    weakClaims: string[];
+    changedMind: boolean;
+    revisedPosition?: string;
+  }>;
+  votes: Array<{
+    catId: string;
+    vote: 'accept' | 'accept_with_conditions' | 'reject';
+    reason: string;
+    conditions?: string[];
+  }>;
+  final?: {
+    consensus: string | null;
+    bestCurrentConclusion: string;
+    unresolvedDisagreements: string[];
+    minorityOpinions: string[];
+    nextEvidenceNeeded: string[];
+    recommendedNextSteps: string[];
+  };
+}
+```
+
+#### Prompt Profile
+
+圆桌会议对应 profile：
+
+```text
+roundtable_deliberation
+```
+
+保留：
+
+- 最小身份和模型视角差异。
+- 当前阶段说明。
+- 议题。
+- board digest。
+- 明确输出格式。
+- 必须回应分歧、证据和不确定性。
+
+剔除：
+
+- 完整开发 SOP。
+- merge/review gate。
+- 文件编辑和命令执行工具。
+- 自由 A2A handoff。
+- 项目工作流和任务执行协议。
+
+工具策略：
+
+- 默认不开放写工具。
+- 默认不绑定项目目录。
+- 可由平台预取 memory/evidence digest。
+- 如果议题明确要求实时信息或证据，可进入受控 `evidence_needed` 扩展阶段，但不让每个 Agent 自由加载完整工具集。
+
+#### UI v1
+
+第一版前端不需要复杂视觉设计，但需要让用户看懂阶段：
+
+- 会话顶部显示 `Mode: 圆桌会议`。
+- 显示参与 Agent。
+- 显示当前阶段。
+- 消息流中每个阶段有清晰分隔。
+- 最终输出必须显式区分：
+  - 已达成共识。
+  - 当前最优结论。
+  - 未解决分歧。
+  - 少数意见。
+  - 需要进一步验证的证据。
+  - 建议下一步。
+
+#### 验收标准
+
+第一版圆桌会议至少要通过：
+
+- 创建 roundtable thread 后不会走 development 旧通道。
+- 不 @ 时不会按 casual audience 直接全员普通回复，而是进入 roundtable controller。
+- 每个 Agent 在第一阶段独立产出立场。
+- 第二阶段能看到其他观点并回应具体分歧。
+- 共识投票允许 `reject`。
+- 最终总结不会把 `reject` 说成全员同意。
+- 开发协作模式不受影响。
+
+#### 暂不做
+
+- 原地从开发协作降级到圆桌。
+- 圆桌内自由 A2A。
+- 文件修改、命令执行、merge gate。
+- 复杂图形化 board 编辑器。
+- 自动长期记忆写入。
 
 ### 目标
 
@@ -560,7 +906,7 @@ roundtable_deliberation
 mode: casual
 route: audience-based
 A2A: off
-tools: none
+tools: none by default; explicit search/read/write can use minimal required tools
 memory: platform-prefetch
 ```
 
@@ -668,7 +1014,7 @@ Tools: none / memory readonly / full development
 2. 新增 `Thread.audience`。
 3. 创建新核心入口，先处理 `casual` 和 `roundtable`。
 4. 闲聊模式路由：audience-based routing。
-5. 闲聊模式 prompt/tool policy：minimal prompt + no tools。
+5. 闲聊模式 prompt/tool policy：minimal prompt + default-no-tools + explicit-request minimal tools。
 6. 平台侧记忆 prefetch 的接口占位，第一版可先关闭或只做最小 digest。
 7. 圆桌会议 `DeliberationBoard` 最小结构。
 8. 圆桌会议阶段流转。
@@ -681,7 +1027,7 @@ Tools: none / memory readonly / full development
 三模式方案作为第一阶段改造主线：
 
 ```text
-闲聊：轻量、多模型观点、记忆优先、无工具。
+闲聊：轻量、多模型观点、记忆优先、默认不主动用工具。
 圆桌会议：受控多模型审议、分歧回应、共识检测。
 开发协作：保留现有强协作与质量门禁，后续灰度重构。
 ```

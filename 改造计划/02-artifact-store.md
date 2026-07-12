@@ -85,16 +85,29 @@ metadata 记录：
 
 ## 平台约束
 
-Agent 不能直接决定最终文件落点。
+Agent 不能直接决定任意最终文件落点。
 
-正确流程是：
+早期理想流程是：
 
 1. Agent 产出 Markdown 内容。
 2. 平台 Artifact Store 写入统一目录。
 3. 平台登记 artifact metadata。
 4. UI 展示保存路径、下载入口和 Finder 打开入口。
 
-即使某个 Agent 产生了外部路径，平台也应复制或重新写入统一 Artifact Store，再对用户展示统一目录下的文件。
+但第一阶段为了适配真实 CLI，最终采用了更务实的落地方式：
+
+1. 闲聊模式调用 Agent 时，把 workingDirectory 设置为当前 thread 的共享 `reports` 目录。
+2. Agent 被允许直接在这个目录写 Markdown 文件。
+3. 本轮完成后，平台扫描并登记该目录下新增/更新的 Markdown 文件。
+4. UI 的产物面板和对话内下载链接统一从 Artifact Store 读取。
+
+因此当前规则不是“Agent 完全不能写文件”，而是：
+
+- Agent 只能把闲聊 Markdown 产物写入平台指定的 thread reports 目录。
+- Agent 不应写入 API 包目录、provider 私有目录、代码仓库目录或自己临时挑选的路径。
+- 即使消息里出现历史 profile 或大小写不同的 AgentRoom 绝对路径，下载接口也必须重新校验真实路径是否属于同一 thread 的 reports 目录。
+
+后续如果做更强的 Artifact Store API，可以再把“Agent 产出内容，平台写文件”作为更严格的路径。
 
 ## 第一版接口
 
@@ -143,3 +156,10 @@ macOS 下用 Finder 显示文件。
 - 不开放 Agent 任意路径写文件。
 - 不把产物默认写入代码仓库目录。
 
+## 当前已验收行为
+
+- 闲聊模式不绑定项目目录，但每个 thread 有固定 reports 目录。
+- Gemini / Claude / GPT 直接写入 reports 目录的 Markdown 文件，会出现在右侧产物面板。
+- 对话中的裸绝对路径、file URI、artifact-store content 链接和部分历史链接会转换为下载入口。
+- 下载保留原始文件名，支持中文文件名。
+- 后端下载路径校验使用 `realpath`，兼容 macOS 上 `AgentRoom` / `agentroom` 指向同一目录的情况。
