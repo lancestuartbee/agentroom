@@ -116,14 +116,19 @@ function filenameFromContentDisposition(value: string | null): string | null {
   return asciiMatch?.[1]?.trim() || null;
 }
 
-function filenameFromApiPath(apiPath: string): string {
+export function resolveArtifactDownloadFilenameFromApiPath(apiPath: string): string {
   try {
     const url = new URL(apiPath, API_URL);
     const path = url.searchParams.get('path') ?? '';
-    const name = decodeLocalPathHref(path).split('/').filter(Boolean).at(-1);
-    return name || 'agentroom-report.md';
+    const pathName = decodeLocalPathHref(path).split('/').filter(Boolean).at(-1);
+    if (pathName) return pathName;
+
+    const parts = decodeURIComponent(url.pathname).split('/').filter(Boolean);
+    const downloadIndex = parts.lastIndexOf('download');
+    const artifactId = downloadIndex > 0 ? parts[downloadIndex - 1] : undefined;
+    return artifactId || 'artifact.md';
   } catch {
-    return 'agentroom-report.md';
+    return 'artifact.md';
   }
 }
 
@@ -134,7 +139,9 @@ async function downloadArtifact(apiPath: string): Promise<void> {
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = objectUrl;
-  link.download = filenameFromContentDisposition(res.headers.get('content-disposition')) ?? filenameFromApiPath(apiPath);
+  link.download =
+    filenameFromContentDisposition(res.headers.get('content-disposition')) ??
+    resolveArtifactDownloadFilenameFromApiPath(apiPath);
   document.body.appendChild(link);
   link.click();
   link.remove();

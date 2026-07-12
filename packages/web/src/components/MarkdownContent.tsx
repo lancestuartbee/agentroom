@@ -210,9 +210,9 @@ function filenameFromDownloadHref(href: string): string {
     const name = cleanPath.split('/').filter(Boolean).at(-1);
     if (name) return name;
     const pathName = decodeURIComponent(url.pathname).split('/').filter(Boolean).at(-2);
-    return pathName || 'agentroom-report.md';
+    return pathName || 'artifact.md';
   } catch {
-    return 'agentroom-report.md';
+    return 'artifact.md';
   }
 }
 

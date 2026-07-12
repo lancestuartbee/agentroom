@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveArtifactDownloadApiPathForHref } from '@/components/ArtifactDownloadLinkInterceptor';
+import {
+  resolveArtifactDownloadApiPathForHref,
+  resolveArtifactDownloadFilenameFromApiPath,
+} from '@/components/ArtifactDownloadLinkInterceptor';
 
 describe('ArtifactDownloadLinkInterceptor href resolver', () => {
   const baseUrl = 'http://localhost:3003/thread/thread_mrhzx4ueucwdg861';
@@ -42,5 +45,16 @@ describe('ArtifactDownloadLinkInterceptor href resolver', () => {
   it('leaves unrelated links alone', () => {
     expect(resolveArtifactDownloadApiPathForHref('https://example.com/report.md', 'thread-1', baseUrl)).toBeNull();
     expect(resolveArtifactDownloadApiPathForHref('/thread/thread-1', 'thread-1', baseUrl)).toBeNull();
+  });
+
+  it('derives the original filename from download-path URLs', () => {
+    const apiPath = resolveArtifactDownloadApiPathForHref(
+      '/Users/aidox/Documents/AgentRoom/profiles/default-6398/threads/thread_mrhzx4ueucwdg861/reports/烁烁_test.md',
+      'wrong-current-thread',
+      baseUrl,
+    );
+
+    expect(apiPath).toBeTruthy();
+    expect(resolveArtifactDownloadFilenameFromApiPath(apiPath ?? '')).toBe('烁烁_test.md');
   });
 });

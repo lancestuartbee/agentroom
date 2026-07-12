@@ -326,6 +326,7 @@ async function main(): Promise<void> {
   await app.register(cors, {
     origin: resolveFrontendCorsOrigins(process.env, app.log),
     credentials: true,
+    exposedHeaders: ['Content-Disposition'],
   });
 
   // F156 D-2: Anti-clickjacking headers (X-Frame-Options + CSP frame-ancestors)

@@ -7263,6 +7263,64 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     assert.equal(storeCalls[0]?.[4], 'casual');
   });
 
+  it('casual Codex sessions use a writable sandbox storage namespace', async () => {
+    const optionsSeen = [];
+    const getCalls = [];
+    const storeCalls = [];
+    const service = {
+      l0CompilerFn: dummyL0CompilerFn,
+      async *invoke(_prompt, options) {
+        optionsSeen.push(options ?? {});
+        yield { type: 'session_init', catId: 'codex', sessionId: 'fresh-codex-casual-session', timestamp: Date.now() };
+        yield { type: 'done', catId: 'codex', timestamp: Date.now() };
+      },
+    };
+
+    const deps = {
+      ...makeDeps(),
+      sessionManager: {
+        get: async (...args) => {
+          getCalls.push(args);
+          return 'existing-codex-casual-session';
+        },
+        store: async (...args) => {
+          storeCalls.push(args);
+        },
+        delete: async () => {},
+      },
+      sessionChainStore: {
+        getChain: async () => {
+          throw new Error('casual mode must not use development session-chain bootstrap');
+        },
+        getActive: async () => {
+          throw new Error('casual mode must not use development session-chain active record');
+        },
+      },
+    };
+
+    await collect(
+      invokeSingleCat(deps, {
+        catId: 'codex',
+        service,
+        prompt: 'continue casual chat',
+        systemPrompt: '[Casual profile]\nidentity',
+        promptProfile: 'casual',
+        userId: 'user1',
+        threadId: 'thread-codex-casual-carrier',
+        isLastCat: true,
+      }),
+    );
+
+    const expectedThreadId = 'thread-codex-casual-carrier::provider-session:codex-casual-writable-v1';
+    assert.equal(optionsSeen[0]?.sessionId, 'existing-codex-casual-session');
+    assert.equal(optionsSeen[0]?.cliSessionId, 'existing-codex-casual-session');
+    assert.equal(getCalls[0]?.[2], expectedThreadId);
+    assert.equal(getCalls[0]?.[3], 'casual');
+    assert.equal(storeCalls[0]?.[2], expectedThreadId);
+    assert.equal(storeCalls[0]?.[3], 'fresh-codex-casual-session');
+    assert.equal(storeCalls[0]?.[4], 'casual');
+  });
+
   it('fails loud for OpenCode when thread projectPath is default', async () => {
     let invokedService = false;
     const service = {

@@ -800,3 +800,59 @@ git diff --check
   在文件系统上是同一个 inode，但字符串安全校验会把它们当作两个不同目录。
 - 涉及本地路径安全边界时，不能只做字符串前缀/relative 判断；对已存在路径应优先用 `realpath` 做规范化，再执行“是否在允许根目录内”的校验。
 - 前端错误提示也需要改进：仅提示“下载失败”不够，应在开发模式或 toast 详情里暴露 HTTP 状态码和简短后端错误，这样能减少来回试错。
+
+## 2026-07-12 闲聊 GPT 可写沙箱与下载文件名修复
+
+背景：
+
+- 用户新建闲聊对话后，GPT/Codex 又反馈只能读，说明之前的修复没有覆盖整个闲聊模式生命周期。
+- 产物区下载正常，但对话框内点击下载会把文件保存为 `agentroom-report.md`，不符合“保留原始文件名”的设计。
+
+根因：
+
+- Codex CLI 的 `resume` 子命令不会重新接受 `--sandbox`。之前只修了“新建 Codex CLI 时把 casual 的 read-only 升为 workspace-write”，但旧的 casual provider sessionId 如果已经以 read-only 创建，后续恢复仍会继承旧沙箱。
+- 对话框链接下载走前端全局拦截器：前端用 `fetch` 拿文件 blob 后再触发下载。因为前端和 API 是不同端口，浏览器默认不允许 JS 读取 `Content-Disposition`，所以文件名读取失败后落到了固定兜底名。
+
+修复：
+
+- 对 Codex/openai 的闲聊 provider session 增加版本化存储命名：
+  - `threadId::provider-session:codex-casual-writable-v1`
+  - 只影响 `promptProfile=casual` 且 provider 为 `openai` 的 sessionManager get/store/delete。
+  - 不删除 Redis 旧数据，但新的闲聊 Codex 不再恢复旧 read-only session。
+- 同步把静态身份注入/压缩检测使用的 session identity key 切到同一个存储 threadId，避免新旧 session 运行状态混用。
+- API CORS 增加 `exposedHeaders: ['Content-Disposition']`，允许前端下载拦截器读取后端文件名。
+- 前端下载拦截器移除 `agentroom-report.md` 固定兜底：
+  - 优先使用 `Content-Disposition`；
+  - 对 `download-path` URL 从真实 path 推导原始文件名；
+  - 最后才兜底为通用 `artifact.md`。
+
+验证：
+
+```bash
+corepack pnpm --filter @cat-cafe/api run build
+node --test packages/api/test/invoke-single-cat.test.js --test-name-pattern "casual .*session"
+node --test packages/api/test/artifact-store.test.js
+corepack pnpm --filter @cat-cafe/web exec vitest run src/components/__tests__/artifact-download-link-interceptor.test.ts src/components/__tests__/markdown-content-workspace-links.test.ts src/components/__tests__/chat-message-artifact-links.test.tsx
+corepack pnpm --filter @cat-cafe/web exec tsc --noEmit
+corepack pnpm --filter @cat-cafe/web exec eslint src/components/ArtifactDownloadLinkInterceptor.tsx src/components/MarkdownContent.tsx src/components/__tests__/artifact-download-link-interceptor.test.ts
+git diff --check
+```
+
+结果：
+
+- API build 通过。
+- `invoke-single-cat` 文件实际跑完 118 个测试，全通过；新增覆盖 Codex casual session 使用可写命名空间。
+- artifact-store 后端测试 3 个通过。
+- 前端下载/Markdown 链接测试 30 个通过。
+- web TypeScript 检查通过。
+- 相关文件 eslint 通过。
+- `git diff --check` 通过。
+- 当前 dev API 真实请求通过，响应包含：
+  - `access-control-expose-headers: Content-Disposition`
+  - `content-disposition: attachment; filename="test.md"; filename*=UTF-8''test.md`
+
+经验：
+
+- 处理 CLI 沙箱问题不能只看新建命令参数，还必须检查 `resume` 是否继承了旧 session 的创建时参数。
+- 不应通过删除 Redis 来“修”旧 session；更合适的是引入版本化 session storage key，让旧数据自然退场。
+- 浏览器下载文件名如果经过 `fetch -> blob -> a[download]`，必须确认前端能读取 `Content-Disposition`；否则后端 header 正确也不会影响前端保存名。

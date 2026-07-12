@@ -270,6 +270,13 @@ function sessionIdentityKey(userId: string, catId: CatId, threadId: string, prom
   return `${userId}:${catId as string}:${threadId}:${promptProfile ?? 'development'}`;
 }
 
+function providerSessionStorageThreadId(provider: string | undefined, threadId: string, promptProfile: PromptProfile): string {
+  if (provider === 'openai' && promptProfile === 'casual') {
+    return `${threadId}::provider-session:codex-casual-writable-v1`;
+  }
+  return threadId;
+}
+
 function normalizeSessionWorkspacePath(workingDirectory: string): string {
   return resolve(workingDirectory);
 }
@@ -881,13 +888,14 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
 
     const catConfig = catRegistry.tryGet(catId as string)?.config;
     const provider = catConfig?.clientId;
+    const sessionThreadId = providerSessionStorageThreadId(provider, threadId, promptProfile);
     const useProviderSession = true;
     const useSessionChain = promptProfile !== 'casual';
     let sessionId: string | undefined;
     if (useProviderSession) {
       try {
         sessionId = await preflightRace(
-          sessionManager.get(userId, catId, threadId, sessionPromptProfile),
+          sessionManager.get(userId, catId, sessionThreadId, sessionPromptProfile),
           'sessionManager.get',
           signal,
         );
@@ -1223,7 +1231,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           'OpenCode resume workspace guard dropped stale session',
         );
         sessionId = undefined;
-        sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
+        sessionManager.delete(userId, catId, sessionThreadId, sessionPromptProfile).catch(() => {});
         yield {
           type: 'system_info' as const,
           catId,
@@ -1801,10 +1809,10 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // so we intentionally do NOT pass systemPrompt in options to avoid double injection.
     const isResume = !!sessionId;
     const canSkipOnResume = isSessionChainEnabled(catId);
-    const compressionKey = sessionIdentityKey(userId, catId, threadId, sessionPromptProfile);
+    const compressionKey = sessionIdentityKey(userId, catId, sessionThreadId, sessionPromptProfile);
     const forceReinjection = _needsReinjection.delete(compressionKey);
     const registryRevision = catRegistry.getRevision();
-    const identityKey = sessionIdentityKey(userId, catId, threadId, sessionPromptProfile);
+    const identityKey = sessionIdentityKey(userId, catId, sessionThreadId, sessionPromptProfile);
     const lastStaticIdentityRevision = _staticIdentityRegistryRevision.get(identityKey);
     const registryChangedSinceStaticIdentity =
       canSkipOnResume &&
@@ -2206,7 +2214,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
             // F-BLOAT: Detect context compression for re-injection on next turn.
             // When usedTokens drops >60% from previous known value, the CLI
             // auto-compacted its context. Flag for systemPrompt re-injection.
-            const cKey = sessionIdentityKey(userId, catId, threadId, sessionPromptProfile);
+            const cKey = sessionIdentityKey(userId, catId, sessionThreadId, sessionPromptProfile);
             const prevFill = _prevContextFill.get(cKey);
             _prevContextFill.set(cKey, usedTokens);
             if (prevFill && usedTokens < prevFill * 0.4) {
@@ -2291,7 +2299,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                           // gone). Clear so the deferred-execution block below
                           // does not double-seal.
                           pendingMidStreamSeal = null;
-                          sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
+                          sessionManager.delete(userId, catId, sessionThreadId, sessionPromptProfile).catch(() => {});
                           const sealTimestamp = Date.now();
                           const continuityCapsule = params.continuityCapsule
                             ? completeCapsuleForSeal(params.continuityCapsule, {
@@ -2390,7 +2398,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         );
         if (useProviderSession) {
           try {
-            await sessionManager.store(userId, catId, threadId, msg.sessionId, sessionPromptProfile);
+            await sessionManager.store(userId, catId, sessionThreadId, msg.sessionId, sessionPromptProfile);
           } catch {
             // Redis write failure — session won't persist, but chain continues
           }
@@ -2752,7 +2760,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
               reason: pending.reason,
             });
             if (sealResult.accepted) {
-              sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
+              sessionManager.delete(userId, catId, sessionThreadId, sessionPromptProfile).catch(() => {});
               const sealTimestamp = Date.now();
               const continuityCapsule = params.continuityCapsule
                 ? completeCapsuleForSeal(params.continuityCapsule, {
@@ -3168,7 +3176,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                     reason: 'malformed_toolcall',
                   });
                   if (sealResult.accepted) {
-                    sessionManager.delete(userId, catId, threadId, sessionPromptProfile).catch(() => {});
+                    sessionManager.delete(userId, catId, sessionThreadId, sessionPromptProfile).catch(() => {});
                     deps.sessionSealer.finalize({ sessionId: activeRec.id }).catch(() => {});
                     log.info(
                       { catId, threadId, invocationId, sessionId: activeRec.id },
@@ -3304,7 +3312,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           'cat retrying invoke (session self-heal)',
         );
         try {
-          await sessionManager.delete(userId, catId, threadId, sessionPromptProfile);
+          await sessionManager.delete(userId, catId, sessionThreadId, sessionPromptProfile);
         } catch {
           // Redis delete failure — best-effort only
         }
