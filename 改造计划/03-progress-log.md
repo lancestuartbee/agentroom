@@ -249,3 +249,51 @@ git diff --check
 - 观察后台日志中同一 thread 是否只出现一次 `Claude stream-json CLI process started`。
 - 观察 Claude usage 的 `inputTokens` / `cacheReadTokens` 是否相比 `--resume` 每轮冷启动进一步改善。
 - 如果 Claude Code CLI 的 stream-json 模式在订阅账号下出现协议或权限限制，再回退到 `print_sdk` 并记录失败样本。
+
+### Claude casual stream-json effort 下调
+
+真实验证观察：
+
+- 测试线程：`thread_mrhvah57celc6pa5`
+- Claude session：`41de0f1a-93f2-4c84-a98a-330c388c8db8`
+- carrier：`CAT_CAFE_CLAUDE_CARRIER=stream_json`
+- 现象：
+  - 新增 carrier 生效，Claude Code CLI 使用 `--input-format stream-json --output-format stream-json`。
+  - 第二轮命中 prompt cache：`cacheReadTokens=16807`，第一轮创建的缓存被完整读中。
+  - 但启动参数仍继承猫配置的 `--effort max`，两轮 hidden thinking/output 成本偏高。
+
+调整：
+
+- `ClaudeStreamJsonCarrierService` 的 casual 路径不再直接继承 Claude 猫配置的高 effort。
+- casual stream-json effort 以 `medium` 为上限：
+  - 如果成员显式配置为 `low`，保留 `low`。
+  - 如果配置为 `medium/high/max/xhigh`，闲聊路径使用 `medium`。
+- 开发协作模式和旧 `ClaudeAgentService` 路径不受影响。
+
+验证：
+
+- `claude-stream-json-carrier.test.js` 增加 `--effort medium` 断言，防止 casual 后续退回 `max`。
+
+### Claude casual stream-json 进程复用签名修复
+
+真实验证观察：
+
+- `--effort medium` 生效后，Claude sessionId 继续稳定为 `41de0f1a-93f2-4c84-a98a-330c388c8db8`。
+- medium 首轮因启动参数变化重新创建 cache：`cacheCreationTokens=23208`。
+- medium 第二轮成功读回 cache：`cacheReadTokens=23208`，命中率约 `96.7%`。
+- 但 OS 进程 PID 仍从 `4426` 变为 `4569`，说明常驻进程复用没有真正稳定。
+
+原因：
+
+- `ClaudeStreamJsonCarrierService` 的进程启动签名包含完整 `envDigest`。
+- `envDigest` 来自 `callbackEnv`，而 `CAT_CAFE_INVOCATION_ID` / `CAT_CAFE_CALLBACK_TOKEN` 每轮都会变化。
+- 因此同一 `thread + cat + casual` 会话被误判为启动签名变化，carrier 主动关闭旧进程并重启。
+
+调整：
+
+- casual stream-json carrier 在构造 Claude 子进程环境前过滤一次性 callback 凭证：
+  - `CAT_CAFE_INVOCATION_ID`
+  - `CAT_CAFE_CALLBACK_TOKEN`
+- 这些字段不再进入子进程环境，也不再影响启动签名。
+- 保留账号/模型/模式相关环境变量，避免影响 subscription/api_key 选择。
+- 加强 `claude-stream-json-carrier.test.js`：两轮 casual 调用带不同 invocation/token，仍必须只 spawn 一个 Claude 进程。

@@ -141,7 +141,15 @@ function casualOptions(invocationId, nativeSystemPrompt = 'CASUAL-L0') {
   return {
     promptProfile: 'casual',
     nativeSystemPrompt,
-    callbackEnv: { CAT_CAFE_ANTHROPIC_PROFILE_MODE: 'subscription' },
+    callbackEnv: {
+      CAT_CAFE_ANTHROPIC_PROFILE_MODE: 'subscription',
+      CAT_CAFE_API_URL: 'http://127.0.0.1:3004',
+      CAT_CAFE_INVOCATION_ID: invocationId,
+      CAT_CAFE_CALLBACK_TOKEN: `token-${invocationId}`,
+      CAT_CAFE_THREAD_ID: 'thread-stream-json',
+      CAT_CAFE_CAT_ID: 'opus',
+      CAT_CAFE_USER_ID: 'user-stream-json',
+    },
     auditContext: {
       invocationId,
       threadId: 'thread-stream-json',
@@ -173,11 +181,14 @@ test('stream-json carrier keeps one Claude CLI process for repeated casual turns
   assert.ok(call.args.includes('--input-format'));
   assert.equal(call.args[call.args.indexOf('--input-format') + 1], 'stream-json');
   assert.equal(call.args[call.args.indexOf('--output-format') + 1], 'stream-json');
+  assert.equal(call.args[call.args.indexOf('--effort') + 1], 'medium');
   assert.ok(call.args.includes('--include-partial-messages'));
   assert.ok(!call.args.includes('--append-system-prompt-file'));
   assert.ok(!call.args.includes('--chrome'));
   assert.ok(!call.args.includes('--mcp-config'));
   assert.ok(!call.args.includes('hello'), 'prompt must not be passed in argv');
+  assert.equal(call.opts.env.CAT_CAFE_INVOCATION_ID, undefined);
+  assert.equal(call.opts.env.CAT_CAFE_CALLBACK_TOKEN, undefined);
   const systemPromptPath = call.args[call.args.indexOf('--system-prompt-file') + 1];
   assert.equal(readFileSync(systemPromptPath, 'utf8'), 'CASUAL-L0');
 

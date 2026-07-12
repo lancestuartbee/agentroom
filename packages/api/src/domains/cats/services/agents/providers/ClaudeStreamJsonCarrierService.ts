@@ -16,7 +16,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { type CatId, createCatId } from '@cat-cafe/shared';
-import { getCatEffort } from '../../../../../config/cat-config-loader.js';
+import { type CliEffortLevel, getCatEffort } from '../../../../../config/cat-config-loader.js';
 import { getCatModel } from '../../../../../config/cat-models.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { buildSilentCompletionDiagnostic } from '../../../../../utils/cli-diagnostics.js';
@@ -46,6 +46,8 @@ const log = createModuleLogger('claude-stream-json-carrier');
 const PERMISSION_MODE = 'bypassPermissions';
 const DEFAULT_IDLE_CLOSE_MS = 30 * 60 * 1000;
 const STDERR_BUFFER_LIMIT = 16_384;
+const CASUAL_MAX_EFFORT: CliEffortLevel = 'medium';
+const VOLATILE_CALLBACK_ENV_KEYS = ['CAT_CAFE_INVOCATION_ID', 'CAT_CAFE_CALLBACK_TOKEN'] as const;
 
 interface ClaudeStreamJsonCarrierOptions {
   catId?: CatId;
@@ -228,6 +230,20 @@ function withMessageSystemPrompt(prompt: string, options?: AgentServiceOptions):
   return `${systemPrompt}\n\n---\n\n${prompt}`;
 }
 
+function resolveStreamJsonEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
+  const configured = getCatEffort(catId, undefined, 'anthropic');
+  if (options?.promptProfile !== 'casual') return configured;
+  return configured === 'low' ? 'low' : CASUAL_MAX_EFFORT;
+}
+
+function stripVolatileCallbackEnv(env: Record<string, string | null>): Record<string, string | null> {
+  const next = { ...env };
+  for (const key of VOLATILE_CALLBACK_ENV_KEYS) {
+    next[key] = null;
+  }
+  return next;
+}
+
 function isResultEvent(event: unknown): boolean {
   return typeof event === 'object' && event !== null && (event as Record<string, unknown>).type === 'result';
 }
@@ -313,19 +329,21 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
     const command = resolveCliCommand('claude');
     const { effectiveModel, useEnvModelOverride } = resolveClaudeModelSelection(options?.callbackEnv, this.model);
     const isApiKeyMode = options?.callbackEnv?.[ANTHROPIC_PROFILE_MODE_KEY] === 'api_key';
+    const effort = resolveStreamJsonEffort(this.catId as string, options);
     const modelArgs = !useEnvModelOverride && effectiveModel ? ['--model', effectiveModel] : [];
     const nativeSystemPrompt =
       options?.nativeSystemPrompt?.trim() ||
       options?.resumeFallbackSystemPrompt?.trim() ||
       (await this.l0CompilerFn({ catId: this.catId as string }));
 
-    const envOverrides = buildClaudeEnvOverrides(options?.callbackEnv);
+    let envOverrides = buildClaudeEnvOverrides(options?.callbackEnv);
     if (options?.accountEnv) {
       for (const [key, value] of Object.entries(options.accountEnv)) envOverrides[key] = value;
     }
     if (options?.callbackEnv?.[ANTHROPIC_PROFILE_MODE_KEY] === 'subscription') {
       for (const key of SUBSCRIPTION_MODE_DENY_KEYS) envOverrides[key] = null;
     }
+    envOverrides = stripVolatileCallbackEnv(envOverrides);
 
     const baseArgs: string[] = [
       '-p',
@@ -337,7 +355,7 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
       '--verbose',
       ...modelArgs,
       '--effort',
-      getCatEffort(this.catId as string, undefined, 'anthropic'),
+      effort,
       '--permission-mode',
       PERMISSION_MODE,
       '--setting-sources',
