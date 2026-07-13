@@ -117,6 +117,16 @@ function formatThinkingSignatureRescueError(sessionId: string | undefined): stri
 }
 
 const IS_WINDOWS = process.platform === 'win32';
+const VOLATILE_CALLBACK_ENV_KEYS = ['CAT_CAFE_INVOCATION_ID', 'CAT_CAFE_CALLBACK_TOKEN'] as const;
+const CAT_CAFE_MCP_CALLBACK_ENV_KEYS = [
+  'CAT_CAFE_API_URL',
+  'CAT_CAFE_INVOCATION_ID',
+  'CAT_CAFE_CALLBACK_TOKEN',
+  'CAT_CAFE_THREAD_ID',
+  'CAT_CAFE_USER_ID',
+  'CAT_CAFE_CAT_ID',
+  'CAT_CAFE_SIGNAL_USER',
+] as const;
 
 export { pickGitBashPathFromWhere } from './claude-agent-win.js';
 
@@ -173,6 +183,54 @@ function removeAppendPromptTempDir(path: string | undefined): void {
   } catch (err) {
     log.warn({ err, promptDir }, 'Failed to remove Claude append-prompt temp directory');
   }
+}
+
+function removeMcpConfigTempDir(path: string | undefined): void {
+  if (!path) return;
+  const configDir = dirname(path);
+  try {
+    rmSync(configDir, { recursive: true, force: true });
+  } catch (err) {
+    log.warn({ err, configDir }, 'Failed to remove Claude MCP config temp directory');
+  }
+}
+
+function stripVolatileCallbackEnv(env: Record<string, string | null>): Record<string, string | null> {
+  const next = { ...env };
+  for (const key of VOLATILE_CALLBACK_ENV_KEYS) {
+    next[key] = null;
+  }
+  return next;
+}
+
+function buildCatCafeMcpServerEnv(callbackEnv?: Record<string, string>): Record<string, string> | undefined {
+  const env: Record<string, string> = {};
+  for (const key of CAT_CAFE_MCP_CALLBACK_ENV_KEYS) {
+    const value = callbackEnv?.[key];
+    if (!value) continue;
+    env[key] = value;
+  }
+  return Object.keys(env).length > 0 ? env : undefined;
+}
+
+function buildCatCafeMcpConfig(mcpServerPath: string, callbackEnv?: Record<string, string>): string {
+  const env = buildCatCafeMcpServerEnv(callbackEnv);
+  return JSON.stringify({
+    mcpServers: {
+      'cat-cafe': {
+        command: 'node',
+        args: [mcpServerPath],
+        ...(env ? { env } : {}),
+      },
+    },
+  });
+}
+
+function writeMcpConfigToTempFile(content: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'cat-cafe-mcp-'));
+  const path = join(dir, 'mcp-config.json');
+  writeFileSync(path, content, 'utf-8');
+  return path;
 }
 
 /**
@@ -284,8 +342,6 @@ export class ClaudeAgentService implements AgentService {
   private readonly mcpServerPath: string | undefined;
   /** F203: compiles per-cat L0 → file for --system-prompt-file. */
   private readonly l0CompilerFn: typeof compileL0ViaSubprocess;
-  /** Windows: cached MCP config file path (created once per instance, reused across invocations) */
-  private mcpConfigFilePath: string | undefined;
   /** #780: Raw NDJSON archive for post-mortem diagnostics */
   private readonly rawArchive: RawArchiveSink;
 
@@ -381,35 +437,18 @@ export class ClaudeAgentService implements AgentService {
     for (const dir of imageAccessDirs) {
       args.push('--add-dir', dir);
     }
+    let mcpConfigPath: string | undefined;
 
     // Add MCP server config when callback env is present
     // On Windows, Claude CLI treats inline JSON as a file path — write to temp file instead.
-    // The file is cached per-instance so concurrent invocations share one file (no temp spam).
+    // The file is per-invocation because it carries per-turn callback credentials.
     if (!isCasualProfile && options?.callbackEnv && this.mcpServerPath) {
+      const mcpConfig = buildCatCafeMcpConfig(this.mcpServerPath, options.callbackEnv);
       if (IS_WINDOWS) {
-        if (!this.mcpConfigFilePath || !existsSync(this.mcpConfigFilePath)) {
-          const dir = mkdtempSync(join(tmpdir(), 'cat-cafe-mcp-'));
-          this.mcpConfigFilePath = join(dir, 'mcp-config.json');
-          writeFileSync(
-            this.mcpConfigFilePath,
-            JSON.stringify({
-              mcpServers: {
-                'cat-cafe': { command: 'node', args: [this.mcpServerPath] },
-              },
-            }),
-            'utf-8',
-          );
-        }
-        args.push('--mcp-config', this.mcpConfigFilePath);
+        mcpConfigPath = writeMcpConfigToTempFile(mcpConfig);
+        args.push('--mcp-config', mcpConfigPath);
       } else {
-        args.push(
-          '--mcp-config',
-          JSON.stringify({
-            mcpServers: {
-              'cat-cafe': { command: 'node', args: [this.mcpServerPath] },
-            },
-          }),
-        );
+        args.push('--mcp-config', mcpConfig);
       }
     }
 
@@ -479,7 +518,7 @@ export class ClaudeAgentService implements AgentService {
       }
 
       let sawResultError = false;
-      const envOverrides = buildClaudeEnvOverrides(options?.callbackEnv);
+      let envOverrides = buildClaudeEnvOverrides(options?.callbackEnv);
       // F171: Account env vars applied LAST — user overrides provider-injected values
       if (options?.accountEnv) {
         for (const [k, v] of Object.entries(options.accountEnv)) envOverrides[k] = v;
@@ -490,6 +529,7 @@ export class ClaudeAgentService implements AgentService {
       if (options?.callbackEnv?.[ANTHROPIC_PROFILE_MODE_KEY] === 'subscription') {
         for (const key of SUBSCRIPTION_MODE_DENY_KEYS) envOverrides[key] = null;
       }
+      envOverrides = stripVolatileCallbackEnv(envOverrides);
 
       // Debug: log full invocation details (env values redacted by pino redact paths)
       const safeEnvSummary: Record<string, string> = {};
@@ -838,6 +878,7 @@ export class ClaudeAgentService implements AgentService {
     } finally {
       removeL0TempDir(l0Path);
       removeAppendPromptTempDir(appendPromptPath);
+      removeMcpConfigTempDir(mcpConfigPath);
     }
   }
 }

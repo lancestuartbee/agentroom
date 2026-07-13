@@ -46,6 +46,14 @@ async function collect(iterable) {
   return items;
 }
 
+async function getLatestInvocationRecord(registry, threadId, catId) {
+  const invocationId = await registry.getLatestId(threadId, catId);
+  assert.ok(invocationId, `expected latest invocation for ${threadId}/${catId}`);
+  const record = await registry.peekRecord(invocationId);
+  assert.ok(record, `expected invocation record for ${invocationId}`);
+  return record;
+}
+
 /** Create a mock child process (same pattern as unit tests) */
 function createMockProcess() {
   const stdout = new PassThrough();
@@ -290,12 +298,13 @@ describe('AgentRouter + Services wiring', () => {
 
     await collect(router.route('user-1', 'hello'));
 
-    // Claude spawn should have been called with env containing callback vars
+    // Claude main process keeps stable env; per-turn callback credentials are reserved for MCP config.
     assert.equal(claudeSpawn._calls.length, 1);
     const spawnOpts = claudeSpawn._calls[0].options;
-    assert.ok(spawnOpts.env.CAT_CAFE_INVOCATION_ID, 'should have invocation ID');
-    assert.ok(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, 'should have callback token');
+    assert.equal(spawnOpts.env.CAT_CAFE_INVOCATION_ID, undefined);
+    assert.equal(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, undefined);
     assert.ok(spawnOpts.env.CAT_CAFE_API_URL, 'should have API URL');
+    assert.ok(await getLatestInvocationRecord(registry, 'default', 'opus'));
   });
 
   test('passes callbackEnv to Codex service', async () => {
@@ -319,8 +328,9 @@ describe('AgentRouter + Services wiring', () => {
 
     assert.equal(codexSpawn._calls.length, 1);
     const spawnOpts = codexSpawn._calls[0].options;
-    assert.ok(spawnOpts.env.CAT_CAFE_INVOCATION_ID);
-    assert.ok(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN);
+    assert.equal(spawnOpts.env.CAT_CAFE_INVOCATION_ID, undefined);
+    assert.equal(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, undefined);
+    assert.ok(await getLatestInvocationRecord(registry, 'default', 'codex'));
   });
 
   test('passes callbackEnv to Gemini service', async () => {
@@ -403,9 +413,9 @@ describe('AgentRouter + Services wiring', () => {
 
     await collect(router.route('user-1', '@opus @codex hello'));
 
-    // Collect invocation IDs from both spawns
-    const opusId = claudeSpawn._calls[0].options.env.CAT_CAFE_INVOCATION_ID;
-    const codexId = codexSpawn._calls[0].options.env.CAT_CAFE_INVOCATION_ID;
+    // Collect invocation IDs from the registry; provider child env intentionally omits volatile credentials.
+    const opusId = (await getLatestInvocationRecord(registry, 'default', 'opus')).invocationId;
+    const codexId = (await getLatestInvocationRecord(registry, 'default', 'codex')).invocationId;
 
     assert.ok(opusId, 'opus should have invocation ID');
     assert.ok(codexId, 'codex should have invocation ID');
@@ -429,9 +439,9 @@ describe('AgentRouter + Services wiring', () => {
 
     await collect(router.route('user-1', 'hello'));
 
-    const env = claudeSpawn._calls[0].options.env;
+    const record = await getLatestInvocationRecord(registry, 'default', 'opus');
     // F174 Phase A/B: verify() returns Promise<VerifyResult>
-    const result = await registry.verify(env.CAT_CAFE_INVOCATION_ID, env.CAT_CAFE_CALLBACK_TOKEN);
+    const result = await registry.verify(record.invocationId, record.callbackToken);
     assert.equal(result.ok, true, 'credentials should be verifiable');
     assert.equal(result.record.userId, 'user-1');
     assert.equal(result.record.catId, 'opus');
@@ -619,15 +629,15 @@ describe('MCP callback end-to-end flow', () => {
     // 1. route() creates invocation and passes callbackEnv to spawn
     await collect(router.route('user-1', 'hello'));
 
-    // 2. Extract callbackEnv from the spawn call
-    const env = claudeSpawn._calls[0].options.env;
+    // 2. Extract callback credentials from the registry, not the stripped Claude child env.
+    const record = await getLatestInvocationRecord(registry, 'default', 'opus');
 
     // 3. POST to callback endpoint with credentials from route()
     const app = await createApp();
     const response = await app.inject({
       method: 'POST',
       url: '/api/callbacks/post-message',
-      headers: { 'x-invocation-id': env.CAT_CAFE_INVOCATION_ID, 'x-callback-token': env.CAT_CAFE_CALLBACK_TOKEN },
+      headers: { 'x-invocation-id': record.invocationId, 'x-callback-token': record.callbackToken },
       payload: {
         content: 'Callback message from cat!',
       },

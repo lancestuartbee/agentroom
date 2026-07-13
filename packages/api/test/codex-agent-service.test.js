@@ -411,6 +411,9 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
       await promise;
 
       const args = spawnFn.mock.calls[0].arguments[1];
+      const spawnOpts = spawnFn.mock.calls[0].arguments[2];
+      assert.equal(spawnOpts.env.CAT_CAFE_INVOCATION_ID, undefined);
+      assert.equal(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, undefined);
 
       // F193 Phase C (#1605): legacy `cat-cafe` MCP server is gone, replaced by
       // split servers (cat-cafe-collab / -memory / -signals / -limb).

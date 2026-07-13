@@ -1,5 +1,48 @@
 # 03. 改造进展日志
 
+## 2026-07-13
+
+### CLI carrier / session 复用边界收窄
+
+完成内容：
+
+- Claude stream-json carrier 不再硬编码只支持 casual，而是按“是否安全复用”决定：
+  - casual 继续直接使用常驻 stream-json 进程。
+  - development 在没有 per-turn callback MCP 凭证时也可复用 stream-json。
+  - development 如果携带 `CAT_CAFE_INVOCATION_ID` / `CAT_CAFE_CALLBACK_TOKEN`，自动回退旧 Claude carrier，避免常驻进程持有首轮 callback token 后串 invocation。
+  - 带图片或显式 `spawnCliOverride` 的调用仍回退旧 Claude carrier。
+  - 未标注 prompt profile 的直连调用仍保持旧 fallback 行为，避免默认/未知入口被误接管。
+- Codex 子进程现在所有 profile 都过滤一次性 callback env；development 的 MCP callback token 仍通过 per-invocation MCP config 注入，不依赖父 Codex 进程 env。
+
+验证：
+
+```bash
+corepack pnpm --filter @cat-cafe/api run build
+node --test packages/api/test/claude-stream-json-carrier.test.js packages/api/test/claude-carrier-factory.test.js
+node --test --test-name-pattern "casual prompt profile uses lightweight Codex CLI launch flags|casual prompt profile upgrades read-only sandbox|casual prompt profile resumes Codex CLI session|injects cat-cafe MCP config|uses env-configured sandbox|unknown Codex cat falls back" packages/api/test/codex-agent-service.test.js
+node --test --test-name-pattern "casual mode reuses profile-scoped provider session|casual Codex sessions use a writable sandbox storage namespace" packages/api/test/invoke-single-cat.test.js
+node --test packages/api/test/casual-mode-routing.test.js packages/api/test/casual-prompt-profile.test.js
+git diff --check
+```
+
+结果：
+
+- API build 通过。
+- Claude stream-json carrier + carrier factory 测试通过。
+- Codex casual 启动参数、sandbox、resume、MCP 注入与默认配置回归测试通过。
+- invoke casual provider session 复用与 Codex writable sandbox namespace 测试通过。
+- casual routing / casual prompt profile 回归测试通过。
+- `git diff --check` 通过。
+
+保留边界：
+
+- 未新增 `roundtable` prompt profile，也未把 casual 的轻量工具策略共享给其他工作模式。
+- Claude / Claude bg / Gemini / Kimi / OpenCode / Dare 的轻量 CLI 能力策略仍保持 casual-only。
+- Codex effort cap、read-only sandbox 自动提升、禁用 MCP、禁用成员 CLI config、跳过 `.git`/用户配置等策略仍保持 casual-only。
+- development 模式仍保留 MCP、`.git` 写权限、成员 CLI config、session-chain、staging、transcript path hints 和质量控制链路。
+- Claude stream-json 对 development 的真常驻不强行接管 per-turn callback MCP 场景；否则 MCP server 会持有首轮 callback token，存在串 invocation 风险。
+- Codex app-server 常驻 carrier 仍暂缓，继续按 `11-codex-app-server-carrier.md` 的触发条件单独设计。
+
 ## 2026-07-11
 
 ### 闲聊 prompt profile 精简
@@ -856,3 +899,37 @@ git diff --check
 - 处理 CLI 沙箱问题不能只看新建命令参数，还必须检查 `resume` 是否继承了旧 session 的创建时参数。
 - 不应通过删除 Redis 来“修”旧 session；更合适的是引入版本化 session storage key，让旧数据自然退场。
 - 浏览器下载文件名如果经过 `fetch -> blob -> a[download]`，必须确认前端能读取 `Content-Disposition`；否则后端 header 正确也不会影响前端保存名。
+
+## 2026-07-13 Claude callback 凭证与主进程 env 分离
+
+背景：
+
+- 协作/开发模式每轮都会生成新的 `CAT_CAFE_INVOCATION_ID` / `CAT_CAFE_CALLBACK_TOKEN`。
+- 这些 volatile 值如果进入 provider 主进程 env 或影响 CLI/MCP 初始化签名，可能降低 Claude prompt cache 前缀稳定性；但 native MCP callback 工具仍必须拿到本轮凭证。
+
+修复：
+
+- `ClaudeAgentService` 普通 `print/resume` 路径：
+  - 主 Claude CLI env 中 strip `CAT_CAFE_INVOCATION_ID` / `CAT_CAFE_CALLBACK_TOKEN`。
+  - `--mcp-config` 的 `mcpServers.cat-cafe.env` 单独注入本轮 callback env，保留 native MCP callback 能力。
+  - Windows 分支不再缓存 MCP config 文件；改为每轮写临时 config，并在 invocation 结束清理，避免复用旧 token。
+- 同步更新测试：
+  - Claude 单测断言主进程 env 不含 volatile 凭证，MCP config 仍含本轮 API URL / invocation ID / callback token。
+  - wiring 测试不再从 provider child env 读取 callback token，改从 invocation registry 读取。
+
+验证：
+
+```bash
+corepack pnpm --filter @cat-cafe/api run build
+node --test --test-name-pattern "falls back to default MCP path" packages/api/test/claude-agent-service.test.js
+node --test --test-name-pattern "development MCP config still receives callback env" packages/api/test/codex-agent-service.test.js
+node --test --test-name-pattern "stream-json carrier falls back for development turns" packages/api/test/claude-stream-json-carrier.test.js
+git diff --check
+```
+
+结果：
+
+- API build 通过。
+- 新增/相关定向测试通过。
+- `git diff --check` 通过。
+- 说明：这不是新增 provider cache 层，而是减少每轮变化值对 Claude 主进程环境和潜在 cache 前缀稳定性的干扰。

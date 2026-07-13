@@ -160,6 +160,22 @@ function casualOptions(invocationId, nativeSystemPrompt = 'CASUAL-L0') {
   };
 }
 
+function developmentOptions(invocationId) {
+  return {
+    promptProfile: 'development',
+    callbackEnv: {
+      CAT_CAFE_ANTHROPIC_PROFILE_MODE: 'subscription',
+    },
+    auditContext: {
+      invocationId,
+      threadId: 'thread-stream-json-dev',
+      userId: 'user-stream-json',
+      catId: 'opus',
+    },
+    invocationId,
+  };
+}
+
 test('stream-json carrier keeps one Claude CLI process for repeated casual turns', async () => {
   const proc = createMockProcess();
   const spawnFn = createSpawnFn([proc]);
@@ -220,6 +236,104 @@ test('stream-json carrier keeps one Claude CLI process for repeated casual turns
   assert.equal(secondEvents.at(-1).metadata.sessionId, 'claude-session-1');
 
   endProcess(proc);
+});
+
+test('stream-json carrier preserves fallback behavior when prompt profile is omitted', async () => {
+  const spawnFn = createSpawnFn([]);
+  const fallbackCalls = [];
+  const fallbackService = {
+    async *invoke(prompt, options) {
+      fallbackCalls.push({ prompt, options });
+      yield { type: 'done', catId: 'opus', metadata: { provider: 'anthropic', model: 'fallback' }, timestamp: Date.now() };
+    },
+  };
+  const service = new ClaudeStreamJsonCarrierService({
+    catId: 'opus',
+    spawnFn,
+    model: 'claude-test-model',
+    l0CompilerFn: async () => 'COMPILED-L0',
+    fallbackService,
+  });
+
+  const events = await collect(service.invoke('legacy hello', { invocationId: 'inv-legacy' }));
+
+  assert.equal(spawnFn.calls.length, 0);
+  assert.equal(fallbackCalls.length, 1);
+  assert.equal(fallbackCalls[0].prompt, 'legacy hello');
+  assert.equal(events.at(-1).type, 'done');
+});
+
+test('stream-json carrier keeps one Claude CLI process for development turns without callback MCP credentials', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createSpawnFn([proc]);
+  const service = new ClaudeStreamJsonCarrierService({
+    catId: 'opus',
+    spawnFn,
+    model: 'claude-test-model',
+    l0CompilerFn: async () => 'COMPILED-L0',
+  });
+
+  const firstPending = collect(service.invoke('dev hello', developmentOptions('inv-dev-1')));
+  await waitForStdinWrites(proc, 1);
+
+  assert.equal(spawnFn.calls.length, 1);
+  const call = spawnFn.calls[0];
+  assert.equal(call.args[call.args.indexOf('--system-prompt-file') + 1] !== undefined, true);
+  const systemPromptPath = call.args[call.args.indexOf('--system-prompt-file') + 1];
+  assert.equal(readFileSync(systemPromptPath, 'utf8'), 'COMPILED-L0');
+
+  emitClaudeTurn(proc, { sessionId: 'claude-dev-session-1', messageId: 'msg-dev-1', text: 'dev back' });
+  await firstPending;
+
+  const secondPending = collect(
+    service.invoke('dev again', {
+      ...developmentOptions('inv-dev-2'),
+      sessionId: 'claude-dev-session-1',
+    }),
+  );
+  await waitForStdinWrites(proc, 2);
+  assert.equal(spawnFn.calls.length, 1, 'development turn without callback MCP credentials reuses the same process');
+
+  emitClaudeTurn(proc, { messageId: 'msg-dev-2', text: 'dev again back' });
+  const secondEvents = await secondPending;
+  assert.equal(secondEvents.at(-1).metadata.sessionId, 'claude-dev-session-1');
+
+  endProcess(proc);
+});
+
+test('stream-json carrier falls back for development turns with per-turn callback MCP credentials', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createSpawnFn([proc]);
+  const fallbackCalls = [];
+  const fallbackService = {
+    async *invoke(prompt, options) {
+      fallbackCalls.push({ prompt, options });
+      yield { type: 'done', catId: 'opus', metadata: { provider: 'anthropic', model: 'fallback' }, timestamp: Date.now() };
+    },
+  };
+  const service = new ClaudeStreamJsonCarrierService({
+    catId: 'opus',
+    spawnFn,
+    model: 'claude-test-model',
+    l0CompilerFn: async () => 'COMPILED-L0',
+    fallbackService,
+  });
+
+  const events = await collect(
+    service.invoke('dev with mcp', {
+      ...developmentOptions('inv-dev-mcp'),
+      callbackEnv: {
+        CAT_CAFE_ANTHROPIC_PROFILE_MODE: 'subscription',
+        CAT_CAFE_INVOCATION_ID: 'inv-dev-mcp',
+        CAT_CAFE_CALLBACK_TOKEN: 'tok-dev-mcp',
+      },
+    }),
+  );
+
+  assert.equal(spawnFn.calls.length, 0, 'stream-json must not own development callback MCP credentials');
+  assert.equal(fallbackCalls.length, 1);
+  assert.equal(fallbackCalls[0].prompt, 'dev with mcp');
+  assert.equal(events.at(-1).type, 'done');
 });
 
 test('stream-json carrier restarts when stable native prompt changes', async () => {

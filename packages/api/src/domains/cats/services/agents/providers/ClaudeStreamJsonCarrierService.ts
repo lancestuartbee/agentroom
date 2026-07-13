@@ -4,10 +4,11 @@
  * Experimental opt-in carrier for Claude Code CLI's streaming input mode:
  *   claude -p --input-format stream-json --output-format stream-json
  *
- * Unlike ClaudeAgentService, this keeps one CLI process alive per casual
- * conversation key and writes one JSONL user message per turn. Development
- * mode and attachment-heavy calls deliberately fall back to ClaudeAgentService
- * so existing collaboration semantics are not changed by this carrier.
+ * Unlike ClaudeAgentService, this keeps one CLI process alive per conversation
+ * key and writes one JSONL user message per turn. Attachment-heavy calls and
+ * development turns that require per-invocation callback MCP credentials
+ * deliberately fall back to ClaudeAgentService so collaboration semantics are
+ * not changed by this carrier.
  */
 
 import { spawn as nodeSpawn } from 'node:child_process';
@@ -248,8 +249,12 @@ function isResultEvent(event: unknown): boolean {
   return typeof event === 'object' && event !== null && (event as Record<string, unknown>).type === 'result';
 }
 
+function hasPerTurnCallbackCredentials(callbackEnv?: Record<string, string>): boolean {
+  return Boolean(callbackEnv?.CAT_CAFE_INVOCATION_ID || callbackEnv?.CAT_CAFE_CALLBACK_TOKEN);
+}
+
 /**
- * Keeps Claude Code CLI alive for casual-mode conversations using streaming
+ * Keeps Claude Code CLI alive for eligible conversations using streaming
  * input. This is explicitly not the default production carrier yet.
  */
 export class ClaudeStreamJsonCarrierService implements AgentService {
@@ -297,10 +302,12 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
   }
 
   private shouldUseStreamJson(options?: AgentServiceOptions): boolean {
-    if (options?.promptProfile !== 'casual') return false;
-    if (options.spawnCliOverride) return false;
-    const imagePaths = extractImagePaths(options.contentBlocks, options.uploadDir);
-    return imagePaths.length === 0;
+    if (options?.spawnCliOverride) return false;
+    const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
+    if (imagePaths.length > 0) return false;
+    if (options?.promptProfile === 'casual') return true;
+    if (options?.promptProfile !== 'development') return false;
+    return !hasPerTurnCallbackCredentials(options?.callbackEnv);
   }
 
   private async *invokeStreamJson(prompt: string, options?: AgentServiceOptions): AsyncGenerator<AgentMessage> {
@@ -332,7 +339,7 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
     const effort = resolveStreamJsonEffort(this.catId as string, options);
     const modelArgs = !useEnvModelOverride && effectiveModel ? ['--model', effectiveModel] : [];
     const nativeSystemPrompt =
-      options?.nativeSystemPrompt?.trim() ||
+      (options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined) ||
       options?.resumeFallbackSystemPrompt?.trim() ||
       (await this.l0CompilerFn({ catId: this.catId as string }));
 

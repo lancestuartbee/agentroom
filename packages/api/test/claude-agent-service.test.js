@@ -1121,7 +1121,7 @@ test('falls back to default MCP path when CAT_CAFE_MCP_SERVER_PATH is empty', as
     process.chdir(apiCwd);
     process.env.CAT_CAFE_MCP_SERVER_PATH = '';
 
-    const service = createClaudeAgentService({ spawnFn });
+    const service = createClaudeAgentService({ spawnFn, model: 'claude-test-model' });
     const promise = collect(
       service.invoke('hello', {
         callbackEnv: {
@@ -1135,10 +1135,16 @@ test('falls back to default MCP path when CAT_CAFE_MCP_SERVER_PATH is empty', as
     await promise;
 
     const args = spawnFn.mock.calls[0].arguments[1];
+    const spawnOpts = spawnFn.mock.calls[0].arguments[2];
+    assert.equal(spawnOpts.env.CAT_CAFE_INVOCATION_ID, undefined);
+    assert.equal(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, undefined);
     const mcpConfigIdx = args.indexOf('--mcp-config');
     assert.ok(mcpConfigIdx >= 0, '--mcp-config should be present when fallback resolves');
     const parsed = JSON.parse(args[mcpConfigIdx + 1]);
     assert.equal(realpathSync(parsed.mcpServers['cat-cafe'].args[0]), realpathSync(join(mcpDistDir, 'index.js')));
+    assert.equal(parsed.mcpServers['cat-cafe'].env.CAT_CAFE_API_URL, 'http://localhost:3004');
+    assert.equal(parsed.mcpServers['cat-cafe'].env.CAT_CAFE_INVOCATION_ID, 'inv-1');
+    assert.equal(parsed.mcpServers['cat-cafe'].env.CAT_CAFE_CALLBACK_TOKEN, 'token-1');
   } finally {
     process.chdir(previousCwd);
     if (previousEnv === undefined) {

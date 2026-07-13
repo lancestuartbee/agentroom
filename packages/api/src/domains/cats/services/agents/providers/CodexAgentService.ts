@@ -697,9 +697,7 @@ export class CodexAgentService implements AgentService {
           codexEnv[k] = v;
         }
       }
-      if (isCasualProfile) {
-        codexEnv = stripVolatileCallbackEnv(codexEnv);
-      }
+      codexEnv = stripVolatileCallbackEnv(codexEnv);
 
       const semanticCompletionController = new AbortController();
 
