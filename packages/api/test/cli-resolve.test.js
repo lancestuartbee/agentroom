@@ -35,6 +35,23 @@ test('formatCliNotFoundError returns generic hint for unknown CLI', () => {
   assert.match(msg, /install the "unknown-tool" CLI/);
 });
 
+test('formatCliNotFoundError returns current Kimi Code installer hint, not legacy kimi-cli', () => {
+  // Moonshot's official CLI is now "Kimi Code" (curl-installed, TS), which superseded
+  // the old `uv tool install kimi-cli` (Python) package. Users following the stale
+  // hint would install the wrong/deprecated tool. See MoonshotAI/kimi-code README.
+  const msg = formatCliNotFoundError('kimi');
+  assert.match(msg, /kimi CLI 未找到/);
+  assert.match(msg, /https:\/\/code\.kimi\.com\/kimi-code\/install\.sh/);
+  assert.doesNotMatch(msg, /uv tool install/);
+});
+
+test('formatCliNotFoundError returns Windows installer hint for kimi on win32 (砚砚 P2)', () => {
+  const msg = formatCliNotFoundError('kimi', 'win32');
+  assert.match(msg, /kimi CLI 未找到/);
+  assert.match(msg, /install\.ps1/);
+  assert.doesNotMatch(msg, /install\.sh/);
+});
+
 // --- resolveCliCommandOrBare ---
 
 test('resolveCliCommandOrBare returns bare name when CLI not found', () => {
@@ -205,6 +222,66 @@ test('resolveCliCommand with skipPathProbe returns null when not in fallback dir
   const result = resolveCliCommand(cmdName, { skipPathProbe: true });
   assert.equal(result, null, 'should return null for truly missing CLI');
 });
+
+// --- Kimi Code installer fallback dir ---
+// Official installer (curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)
+// places the binary at $HOME/.kimi-code/bin/kimi and appends a PATH export to the
+// user's shell rc file. Electron/GUI-launched backends don't re-source that rc file,
+// so the fallback dir search must know this location too.
+// Scoped to the `kimi` command only (砚砚 P3) — verified by the two tests below:
+// one proves `kimi` resolves via the dir, the other proves other commands don't.
+test(
+  'resolveCliCommand finds kimi in HOME/.kimi-code/bin (Unix)',
+  { skip: process.platform === 'win32' && 'Unix-only (HOME fallback)' },
+  () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'cli-resolve-kimicode-'));
+    const kimiBin = join(tempRoot, '.kimi-code', 'bin');
+    mkdirSync(kimiBin, { recursive: true });
+
+    const fakeBin = join(kimiBin, 'kimi');
+    writeFileSync(fakeBin, '#!/bin/sh\necho ok\n', { mode: 0o755 });
+
+    const originalHome = process.env.HOME;
+    try {
+      process.env.HOME = tempRoot;
+      invalidateCliCommand('kimi');
+      const result = resolveCliCommand('kimi', { skipPathProbe: true });
+      assert.equal(result, fakeBin, 'should find kimi binary in HOME/.kimi-code/bin');
+    } finally {
+      invalidateCliCommand('kimi');
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'resolveCliCommand does not search .kimi-code/bin for non-kimi commands (砚砚 P3 scope guard)',
+  { skip: process.platform === 'win32' && 'Unix-only (HOME fallback)' },
+  () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'cli-resolve-kimicode-scope-'));
+    const kimiBin = join(tempRoot, '.kimi-code', 'bin');
+    mkdirSync(kimiBin, { recursive: true });
+
+    // Same private bin dir, but a different command name — must NOT resolve.
+    const cmdName = 'fake-not-kimi-tool';
+    const fakeBin = join(kimiBin, cmdName);
+    writeFileSync(fakeBin, '#!/bin/sh\necho ok\n', { mode: 0o755 });
+
+    const originalHome = process.env.HOME;
+    try {
+      process.env.HOME = tempRoot;
+      invalidateCliCommand(cmdName);
+      const result = resolveCliCommand(cmdName, { skipPathProbe: true });
+      assert.equal(result, null, 'non-kimi commands must not resolve via .kimi-code/bin');
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  },
+);
 
 // --- F173 Phase D AC-D1/D2: cache invalidation on stale entry ---
 

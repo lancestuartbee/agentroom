@@ -25,6 +25,15 @@ const UNIX_SEARCH_DIRS = [
   '.nix-profile/bin',
 ];
 
+/**
+ * Official Kimi Code installer (curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)
+ * defaults to $HOME/.kimi-code and installs the binary at <that>/bin/kimi.
+ * Scoped to the `kimi` command only (mirrors the `agy`-specific Windows dir below)
+ * rather than added to UNIX_SEARCH_DIRS, so unrelated commands don't pick up
+ * false-positive matches from Kimi's private bin dir (砚砚 review P3).
+ */
+const KIMI_CODE_UNIX_BIN_DIR = '.kimi-code/bin';
+
 /** Discover nvm-managed Node.js bin directories under ~/.nvm/versions/node/. */
 function collectNvmBinDirs(): string[] {
   const home = process.env.HOME ?? '';
@@ -132,7 +141,8 @@ export function resolveCliCommand(command: string, opts?: { skipPathProbe?: bool
     const home = process.env.HOME ?? '';
     if (home) {
       // Static well-known directories (relative to $HOME)
-      for (const dir of UNIX_SEARCH_DIRS) {
+      const unixDirs = command === 'kimi' ? [...UNIX_SEARCH_DIRS, KIMI_CODE_UNIX_BIN_DIR] : UNIX_SEARCH_DIRS;
+      for (const dir of unixDirs) {
         const candidate = resolve(home, dir, command);
         if (existsSync(candidate)) {
           resolvedCache.set(command, candidate);
@@ -174,7 +184,14 @@ export function formatCliNotFoundError(command: string, platform: NodeJS.Platfor
       platform === 'win32'
         ? 'curl.exe -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd'
         : 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
-    kimi: 'uv tool install --python 3.13 kimi-cli',
+    // Moonshot's official CLI is now "Kimi Code" (TypeScript) — the successor to the
+    // old `uv tool install kimi-cli` (Python) package. See
+    // https://github.com/MoonshotAI/kimi-code and https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started
+    // (verified: both macOS/Linux and Windows installer commands quoted there, 砚砚 P2).
+    kimi:
+      platform === 'win32'
+        ? 'irm https://code.kimi.com/kimi-code/install.ps1 | iex'
+        : 'curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash',
     opencode: 'npm install -g opencode',
   };
   const hint = installHints[command] ?? `install the "${command}" CLI`;
