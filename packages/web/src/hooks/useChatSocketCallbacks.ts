@@ -62,6 +62,18 @@ export function useChatSocketCallbacks({
             ),
           }));
         }
+        if (data.roundtableIssueState !== undefined) {
+          useChatStore.setState((state) => ({
+            threads: state.threads.map((t) =>
+              t.id === data.threadId
+                ? {
+                    ...t,
+                    roundtableIssueState: data.roundtableIssueState ?? undefined,
+                  }
+                : t,
+            ),
+          }));
+        }
       },
       onIntentMode: (data) => {
         // Socket layer (useSocket) already applies dual-pointer guard + background routing.

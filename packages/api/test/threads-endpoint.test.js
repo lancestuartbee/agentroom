@@ -115,25 +115,130 @@ describe('Thread API', () => {
 
     const messages = localMessageStore.getByThread(body.thread.id, 10, 'alice');
     assert.equal(messages.length, 1);
+    assert.equal(messages[0].userId, 'system');
+    assert.equal(messages[0].extra?.systemKind, 'upgrade_background');
     assert.match(messages[0].content, /升级背景/);
     assert.match(messages[0].content, /插件化桌面客户端/);
 
     await localApp.close();
   });
 
-  it('POST /api/threads/:id/upgrade keeps roundtable as an explicit placeholder', async () => {
-    const source = threadStore.create('alice', 'Roundtable idea');
-    threadStore.updateThreadMode(source.id, 'casual');
+  it('POST /api/threads/:id/upgrade creates a roundtable thread with source background', async () => {
+    const { MessageStore } = await import('../dist/domains/cats/services/stores/ports/MessageStore.js');
+    const { threadsRoutes } = await import('../dist/routes/threads.js');
+    const { ThreadStore } = await import('../dist/domains/cats/services/stores/ports/ThreadStore.js');
 
-    const res = await app.inject({
+    const localThreadStore = new ThreadStore();
+    const localMessageStore = new MessageStore();
+    const localApp = Fastify();
+    await localApp.register(threadsRoutes, { threadStore: localThreadStore, messageStore: localMessageStore });
+    await localApp.ready();
+
+    const source = localThreadStore.create('alice', 'Roundtable idea');
+    localThreadStore.updateThreadMode(source.id, 'casual');
+    localMessageStore.append({
+      userId: 'alice',
+      catId: null,
+      content: '我们刚才聊到这个问题需要多方视角一起判断。',
+      mentions: [],
+      timestamp: Date.now(),
+      threadId: source.id,
+    });
+
+    const res = await localApp.inject({
       method: 'POST',
       url: `/api/threads/${source.id}/upgrade`,
       payload: { userId: 'alice', targetMode: 'roundtable' },
     });
 
-    assert.equal(res.statusCode, 501);
+    assert.equal(res.statusCode, 201);
     const body = JSON.parse(res.body);
-    assert.equal(body.code, 'ROUNDTABLE_NOT_IMPLEMENTED');
+    assert.equal(body.thread.mode, 'roundtable');
+    assert.equal(body.thread.parentThreadId, source.id);
+
+    const messages = localMessageStore.getByThread(body.thread.id, 10, 'alice');
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].userId, 'system');
+    assert.equal(messages[0].extra?.systemKind, 'upgrade_background');
+    assert.match(messages[0].content, /由闲聊会话升级为圆桌会议/);
+    assert.match(messages[0].content, /需要多方视角/);
+
+    await localApp.close();
+  });
+
+  it('POST /api/threads/:id/upgrade creates a development thread from roundtable conclusions', async () => {
+    const workspaceRoot = await createTempWorkspace();
+    process.env.CAT_CAFE_WORKSPACE_ROOT = workspaceRoot;
+
+    const { MessageStore } = await import('../dist/domains/cats/services/stores/ports/MessageStore.js');
+    const { threadsRoutes } = await import('../dist/routes/threads.js');
+    const { ThreadStore } = await import('../dist/domains/cats/services/stores/ports/ThreadStore.js');
+
+    const localThreadStore = new ThreadStore();
+    const localMessageStore = new MessageStore();
+    const localApp = Fastify();
+    await localApp.register(threadsRoutes, { threadStore: localThreadStore, messageStore: localMessageStore });
+    await localApp.ready();
+
+    const source = localThreadStore.create('alice', 'Architecture roundtable');
+    localThreadStore.updateThreadMode(source.id, 'roundtable');
+    localMessageStore.append({
+      userId: 'alice',
+      catId: 'codex',
+      content: '互评过程原文不应该进入开发升级背景。',
+      mentions: [],
+      timestamp: Date.now(),
+      threadId: source.id,
+    });
+    localMessageStore.append({
+      userId: 'system',
+      catId: null,
+      content: [
+        '# 圆桌会议总结',
+        '',
+        '议题：是否采用 A 方案',
+        '',
+        '## 会议结论',
+        '多数成员认为应该采用 A 方案，并先做一周灰度。',
+        '',
+        '## 少数或保留观点',
+        '- Codex: 需要保留回滚条件。',
+        '',
+        '## 下一步',
+        '拆成开发任务并进入实现。',
+      ].join('\n'),
+      mentions: [],
+      timestamp: Date.now(),
+      threadId: source.id,
+    });
+
+    const res = await localApp.inject({
+      method: 'POST',
+      url: `/api/threads/${source.id}/upgrade`,
+      payload: {
+        userId: 'alice',
+        targetMode: 'development',
+        projectPath: workspaceRoot,
+      },
+    });
+
+    assert.equal(res.statusCode, 201);
+    const body = JSON.parse(res.body);
+    assert.equal(body.thread.mode, 'development');
+    assert.equal(body.thread.projectPath, workspaceRoot);
+    assert.equal(body.thread.parentThreadId, source.id);
+
+    const messages = localMessageStore.getByThread(body.thread.id, 10, 'alice');
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].userId, 'system');
+    assert.equal(messages[0].extra?.systemKind, 'upgrade_background');
+    assert.match(messages[0].content, /由圆桌会议会话升级为开发协作/);
+    assert.match(messages[0].content, /圆桌结论摘录/);
+    assert.match(messages[0].content, /应该采用 A 方案/);
+    assert.match(messages[0].content, /需要保留回滚条件/);
+    assert.doesNotMatch(messages[0].content, /互评过程原文/);
+
+    await localApp.close();
   });
 
   it('POST /api/threads binds bootcamp threads without projectPath to CAT_CAFE_WORKSPACE_ROOT', async () => {

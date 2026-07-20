@@ -54,6 +54,14 @@ describe('casual prompt profile', () => {
     assert.deepEqual(profile.getPromptProfileContextBudget('codex', 'casual'), profile.CASUAL_CONTEXT_BUDGET);
   });
 
+  it('keeps a larger context window for roundtable critique loops', () => {
+    const budget = profile.getPromptProfileContextBudget('codex', 'roundtable');
+
+    assert.deepEqual(budget, profile.ROUNDTABLE_CONTEXT_BUDGET);
+    assert.ok(budget.maxMessages >= 160, 'roundtable should cover multi-round participant history');
+    assert.ok(budget.maxContextTokens >= 16000, 'roundtable should not truncate five critique rounds too aggressively');
+  });
+
   it('does not compile full Codex L0 when casual native prompt override is present', async () => {
     await withRealRoster(async () => {
       let l0CompileCalls = 0;

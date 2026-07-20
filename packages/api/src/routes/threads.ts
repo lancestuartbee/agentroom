@@ -143,13 +143,14 @@ const upgradeThreadSchema = z
   .object({
     /** Legacy fallback only; preferred identity source is X-Cat-Cafe-User header. */
     userId: z.string().min(1).max(100).optional(),
-    /** Roundtable is accepted at the API boundary but returns 501 until its control flow is implemented. */
     targetMode: z.enum(['development', 'roundtable']),
     title: z.string().trim().min(1).max(200).optional(),
     projectPath: z.string().min(1).max(500).optional(),
     preferredCats: z.array(catIdSchema()).max(10).optional(),
   })
   .strict();
+
+const UPGRADE_CONTEXT_MESSAGE_LIMIT = 96;
 
 const listThreadsSchema = z.object({
   projectPath: z.string().min(1).max(500).optional(),
@@ -214,31 +215,113 @@ function truncateInline(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
-function buildModeUpgradeBackground(
+function truncateBlock(value: string, maxLength: number): string {
+  const normalized = value
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 15)).trimEnd()}\n...[truncated]`;
+}
+
+function threadModeLabel(mode: ThreadMode): string {
+  if (mode === 'casual') return '闲聊';
+  if (mode === 'roundtable') return '圆桌会议';
+  return '开发协作';
+}
+
+function extractMarkdownSections(text: string, titles: readonly string[]): string {
+  const wanted = new Set(titles.map((title) => title.trim()));
+  const lines = text.split(/\r?\n/);
+  let currentTitle: string | null = null;
+  const blocks = new Map<string, string[]>();
+
+  for (const line of lines) {
+    const heading = /^(#{2,4})\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      const title = heading[2]?.trim() ?? '';
+      currentTitle = wanted.has(title) ? title : null;
+      if (currentTitle && !blocks.has(currentTitle)) blocks.set(currentTitle, []);
+      continue;
+    }
+    if (currentTitle) blocks.get(currentTitle)?.push(line);
+  }
+
+  const result: string[] = [];
+  for (const title of titles) {
+    const body = (blocks.get(title) ?? []).join('\n').trim();
+    if (body) result.push(`## ${title}\n${body}`);
+  }
+  return result.join('\n\n').trim();
+}
+
+function findRoundtableFinalSummary(
   sourceThread: Thread,
-  sourceMessages: StoredMessage[],
-  targetMode: ThreadMode,
-): string {
-  const targetLabel = targetMode === 'development' ? '开发协作' : '圆桌会议';
-  const recentLines = sourceMessages
+  sourceMessages: readonly StoredMessage[],
+): StoredMessage | undefined {
+  const finalSummaryMessageId = sourceThread.roundtableIssueState?.finalSummaryMessageId;
+  if (finalSummaryMessageId) {
+    const byId = sourceMessages.find((msg) => msg.id === finalSummaryMessageId && msg.content.trim().length > 0);
+    if (byId) return byId;
+  }
+  for (let i = sourceMessages.length - 1; i >= 0; i--) {
+    const msg = sourceMessages[i];
+    if (msg?.content.trimStart().startsWith('# 圆桌会议总结')) return msg;
+  }
+  return undefined;
+}
+
+function buildRecentUpgradeLines(sourceMessages: readonly StoredMessage[]): string[] {
+  return sourceMessages
     .filter((msg) => !msg.deletedAt && msg.content.trim().length > 0 && msg.userId !== 'system')
     .slice(-16)
     .map((msg) => {
       const speaker = msg.catId ? `Agent ${msg.catId}` : 'User';
       return `- ${speaker}: ${truncateInline(msg.content, 420)}`;
     });
+}
+
+function buildRoundtableUpgradeConclusion(
+  sourceThread: Thread,
+  sourceMessages: readonly StoredMessage[],
+): string | null {
+  const summary = findRoundtableFinalSummary(sourceThread, sourceMessages);
+  if (!summary) return null;
+  const extracted = extractMarkdownSections(summary.content, [
+    '会议结论',
+    '多数或可采纳观点',
+    '条件与阻塞',
+    '少数或保留观点',
+    '下一步',
+  ]);
+  return truncateBlock(extracted || summary.content, 2400);
+}
+
+function buildModeUpgradeBackground(
+  sourceThread: Thread,
+  sourceMessages: StoredMessage[],
+  targetMode: ThreadMode,
+): string {
+  const targetLabel = targetMode === 'development' ? '开发协作' : '圆桌会议';
+  const sourceMode = sourceThread.mode ?? DEFAULT_THREAD_MODE;
+  const sourceLabel = threadModeLabel(sourceMode);
+  const roundtableConclusion =
+    sourceMode === 'roundtable' ? buildRoundtableUpgradeConclusion(sourceThread, sourceMessages) : null;
+  const recentLines = roundtableConclusion ? [] : buildRecentUpgradeLines(sourceMessages);
 
   return [
-    '[升级背景]',
-    `这个新会话由闲聊会话升级为${targetLabel}。`,
+    '# 升级背景',
+    `这个新会话由${sourceLabel}会话升级为${targetLabel}。`,
     `来源会话: ${sourceThread.title ?? sourceThread.id} (${sourceThread.id})`,
-    `来源模式: ${sourceThread.mode ?? DEFAULT_THREAD_MODE}`,
+    `来源模式: ${sourceMode}`,
     `目标模式: ${targetMode}`,
     '',
-    '请把下面内容只作为背景，不要继承旧闲聊会话的 provider session、工具状态或模式设定。',
+    `请把下面内容只作为背景，不要继承旧${sourceLabel}会话的 provider session、工具状态或模式设定。`,
     '',
-    '最近讨论摘录:',
-    ...(recentLines.length > 0 ? recentLines : ['- (来源会话暂无可用消息摘录)']),
+    ...(roundtableConclusion
+      ? ['圆桌结论摘录:', roundtableConclusion]
+      : ['最近讨论摘录:', ...(recentLines.length > 0 ? recentLines : ['- (来源会话暂无可用消息摘录)'])]),
   ].join('\n');
 }
 
@@ -458,18 +541,50 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
       reply.status(403);
       return { error: 'Thread does not belong to this user' };
     }
-    if ((sourceThread.mode ?? DEFAULT_THREAD_MODE) !== 'casual') {
+    const sourceMode = sourceThread.mode ?? DEFAULT_THREAD_MODE;
+    const isSupportedUpgrade =
+      (sourceMode === 'casual' && (targetMode === 'development' || targetMode === 'roundtable')) ||
+      (sourceMode === 'roundtable' && targetMode === 'development');
+    if (!isSupportedUpgrade) {
       reply.status(400);
       return {
-        error: 'Only casual threads can be upgraded in this flow',
+        error: 'Only casual→development, casual→roundtable, and roundtable→development upgrades are supported',
         code: 'SOURCE_MODE_NOT_UPGRADABLE',
       };
     }
     if (targetMode === 'roundtable') {
-      reply.status(501);
+      const fallbackTitle = sourceThread.title ? `圆桌会议: ${sourceThread.title}` : '圆桌会议升级会话';
+      const inheritedCats =
+        preferredCats && preferredCats.length > 0
+          ? preferredCats
+          : sourceThread.preferredCats?.length
+            ? sourceThread.preferredCats
+            : sourceThread.participants;
+      let targetThread = await threadStore.create(userId, title ?? fallbackTitle, undefined, id);
+      await threadStore.updateThreadMode(targetThread.id, 'roundtable');
+      if (inheritedCats && inheritedCats.length > 0) {
+        await threadStore.updatePreferredCats(targetThread.id, inheritedCats.slice(0, 10) as CatId[]);
+      }
+
+      if (messageStore) {
+        const sourceMessages = await messageStore.getByThread(id, UPGRADE_CONTEXT_MESSAGE_LIMIT, userId);
+        await messageStore.append({
+          userId: 'system',
+          catId: null,
+          content: buildModeUpgradeBackground(sourceThread, sourceMessages, targetMode),
+          extra: { systemKind: 'upgrade_background' },
+          mentions: [],
+          timestamp: Date.now(),
+          threadId: targetThread.id,
+        });
+        await threadStore.updateLastActive(targetThread.id);
+      }
+
+      targetThread = (await threadStore.get(targetThread.id)) ?? targetThread;
+      reply.status(201);
       return {
-        error: 'Roundtable upgrade is reserved but not implemented yet',
-        code: 'ROUNDTABLE_NOT_IMPLEMENTED',
+        thread: sanitizeThreadForResponse(targetThread, userId),
+        sourceThread: sanitizeThreadForResponse(sourceThread, userId),
       };
     }
     if (!projectPath || projectPath === 'default') {
@@ -498,11 +613,12 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
     }
 
     if (messageStore) {
-      const sourceMessages = await messageStore.getByThread(id, 32, userId);
+      const sourceMessages = await messageStore.getByThread(id, UPGRADE_CONTEXT_MESSAGE_LIMIT, userId);
       await messageStore.append({
-        userId,
+        userId: 'system',
         catId: null,
         content: buildModeUpgradeBackground(sourceThread, sourceMessages, targetMode),
+        extra: { systemKind: 'upgrade_background' },
         mentions: [],
         timestamp: Date.now(),
         threadId: targetThread.id,

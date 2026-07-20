@@ -874,7 +874,7 @@ export function useChatHistory(threadId: string) {
               crossPost?: { sourceThreadId: string; sourceInvocationId?: string };
               stream?: { invocationId?: string };
               scheduler?: SchedulerMessageExtra['scheduler'];
-              systemKind?: 'a2a_routing' | 'context_briefing';
+              systemKind?: 'a2a_routing' | 'context_briefing' | 'upgrade_background';
               /** #814: explicit post_message bypass — survives hydration so F5/thread-switch
                *  preserves the "don't merge by invocation" semantic. */
               isExplicitPost?: boolean;

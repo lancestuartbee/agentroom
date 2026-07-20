@@ -93,6 +93,7 @@ interface LoggerLike {
 
 /** #813: Minimal thread store interface for passive continuation. */
 export interface ThreadStoreLike {
+  get?(threadId: string): { mode?: string } | null | Promise<{ mode?: string } | null>;
   getMemberSessionStrategy?(
     threadId: string,
     catId: string,
@@ -1161,6 +1162,12 @@ export class QueueProcessor {
       // 7. Route execution
       const persistenceContext: { richBlocks?: Array<{ kind: string; [key: string]: unknown }> } = {};
       const collectedTextParts: string[] = [];
+      let isRoundtableThread = false;
+      try {
+        isRoundtableThread = (await this.deps.threadStore?.get?.(threadId))?.mode === 'roundtable';
+      } catch {
+        isRoundtableThread = false;
+      }
       // #845 fix: per-cat token usage from done events (same pattern as messages.ts / ConnectorInvokeTrigger).
       // Without this, queued/connector invocations succeed without writing usageByCat, leaving 159+ orphans
       // in the daily usage report.
@@ -1293,7 +1300,7 @@ export class QueueProcessor {
         if (continuationCapsule) {
           continuationCapsules.set(continuationCapsule.catId, continuationCapsule);
         }
-        if ((msg.type === 'done' || msg.type === 'error') && msg.catId) {
+        if (!isRoundtableThread && (msg.type === 'done' || msg.type === 'error') && msg.catId) {
           invocationTracker.completeSlot?.(threadId, msg.catId, controller);
         }
 

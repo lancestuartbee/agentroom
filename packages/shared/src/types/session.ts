@@ -12,7 +12,7 @@ import type { CatId } from './ids.js';
 import type { CatHandoffNote } from './session-handoff-proposal.js';
 
 export type SessionStatus = 'active' | 'sealing' | 'sealed';
-export type SessionPromptProfile = 'development' | 'casual';
+export type SessionPromptProfile = 'development' | 'casual' | 'roundtable';
 
 export interface SessionRecord {
   readonly id: string;

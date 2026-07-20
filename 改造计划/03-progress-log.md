@@ -1,5 +1,47 @@
 # 03. 改造进展日志
 
+## 2026-07-20
+
+### 圆桌会议模式 v1 落地与模式升级背景修正
+
+完成内容：
+
+- 圆桌会议模式进入可用 v1：固定参会猫、独立立场、最多 5 轮互评循环、投票、会议总结和追问旁听插话均已接入。
+- 圆桌会议顶部进度条、结构化消息展示、会议总结口径和最终结论保存/下载链路已按真实测试反馈修正。
+- 圆桌会议与闲聊均支持升级到后续模式：闲聊可升级到圆桌或开发协作，圆桌可升级到开发协作。
+- 升级背景不再作为 `co-creator` 输入消息进入新 thread，而是写入专用系统消息 `systemKind=upgrade_background`。
+- 普通系统消息仍保持原逻辑：默认只给用户看，不进入猫的上下文；仅 `upgrade_background` 通过显式白名单作为“系统背景”进入猫的调用上下文。
+
+验证：
+
+- `pnpm --filter @cat-cafe/api build`
+- `CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT=1 bash ./packages/api/scripts/with-test-home.sh node --test --test-timeout=60000 packages/api/test/threads-endpoint.test.js packages/api/test/context-assembler.test.js packages/api/test/rich-block-digest.test.js packages/api/test/messages-endpoint.test.js`
+- `pnpm --dir packages/web exec vitest run src/components/__tests__/chat-message-notice-rendering.test.ts`
+- `pnpm --dir packages/web exec tsc --noEmit`
+- `pnpm --filter @cat-cafe/web build`
+
+## 2026-07-18
+
+### 圆桌会议状态机设计确认
+
+设计结论：
+
+- 圆桌会议不是“每条用户消息固定跑完整流程”，而是维护当前议题状态。
+- 状态只保存流程索引和路由决策字段，不保存完整会议内容；消息流本身是立场、挑战、回应和投票理由的 SoT。
+- 会话顶部展示当前议题进度：独立立场、互评循环轮次、共识投票、会议总结。
+- 互评阶段升级为最多 5 轮的受控循环：
+  - 一轮表示所有固定参会猫按收到的挑战回复。
+  - 下一轮再基于上一轮反馈继续修订或提出新挑战。
+  - 到达 5 轮后仍无法说服则进入投票。
+- 用户点名追问时，被点名猫优先回答；其他固定参会猫只有在存在实质补充、反驳、事实纠错或风险提示时才有限插话。
+- 用户追问后可以继续沿当前议题推进、重新投票或重新总结，不丢弃上一轮会议成果。
+
+实现边界：
+
+- 圆桌复用公共的非开发型 provider/context gating，不重复实现 CLI 常驻、resume、callback env 隔离或 cache 优化底座。
+- 圆桌不继承闲聊的动态 audience 和 Markdown artifact 注册。
+- 圆桌不启用开发协作 session-chain、SOP、质量门禁、项目目录和自由 A2A。
+
 ## 2026-07-13
 
 ### CLI carrier / session 复用边界收窄

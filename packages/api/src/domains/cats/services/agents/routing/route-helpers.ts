@@ -11,7 +11,7 @@ import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 const log = createModuleLogger('context-transport');
 
 import { estimateTokens } from '../../../../../utils/token-counter.js';
-import { buildMessageMap, formatMessage } from '../../context/ContextAssembler.js';
+import { buildMessageMap, formatMessage, isUpgradeBackgroundMessage } from '../../context/ContextAssembler.js';
 import { checkContextBudget, type DegradationResult } from '../../orchestration/DegradationPolicy.js';
 import { DeliveryCursorStore } from '../../stores/ports/DeliveryCursorStore.js';
 import type { IDraftStore } from '../../stores/ports/DraftStore.js';
@@ -147,6 +147,11 @@ export interface RouteOptions {
   promptProfile?: PromptProfile | undefined;
   /** Thinking visibility: play = cats don't see each other's thinking, debug = cats share thinking. Default: play */
   thinkingMode?: 'debug' | 'play' | undefined;
+  /** Delay user-facing text chunks for selected cats until their turn completes.
+   *  Used by roundtable follow-up observers so NO_COMMENT can stay silent. */
+  bufferTextUntilDoneForCats?: readonly CatId[] | undefined;
+  /** Suppress a completed text response from persistence/broadcast when it is a route-level control signal. */
+  suppressTextPredicate?: ((input: { catId: CatId; content: string }) => boolean) | undefined;
   /** F108: Unique invocation ID for WorklistRegistry isolation in concurrent execution.
    *  When provided, worklist is keyed by this ID instead of threadId. */
   parentInvocationId?: string | undefined;
@@ -685,8 +690,9 @@ export async function assembleIncrementalContext(
   // Debug mode: cats see all whispers (full transparency). Play mode: cats only see their own whispers.
   const viewer = (thinkingMode ?? 'play') === 'play' ? { type: 'cat' as const, catId } : { type: 'user' as const };
   const relevant = unseen.filter((m) => {
-    // System-generated messages (persisted error badges) are display-only — never enter prompt
-    if (m.userId === 'system') return false;
+    // System-generated messages are display-only, except the explicit upgrade
+    // background handoff used to seed a newly upgraded thread.
+    if (m.userId === 'system' && !isUpgradeBackgroundMessage(m)) return false;
     // F148 Phase E: briefing messages are non-routing — never enter incremental context (AC-E2)
     if (m.origin === 'briefing') return false;
     // F35: Exclude whispers not intended for this cat (play mode only)

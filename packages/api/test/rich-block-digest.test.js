@@ -206,6 +206,13 @@ describe('safeParseExtra', () => {
     assert.equal(result.systemKind, 'a2a_routing');
   });
 
+  it('preserves systemKind upgrade_background through round-trip', () => {
+    const raw = JSON.stringify({ systemKind: 'upgrade_background' });
+    const result = safeParseExtra(raw);
+    assert.ok(result, 'upgrade_background extra should not return undefined');
+    assert.equal(result.systemKind, 'upgrade_background');
+  });
+
   it('ignores unknown systemKind values', () => {
     const raw = JSON.stringify({ systemKind: 'unknown_kind' });
     assert.equal(safeParseExtra(raw), undefined);

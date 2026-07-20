@@ -179,6 +179,21 @@ describe('MarkdownContent workspace link rendering', () => {
     expect(html).toContain('下载');
   });
 
+  it('renders bold inline-code AgentRoom report paths as downloads', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content:
+          '**`/Users/aidox/Documents/AgentRoom/profiles/default-6398/threads/thread_mrs0v34aymrx2hx9/reports/agent-authorization-layered-model.md`**',
+        disableCommandPrefix: true,
+        artifactThreadId: 'thread_mrs0v34aymrx2hx9',
+      }),
+    );
+
+    expect(html).toContain('/api/artifact-store/threads/thread_mrs0v34aymrx2hx9/download-path');
+    expect(html).toContain('agent-authorization-layered-model.md');
+    expect(html).toContain('下载');
+  });
+
   it('renders artifact-store content links as download links', () => {
     const html = renderToStaticMarkup(
       React.createElement(MarkdownContent, {

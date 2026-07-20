@@ -367,9 +367,18 @@ tool policy:
 
 ## 模式二：圆桌会议模式
 
-### 下次开发接续版
+### 目标
 
-圆桌会议模式是闲聊模式之后的下一阶段重点。
+圆桌会议模式用于正式讨论、观点碰撞和决策收束。
+
+它的核心能力是：
+
+- 多模型独立判断。
+- 显式分歧。
+- 结构化反驳。
+- 有限轮修正。
+- 共识检测。
+- 允许保留少数意见，不强制一致。
 
 它要解决的问题不是“让所有 Agent 都各说一句”，而是：
 
@@ -385,8 +394,9 @@ tool policy:
 - 不强制伪共识。
 - 不把多数意见包装成“所有 Agent 已同意”。
 - 不为了结束流程抹掉少数意见。
+- 不在状态存储里复制完整会议内容；消息流本身是会议内容的 SoT。
 
-#### 产品入口
+### 产品入口
 
 创建会话时选择：
 
@@ -394,7 +404,7 @@ tool policy:
 圆桌会议
 ```
 
-第一版建议要求用户明确选择参与 Agent：
+第一版要求用户明确选择参与 Agent：
 
 - `preferredCats` 作为固定圆桌成员。
 - 创建后成员默认不随路由变化。
@@ -404,170 +414,53 @@ tool policy:
 
 若用户讨论的是开发任务，应先保持圆桌的讨论性质；只有当用户明确要落地执行时，再升级到开发协作 thread。
 
-#### 控制流
+### 议题状态机
 
-圆桌会议应由平台控制阶段，而不是由 Agent 自由互相触发。
+圆桌会议不是“每条用户消息都固定跑完整流程”，而是维护当前议题状态。
 
-第一版建议实现一个 `RoundtableController` 或等价服务：
-
-1. 接收用户议题和参与者。
-2. 创建/读取 `DeliberationBoard`。
-3. 按阶段调用每个参与 Agent。
-4. 收集结构化输出。
-5. 更新公共黑板。
-6. 决定进入下一阶段或输出最终结论。
-
-每个阶段的 Agent 调用仍可复用现有 provider service，但 prompt profile 应是 `roundtable_deliberation`，不是 `casual`，也不是 `development`。
-
-#### v1 阶段压缩方案
-
-早期设计中有 6 个阶段。为了第一版可落地，可以先实现 4 个阶段：
+会话顶部应展示当前议题进度：
 
 ```text
-1. independent_stance
-2. critique_and_revision
-3. consensus_vote
-4. final_summary
+独立立场 -> 互评循环 1/5 -> ... -> 共识投票 -> 会议总结
 ```
 
-对应关系：
+用户发新消息时，平台先判断这句话是在：
 
-- `independent_stance`：每个 Agent 独立给出立场，不读取其他 Agent 回答。
-- `critique_and_revision`：平台把初始观点整理成 board digest，每个 Agent 必须回应分歧并可修正立场。
-- `consensus_vote`：平台生成候选综合结论，每个 Agent 必须投 `accept / accept_with_conditions / reject`。
-- `final_summary`：平台输出共识、条件、少数意见、未解决分歧和下一步验证建议。
+- 开启新议题。
+- 追问当前议题中的某个观点。
+- 要求继续推进当前议题。
+- 要求重新投票或重新总结。
 
-如果第一版实现复杂度可控，再拆回完整 6 阶段。
-
-#### DeliberationBoard v1
-
-第一版 board 可以先存在 thread metadata / thread memory / message extra 中，不必一开始做独立数据库表。
-
-建议最小结构：
+第一版状态只保存流程索引和路由决策字段，不保存完整会议内容：
 
 ```ts
-interface DeliberationBoardV1 {
-  id: string;
+interface RoundtableIssueStateV1 {
+  issueId: string;
   threadId: string;
   topic: string;
-  participants: string[];
-  phase:
+  status: 'open' | 'voting' | 'summarized' | 'closed';
+  stage:
     | 'independent_stance'
-    | 'critique_and_revision'
+    | 'critique_loop'
     | 'consensus_vote'
     | 'final_summary';
-  stances: Array<{
-    catId: string;
-    position: string;
-    reasons: string[];
-    risks: string[];
-    confidence?: number;
-  }>;
-  critiques: Array<{
-    catId: string;
-    agreesWith: string[];
-    disagreesWith: string[];
-    weakClaims: string[];
-    changedMind: boolean;
-    revisedPosition?: string;
-  }>;
-  votes: Array<{
-    catId: string;
-    vote: 'accept' | 'accept_with_conditions' | 'reject';
-    reason: string;
-    conditions?: string[];
-  }>;
-  final?: {
-    consensus: string | null;
-    bestCurrentConclusion: string;
-    unresolvedDisagreements: string[];
-    minorityOpinions: string[];
-    nextEvidenceNeeded: string[];
-    recommendedNextSteps: string[];
-  };
+  critiqueRound: number;
+  maxCritiqueRounds: 5;
+  participants: string[];
+  lastPhaseMessageId?: string;
+  finalSummaryMessageId?: string;
+  updatedAt: number;
 }
 ```
 
-#### Prompt Profile
+不存：
 
-圆桌会议对应 profile：
+- 每只猫完整立场内容。
+- 每条挑战内容。
+- 每轮回复正文。
+- 完整投票理由。
 
-```text
-roundtable_deliberation
-```
-
-保留：
-
-- 最小身份和模型视角差异。
-- 当前阶段说明。
-- 议题。
-- board digest。
-- 明确输出格式。
-- 必须回应分歧、证据和不确定性。
-
-剔除：
-
-- 完整开发 SOP。
-- merge/review gate。
-- 文件编辑和命令执行工具。
-- 自由 A2A handoff。
-- 项目工作流和任务执行协议。
-
-工具策略：
-
-- 默认不开放写工具。
-- 默认不绑定项目目录。
-- 可由平台预取 memory/evidence digest。
-- 如果议题明确要求实时信息或证据，可进入受控 `evidence_needed` 扩展阶段，但不让每个 Agent 自由加载完整工具集。
-
-#### UI v1
-
-第一版前端不需要复杂视觉设计，但需要让用户看懂阶段：
-
-- 会话顶部显示 `Mode: 圆桌会议`。
-- 显示参与 Agent。
-- 显示当前阶段。
-- 消息流中每个阶段有清晰分隔。
-- 最终输出必须显式区分：
-  - 已达成共识。
-  - 当前最优结论。
-  - 未解决分歧。
-  - 少数意见。
-  - 需要进一步验证的证据。
-  - 建议下一步。
-
-#### 验收标准
-
-第一版圆桌会议至少要通过：
-
-- 创建 roundtable thread 后不会走 development 旧通道。
-- 不 @ 时不会按 casual audience 直接全员普通回复，而是进入 roundtable controller。
-- 每个 Agent 在第一阶段独立产出立场。
-- 第二阶段能看到其他观点并回应具体分歧。
-- 共识投票允许 `reject`。
-- 最终总结不会把 `reject` 说成全员同意。
-- 开发协作模式不受影响。
-
-#### 暂不做
-
-- 原地从开发协作降级到圆桌。
-- 圆桌内自由 A2A。
-- 文件修改、命令执行、merge gate。
-- 复杂图形化 board 编辑器。
-- 自动长期记忆写入。
-
-### 目标
-
-圆桌会议模式用于正式讨论、观点碰撞和决策收束。
-
-它的核心能力是：
-
-- 多模型独立判断。
-- 显式分歧。
-- 结构化反驳。
-- 有限轮修正。
-- 共识检测。
-- 允许保留少数意见，不强制一致。
+这些内容作为普通会话消息保存。需要继续推进时，后端从最近圆桌消息中读取上下文。
 
 ### 与普通 A2A 的区别
 
@@ -589,7 +482,7 @@ Agent 想 @ 谁就 @ 谁，系统自动触发下一轮。
 
 ### 审议流程
 
-圆桌会议建议采用 6 个阶段。
+圆桌会议采用 4 个阶段，其中第二阶段是最多 5 轮的受控互评循环。
 
 #### 1. 独立立场阶段
 
@@ -610,49 +503,43 @@ confidence
 main risks
 ```
 
-#### 2. 公开观点阶段
+#### 2. 互评循环阶段
 
-平台把所有初始观点整理到公共黑板。
+互评循环不是自由聊天，而是按轮次批处理。
 
-公共黑板不做最终裁判，只结构化保存：
+每一轮：
 
-```text
-options
-claims
-reasons
-risks
-uncertainties
-initial disagreements
-```
+1. 平台把上一阶段观点、上一轮挑战、上一轮回应和当前分歧整理成上下文。
+2. 每只猫按自己收到的挑战回复。
+3. 每只猫必须明确自己是否修订立场。
+4. 每只猫可以继续提出新的实质挑战，指向固定参会人。
+5. 平台收集新挑战，作为下一轮输入。
 
-#### 3. 交叉质询阶段
-
-每个 Agent 读取公共黑板，并明确回应其他 Agent 的观点。
-
-必须回答：
+单轮输出建议：
 
 ```text
-我同意哪些点？
-我不同意哪些点？
-对方哪些论据不充分？
-什么证据会改变我的判断？
+收到的挑战
+对挑战的回应：接受并修订 / 部分接受 / 拒绝 / 需要证据 / NO_CHANGE
+当前立场是否变化
+新的挑战：@catId + challenge
 ```
 
-#### 4. 修正阶段
-
-每个 Agent 可以修改自己的立场，也可以坚持原观点。
-
-必须说明：
+最大轮数：
 
 ```text
-是否改变立场？
-改变了什么？
-接受了谁的哪些论点？
-仍然不同意什么？
-为什么？
+maxCritiqueRounds = 5
 ```
 
-#### 5. 共识检测阶段
+提前结束条件：
+
+- 所有猫都没有新挑战。
+- 所有猫都没有修订立场。
+- 所有猫都接受同一个结论草案。
+- 剩余分歧已经明确标记为“无法在当前材料下解决”。
+
+达到 5 轮后，即使仍未互相说服，也进入投票，不继续嵌套。
+
+#### 3. 共识投票阶段
 
 平台生成候选综合结论，然后要求每个 Agent 显式表态：
 
@@ -670,7 +557,7 @@ reject
 - 不能为了结束流程强制 Agent 接受。
 - 不接受的少数意见必须保留。
 
-#### 6. 最终输出阶段
+#### 4. 最终输出阶段
 
 最终输出区分：
 
@@ -683,34 +570,83 @@ reject
 建议下一步
 ```
 
-### DeliberationBoard
+最终总结必须给用户一个决策视图：
 
-圆桌会议需要一个会话内公共黑板：
+```text
+多数观点是什么
+哪些部分已经达成共识
+哪些分歧仍然存在
+少数观点是谁坚持的
+少数观点的核心理由
+哪些证据会改变各方判断
+用户下一步可以追问哪里
+```
+
+### 追问与继续推进
+
+用户在议题总结后或互评过程中可能追问某只猫的某个观点。
+
+路由规则：
+
+- 无 @ 或明确说“大家讨论 / 形成共识 / 继续圆桌”：按当前议题状态推进。
+- `@某只猫`：被点名猫先回答。
+- `@多只猫`：被点名猫按轻量并行回答。
+- 其他固定参会猫默认拥有有限插话权：只有存在实质补充、反驳、事实纠错或风险提示时才发言；否则输出 `NO_COMMENT`，前端不展示。
+- 用户明确说“只让 X 回答”时，严格单猫回答，不允许旁听猫插话。
+- 点名追问不改变圆桌固定参会名单，不自动进入投票，也不伪造共识。
+- 用户追问后如果要求“基于这个继续收束 / 重新投票 / 重新总结”，平台继续使用当前议题状态，而不是丢弃上一轮成果。
+
+### 消息 Rich Block
+
+每只猫的立场、挑战、回应和投票理由作为普通会话消息保存，并可用 rich block 展示。
+
+状态机只保存进度索引；具体内容在消息气泡里表达：
 
 ```ts
-interface DeliberationBoard {
-  id: string;
-  threadId: string;
-  topic: string;
-  participants: string[];
+interface RoundtableRichBlockV1 {
+  kind: 'roundtable';
+  issueId: string;
   phase:
-    | 'initial_stance'
-    | 'public_board'
-    | 'cross_examination'
-    | 'revision'
-    | 'consensus_check'
-    | 'final';
-  claims: DeliberationClaim[];
-  options: DeliberationOption[];
-  objections: DeliberationObjection[];
-  concessions: DeliberationConcession[];
-  votes: DeliberationVote[];
-  unresolvedDisagreements: string[];
-  finalConclusion?: string;
+    | 'independent_stance'
+    | 'critique_loop'
+    | 'consensus_vote'
+    | 'final_summary'
+    | 'followup';
+  critiqueRound?: number;
+  title?: string;
+  sections: Array<{
+    title: string;
+    body: string;
+  }>;
 }
 ```
 
-第一阶段可以先存为 thread extra metadata 或普通 message extra，后续再决定是否需要独立 store。
+第一版可以先要求 Agent 按 Markdown 小标题输出；如果 rich block pipeline 改动过大，再把结构化渲染延后到下一刀。
+
+### Prompt Profile
+
+圆桌会议对应 profile：
+
+```text
+roundtable_deliberation
+```
+
+保留：
+
+- 最小身份和模型视角差异。
+- 当前阶段说明。
+- 议题。
+- 最近阶段消息摘要。
+- 明确输出格式。
+- 必须回应分歧、证据和不确定性。
+
+剔除：
+
+- 完整开发 SOP。
+- merge/review gate。
+- 文件编辑和命令执行工具。
+- 自由 A2A handoff。
+- 项目工作流和任务执行协议。
 
 ### 工具和记忆策略
 
@@ -725,6 +661,17 @@ memory: platform-prefetch + optional evidence digest
 ```
 
 如果讨论明确需要证据，后续可以加入 `evidence_needed` 子阶段，但默认不让每个 Agent 自由调用完整工具集。
+
+### UI v1
+
+第一版前端不需要复杂视觉设计，但需要让用户看懂进度：
+
+- 会话顶部显示 `Mode: 圆桌会议`。
+- 显示固定参与 Agent。
+- 显示当前议题。
+- 显示当前阶段和互评轮次。
+- 消息流中每个阶段有清晰分隔。
+- 每只猫的消息气泡中结构化展示立场、挑战、回应、投票。
 
 ### InvocationProfile
 
@@ -755,6 +702,28 @@ tool policy:
   - no project mutation
   - optional platform-side memory/evidence prefetch
 ```
+
+### 验收标准
+
+第一版圆桌会议至少要通过：
+
+- 创建 roundtable thread 后不会走 development 旧通道。
+- 不 @ 时不会按 casual audience 直接全员普通回复，而是进入 roundtable controller。
+- 每个 Agent 在第一阶段独立产出立场。
+- 互评循环最多 5 轮，且按批次推进，不触发自由 A2A。
+- 互评循环中 Agent 能看到收到的挑战，并能修订或坚持立场。
+- 共识投票允许 `reject`。
+- 最终总结不会把 `reject` 说成全员同意。
+- 用户点名追问时，被点名猫优先回答，其他固定参会猫只有有限插话权。
+- 开发协作模式不受影响。
+
+### 暂不做
+
+- 原地从开发协作降级到圆桌。
+- 圆桌内自由 A2A。
+- 文件修改、命令执行、merge gate。
+- 复杂图形化 board 编辑器。
+- 自动长期记忆写入。
 
 ## 模式三：开发协作模式
 

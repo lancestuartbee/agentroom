@@ -141,4 +141,38 @@ describe('casual mode routing', () => {
     assert.deepEqual(result.targetCats, ['opus']);
     assert.equal(result.intent.intent, 'execute');
   });
+
+  test('roundtable ignores mentions and routes to fixed preferredCats', async () => {
+    const { router, threadStore } = await createRouterWithThreadStore();
+    const thread = threadStore.create('user-1', 'Roundtable room');
+    threadStore.updateThreadMode(thread.id, 'roundtable');
+    threadStore.updatePreferredCats(thread.id, ['codex', 'opus']);
+
+    const result = await router.resolveTargetsAndIntent('@gemini 你先说，然后 @codex 补充', thread.id, {
+      persist: true,
+    });
+
+    assert.deepEqual(sortCats(result.targetCats), ['codex', 'opus']);
+    assert.equal(result.intent.intent, 'ideate');
+    assert.equal(result.intent.explicit, false);
+    assert.equal(result.hasMentions, false);
+    assert.deepEqual(sortCats(threadStore.getParticipants(thread.id)), ['codex', 'opus']);
+  });
+
+  test('roundtable strict point question routes only to named fixed participant', async () => {
+    const { router, threadStore } = await createRouterWithThreadStore();
+    const thread = threadStore.create('user-1', 'Roundtable room');
+    threadStore.updateThreadMode(thread.id, 'roundtable');
+    threadStore.updatePreferredCats(thread.id, ['codex', 'opus']);
+
+    const result = await router.resolveTargetsAndIntent('只让 @codex 回答刚才这个点', thread.id, {
+      persist: true,
+    });
+
+    assert.deepEqual(result.targetCats, ['codex']);
+    assert.equal(result.intent.intent, 'ideate');
+    assert.equal(result.intent.explicit, false);
+    assert.equal(result.hasMentions, false);
+    assert.deepEqual(threadStore.getParticipants(thread.id), ['codex']);
+  });
 });

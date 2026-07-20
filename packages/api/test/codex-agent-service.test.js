@@ -299,6 +299,52 @@ describe('CodexAgentService Tests (CLI mode)', { concurrency: false }, () => {
     }
   });
 
+  test('roundtable prompt profile uses lightweight Codex CLI launch flags', async () => {
+    const proc = createMockProcess();
+    const spawnFn = createMockSpawnFn(proc);
+    const service = new CodexAgentService({ l0CompilerFn: fakeL0Compiler, spawnFn, model: 'gpt-5.3-codex' });
+    const workingDirectory = mkdtempSync(join(import.meta.dirname ?? '.', 'codex-roundtable-workdir-'));
+
+    try {
+      const promise = collect(
+        service.invoke('hello roundtable', {
+          promptProfile: 'roundtable',
+          nativeSystemPrompt: '[Roundtable profile]\nminimal identity',
+          workingDirectory,
+          callbackEnv: {
+            CAT_CAFE_INVOCATION_ID: 'inv-roundtable-1',
+            CAT_CAFE_CALLBACK_TOKEN: 'tok-roundtable-1',
+          },
+        }),
+      );
+
+      emitCodexEvents(proc, [
+        { type: 'thread.started', thread_id: 'thread-roundtable-lite' },
+        { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } },
+      ]);
+      await promise;
+
+      const args = spawnFn.mock.calls[0].arguments[1];
+      const spawnOpts = spawnFn.mock.calls[0].arguments[2];
+      assert.ok(args.includes('--ignore-user-config'));
+      assert.ok(args.includes('--ignore-rules'));
+      assert.ok(args.includes('model_reasoning_effort="medium"'), 'roundtable Codex effort must be capped at medium');
+      assert.equal(args.includes('--ephemeral'), false, 'roundtable carrier mode must persist a resumable CLI session');
+      assert.ok(args.includes('--skip-git-repo-check'));
+      assert.equal(args.includes('--add-dir'), false, 'roundtable mode must not grant .git write access');
+      assert.equal(args.includes('.git'), false, 'roundtable mode must not add .git as a writable directory');
+      assert.equal(spawnOpts.env.CAT_CAFE_INVOCATION_ID, undefined, 'roundtable child env must drop invocation id');
+      assert.equal(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, undefined, 'roundtable child env must drop callback token');
+      assert.equal(
+        args.some((arg) => String(arg).includes('mcp_servers.')),
+        false,
+        'roundtable mode must not inject Cat Cafe MCP config',
+      );
+    } finally {
+      rmSync(workingDirectory, { recursive: true, force: true });
+    }
+  });
+
   test('casual prompt profile upgrades read-only sandbox to workspace-write for shared artifacts', async () => {
     const oldSandbox = process.env.CAT_CODEX_SANDBOX_MODE;
     process.env.CAT_CODEX_SANDBOX_MODE = 'read-only';

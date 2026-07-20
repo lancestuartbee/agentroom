@@ -75,8 +75,8 @@ import { DEFAULT_CLI_TIMEOUT_MS, resolveCliTimeoutMs } from '../../../../../util
 import { findMonorepoRoot, isSameProject } from '../../../../../utils/monorepo-root.js';
 import { pathsEqual, validateProjectPathDetailed } from '../../../../../utils/project-path.js';
 import { tcpProbe } from '../../../../../utils/tcp-probe.js';
-import { estimateTokens } from '../../../../../utils/token-counter.js';
 import { registerMarkdownArtifactsFromThreadDirectory } from '../../../../../utils/thread-artifact-registration.js';
+import { estimateTokens } from '../../../../../utils/token-counter.js';
 import type { AgentPaneRegistry } from '../../../../terminal/agent-pane-registry.js';
 import type { TmuxGateway } from '../../../../terminal/tmux-gateway.js';
 import { resolveBootcampWorkspaceRoot } from '../../bootcamp/workspace-root.js';
@@ -102,13 +102,13 @@ import {
 import { appendTranscriptPathHints } from '../providers/transcript-path-hints.js';
 import {
   PROMPT_SEGMENT_DIAGNOSTICS_NATIVE_ENV,
+  type PromptDiagnosticSegment,
   promptDeltaSegment,
   promptTextSegment,
   promptUnmeasuredSegment,
+  type RoutePromptSegmentDiagnostics,
   shouldMeasureNativePromptSegmentDiagnostics,
   sumMeasuredPromptTokens,
-  type PromptDiagnosticSegment,
-  type RoutePromptSegmentDiagnostics,
 } from '../routing/prompt-segment-diagnostics.js';
 import { buildContextManagementHint, queueContextHint, takeContextHintPrefix } from './context-management-hint.js';
 
@@ -168,7 +168,7 @@ import type { TranscriptSessionInfo, TranscriptWriter } from '../../session/Tran
 import type { ISessionChainStore } from '../../stores/ports/SessionChainStore.js';
 import type { IThreadStore } from '../../stores/ports/ThreadStore.js';
 import type { AgentMessage, AgentService, AgentServiceOptions, PromptProfile } from '../../types.js';
-import { hasL0CompilerSeam } from '../../types.js';
+import { hasL0CompilerSeam, isLightweightPromptProfile } from '../../types.js';
 import type { InvocationRegistry } from '../invocation/InvocationRegistry.js';
 import { completeCapsuleForSeal, type RouteStateContinuityCapsule } from './CollaborationContinuityCapsule.js';
 import type { ResumeFailureKind } from './invoke-helpers.js';
@@ -270,9 +270,13 @@ function sessionIdentityKey(userId: string, catId: CatId, threadId: string, prom
   return `${userId}:${catId as string}:${threadId}:${promptProfile ?? 'development'}`;
 }
 
-function providerSessionStorageThreadId(provider: string | undefined, threadId: string, promptProfile: PromptProfile): string {
-  if (provider === 'openai' && promptProfile === 'casual') {
-    return `${threadId}::provider-session:codex-casual-writable-v1`;
+function providerSessionStorageThreadId(
+  provider: string | undefined,
+  threadId: string,
+  promptProfile: PromptProfile,
+): string {
+  if (provider === 'openai' && promptProfile !== 'development') {
+    return `${threadId}::provider-session:codex-${promptProfile}-writable-v1`;
   }
   return threadId;
 }
@@ -848,7 +852,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
   // F118: Declared before try so it's accessible in finally
   let sessionMutexRelease: (() => void) | undefined;
   let workingDirectory: string | undefined;
-  let isCasualArtifactWorkspace = false;
+  let isLightweightArtifactWorkspace = false;
+  let shouldRegisterLightweightArtifacts = false;
 
   // F152: Create invocation span for distributed tracing
   // F153 Phase E: If a route span exists, make invocation its child
@@ -890,7 +895,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     const provider = catConfig?.clientId;
     const sessionThreadId = providerSessionStorageThreadId(provider, threadId, promptProfile);
     const useProviderSession = true;
-    const useSessionChain = promptProfile !== 'casual';
+    const useSessionChain = promptProfile === 'development';
     let sessionId: string | undefined;
     if (useProviderSession) {
       try {
@@ -1144,11 +1149,12 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           sessionId = undefined;
           log.info({ catId, threadId }, '#836: reborn session strategy — forcing new session');
         }
-        if (thread?.mode === 'casual') {
+        if (thread?.mode === 'casual' || thread?.mode === 'roundtable') {
           const artifactPaths = resolveThreadArtifactPaths(thread.id);
           mkdirSync(artifactPaths.reportsDir, { recursive: true });
           workingDirectory = artifactPaths.reportsDir;
-          isCasualArtifactWorkspace = true;
+          isLightweightArtifactWorkspace = true;
+          shouldRegisterLightweightArtifacts = thread.mode === 'casual' || thread.mode === 'roundtable';
         } else if (thread?.projectPath && thread.projectPath !== 'default') {
           // F101: Game threads use virtual projectPaths (e.g. 'games/werewolf') for
           // categorization only — they are not real filesystem directories. Skip them
@@ -1308,7 +1314,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     }
 
     // F070: Governance gate for external project dispatch
-    if (workingDirectory && !isCasualArtifactWorkspace && !isSameProject(workingDirectory, hostProjectRoot)) {
+    if (workingDirectory && !isLightweightArtifactWorkspace && !isSameProject(workingDirectory, hostProjectRoot)) {
       const catCafeRoot = hostProjectRoot;
       const { tryGovernanceBootstrap } = await import('../../../../../config/capabilities/capability-orchestrator.js');
       await tryGovernanceBootstrap(workingDirectory, catCafeRoot);
@@ -1350,7 +1356,12 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F070 Phase 2: Inject dispatch mission context for external projects
     let missionPrefix = '';
     let capturedMissionPack: import('@cat-cafe/shared').DispatchMissionPack | undefined;
-    if (workingDirectory && !isCasualArtifactWorkspace && !isSameProject(workingDirectory, hostProjectRoot) && threadStore) {
+    if (
+      workingDirectory &&
+      !isLightweightArtifactWorkspace &&
+      !isSameProject(workingDirectory, hostProjectRoot) &&
+      threadStore
+    ) {
       try {
         const thread = await preflightRace(
           Promise.resolve(threadStore.get(threadId)),
@@ -1644,7 +1655,9 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       ? resolve(process.cwd(), configuredMcpServerPath)
       : resolveDefaultClaudeMcpServerPath();
     const nativeSystemPromptOverride =
-      promptProfile === 'casual' && nativeL0Provider ? params.systemPrompt?.trim() || undefined : undefined;
+      isLightweightPromptProfile(promptProfile) && nativeL0Provider
+        ? params.systemPrompt?.trim() || undefined
+        : undefined;
 
     // F203 Phase I: compile L0 for OpenCode BEFORE the runtime config condition.
     // OpenCodeAgentService.injectsL0Natively() = true, so the route layer does
@@ -1821,7 +1834,11 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       lastStaticIdentityRevision !== registryRevision;
     const forceCasualMessageSystemPrompt = false;
     const injectSystemPrompt =
-      forceCasualMessageSystemPrompt || !canSkipOnResume || !isResume || forceReinjection || registryChangedSinceStaticIdentity;
+      forceCasualMessageSystemPrompt ||
+      !canSkipOnResume ||
+      !isResume ||
+      forceReinjection ||
+      registryChangedSinceStaticIdentity;
     if (canSkipOnResume) {
       if (injectSystemPrompt) {
         _staticIdentityRegistryRevision.set(identityKey, registryRevision);
@@ -1833,7 +1850,9 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // Prepend staticIdentity to prompt when injection is needed
     // F070-P2: missionPrefix (dispatch context) is prepended for external projects
     const promptWithMission = missionPrefix ? `${missionPrefix}\n\n${prompt}` : prompt;
-    const prependMessageSystemPrompt = Boolean(injectSystemPrompt && params.systemPrompt && !nativeSystemPromptOverride);
+    const prependMessageSystemPrompt = Boolean(
+      injectSystemPrompt && params.systemPrompt && !nativeSystemPromptOverride,
+    );
 
     let effectivePrompt = prependMessageSystemPrompt
       ? `${params.systemPrompt}\n\n---\n\n${promptWithMission}`
@@ -1843,7 +1862,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // prompt (a system_info output can't reach cat cognition — see
     // context-management-hint). Queued on the prior warn turn; independent of
     // injectSystemPrompt so it lands even on resumes that skip identity re-injection.
-    const contextHintPrefix = promptProfile === 'casual' ? null : takeContextHintPrefix(compressionKey);
+    const contextHintPrefix = promptProfile === 'development' ? takeContextHintPrefix(compressionKey) : null;
     if (contextHintPrefix) {
       effectivePrompt = `${contextHintPrefix}\n\n---\n\n${effectivePrompt}`;
     }
@@ -1856,14 +1875,14 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // turns. ADR-038 contract is "每轮注入生效" → must mirror F225 pattern
     // (independent of injectSystemPrompt). Staging content goes to runtime
     // prompt path, NOT compiled native L0 (砚砚 PR #2221 R1 P2 boundary).
-    const stagingPrepend = promptProfile === 'casual' ? '' : buildStagingPrepend(catId);
+    const stagingPrepend = promptProfile === 'development' ? buildStagingPrepend(catId) : '';
     if (stagingPrepend) {
       effectivePrompt = `${stagingPrepend}\n\n---\n\n${effectivePrompt}`;
     }
 
     /* @segment M2 — Transcript Path Hints */
     const beforeTranscriptPathHints = effectivePrompt;
-    if (promptProfile !== 'casual') {
+    if (promptProfile === 'development') {
       effectivePrompt = appendTranscriptPathHints(effectivePrompt, TRANSCRIPT_DIR, threadId);
     }
 
@@ -1890,11 +1909,17 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           effectivePrompt,
           'delta added by appendTranscriptPathHints',
         ),
-        promptTextSegment('effectivePromptFinal', effectivePrompt, 'final message-channel prompt sent to service.invoke'),
+        promptTextSegment(
+          'effectivePromptFinal',
+          effectivePrompt,
+          'final message-channel prompt sent to service.invoke',
+        ),
       ];
       const effectivePromptTokens = estimateTokens(effectivePrompt);
       const nativeL0Tokens = nativeL0Segment?.estimatedTokens ?? null;
-      const routeComponentSegments = params.promptDiagnostics.routeSegments.filter((s) => s.name !== 'routePromptFinal');
+      const routeComponentSegments = params.promptDiagnostics.routeSegments.filter(
+        (s) => s.name !== 'routePromptFinal',
+      );
       const routePromptFinalTokens =
         params.promptDiagnostics.routeSegments.find((s) => s.name === 'routePromptFinal')?.estimatedTokens ?? null;
       const runtimeComponentSegments = runtimeSegments.filter((s) => s.name !== 'effectivePromptFinal');
@@ -1926,8 +1951,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
             runtimeComponentTokens: sumMeasuredPromptTokens(runtimeComponentSegments),
             effectivePromptTokens,
             nativeL0Tokens,
-            measuredEffectivePlusNativeTokens:
-              nativeL0Tokens == null ? null : effectivePromptTokens + nativeL0Tokens,
+            measuredEffectivePlusNativeTokens: nativeL0Tokens == null ? null : effectivePromptTokens + nativeL0Tokens,
           },
         },
         'Prompt segment diagnostics',
@@ -3269,11 +3293,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           if (deps.sessionChainStore && !didResetRestoreFailures) {
             didResetRestoreFailures = true; // only reset once per invocation
             try {
-              const activeRec = await deps.sessionChainStore.getActive(
-                catId as CatId,
-                threadId,
-                sessionPromptProfile,
-              );
+              const activeRec = await deps.sessionChainStore.getActive(catId as CatId, threadId, sessionPromptProfile);
               if (activeRec && (activeRec.consecutiveRestoreFailures ?? 0) > 0) {
                 await deps.sessionChainStore.update(activeRec.id, {
                   consecutiveRestoreFailures: 0,
@@ -3319,11 +3339,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         // F118 AC-C6: Increment consecutive restore failure counter
         if (deps.sessionChainStore) {
           try {
-            const activeRec = await deps.sessionChainStore.getActive(
-              catId as CatId,
-              threadId,
-              sessionPromptProfile,
-            );
+            const activeRec = await deps.sessionChainStore.getActive(catId as CatId, threadId, sessionPromptProfile);
             if (activeRec) {
               await deps.sessionChainStore.update(activeRec.id, {
                 consecutiveRestoreFailures: (activeRec.consecutiveRestoreFailures ?? 0) + 1,
@@ -3528,14 +3544,14 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       });
     }
 
-    if (isCasualArtifactWorkspace && deps.threadStore) {
+    if (shouldRegisterLightweightArtifacts && deps.threadStore) {
       await registerMarkdownArtifactsFromThreadDirectory({
         threadStore: deps.threadStore,
         threadId,
         userId,
         catId: catId as string,
       }).catch((err) => {
-        log.warn({ threadId, catId, invocationId, err }, 'Failed to register casual mode markdown artifacts');
+        log.warn({ threadId, catId, invocationId, err }, 'Failed to register lightweight mode markdown artifacts');
       });
     }
 

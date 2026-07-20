@@ -1,6 +1,6 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { useChatStore } from '@/stores/chatStore';
+import { type Thread, useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
 import { ChatVoiceFeatureControls } from './ChatVoiceFeatureControls';
 import { ExportButton } from './ExportButton';
@@ -17,7 +17,8 @@ interface ChatContainerHeaderProps {
   onOpenMobileStatus: () => void;
   statusPanelOpen: boolean;
   onToggleStatusPanel: () => void;
-  onUpgradeFromCasual?: () => void;
+  onUpgradeToDevelopment?: () => void;
+  onUpgradeToRoundtable?: () => void;
   /** F092: Default cat for voice companion */
   defaultCatId: string;
 }
@@ -35,11 +36,14 @@ export function ChatContainerHeader({
   onOpenMobileStatus,
   statusPanelOpen,
   onToggleStatusPanel,
-  onUpgradeFromCasual,
+  onUpgradeToDevelopment,
+  onUpgradeToRoundtable,
   defaultCatId,
 }: ChatContainerHeaderProps) {
   const currentThread = useChatStore((s) => s.threads.find((t) => t.id === threadId));
-  const canUpgradeFromCasual = currentThread?.mode === 'casual' && !!onUpgradeFromCasual;
+  const canUpgradeToRoundtable = currentThread?.mode === 'casual' && !!onUpgradeToRoundtable;
+  const canUpgradeToDevelopment =
+    (currentThread?.mode === 'casual' || currentThread?.mode === 'roundtable') && !!onUpgradeToDevelopment;
 
   return (
     <header className="safe-area-top">
@@ -70,16 +74,39 @@ export function ChatContainerHeader({
               <ThreadCatPill threadId={threadId} />
             </div>
           </div>
+          {currentThread?.mode === 'roundtable' && currentThread.roundtableIssueState && (
+            <RoundtableProgressPill thread={currentThread} />
+          )}
         </div>
-        {canUpgradeFromCasual && (
-          <button
-            type="button"
-            onClick={onUpgradeFromCasual}
-            className="hidden sm:inline-flex items-center px-2.5 py-1.5 rounded-lg border border-cafe bg-cafe-surface text-xs font-medium text-cafe-secondary hover:bg-[var(--console-hover-bg)] transition-colors"
-            title="基于当前闲聊内容创建开发协作会话"
-          >
-            升级到开发
-          </button>
+        {(canUpgradeToRoundtable || canUpgradeToDevelopment) && (
+          <div className="flex shrink-0 items-center gap-1" data-testid="thread-upgrade-actions">
+            {canUpgradeToRoundtable && (
+              <button
+                type="button"
+                onClick={onUpgradeToRoundtable}
+                className="inline-flex h-8 items-center justify-center px-2 sm:px-2.5 rounded-lg border border-cafe bg-cafe-surface text-xs font-medium text-cafe-secondary hover:bg-[var(--console-hover-bg)] transition-colors"
+                title="基于当前闲聊内容创建圆桌会议会话"
+              >
+                <span className="sm:hidden">圆桌</span>
+                <span className="hidden sm:inline">升级到圆桌</span>
+              </button>
+            )}
+            {canUpgradeToDevelopment && (
+              <button
+                type="button"
+                onClick={onUpgradeToDevelopment}
+                className="inline-flex h-8 items-center justify-center px-2 sm:px-2.5 rounded-lg border border-cafe bg-cafe-surface text-xs font-medium text-cafe-secondary hover:bg-[var(--console-hover-bg)] transition-colors"
+                title={
+                  currentThread?.mode === 'roundtable'
+                    ? '基于当前圆桌结论创建开发协作会话'
+                    : '基于当前闲聊内容创建开发协作会话'
+                }
+              >
+                <span className="sm:hidden">开发</span>
+                <span className="hidden sm:inline">升级到开发</span>
+              </button>
+            )}
+          </div>
         )}
         <ExportButton threadId={threadId} />
         <ChatVoiceFeatureControls threadId={threadId} defaultCatId={defaultCatId} />
@@ -111,6 +138,82 @@ export function ChatContainerHeader({
         <PanelToggle onToggleStatusPanel={onToggleStatusPanel} statusPanelOpen={statusPanelOpen} />
       </div>
     </header>
+  );
+}
+
+function roundtableStageLabel(stage: NonNullable<Thread['roundtableIssueState']>['stage']): string {
+  if (stage === 'independent_stance') return '独立立场';
+  if (stage === 'critique_loop') return '互评循环';
+  if (stage === 'consensus_vote') return '共识投票';
+  return '会议总结';
+}
+
+const ROUNDTABLE_PROGRESS_STEPS: Array<{
+  stage: NonNullable<Thread['roundtableIssueState']>['stage'];
+  label: string;
+}> = [
+  { stage: 'independent_stance', label: '阶段一·立场' },
+  { stage: 'critique_loop', label: '阶段二·互评' },
+  { stage: 'consensus_vote', label: '阶段三·投票' },
+  { stage: 'final_summary', label: '阶段四·总结' },
+];
+
+function roundtableStageIndex(stage: NonNullable<Thread['roundtableIssueState']>['stage']): number {
+  return Math.max(
+    0,
+    ROUNDTABLE_PROGRESS_STEPS.findIndex((step) => step.stage === stage),
+  );
+}
+
+function roundtableStepDetail(state: NonNullable<Thread['roundtableIssueState']>): string {
+  if (state.stage !== 'critique_loop') return roundtableStageLabel(state.stage);
+  const subStep = state.critiqueStep === 'challenge' ? '评价' : state.critiqueStep === 'response' ? '澄清' : '互评';
+  return `${roundtableStageLabel(state.stage)} ${state.critiqueRound}/${state.maxCritiqueRounds} · ${subStep}`;
+}
+
+function RoundtableProgressPill({ thread }: { thread: Thread }) {
+  const state = thread.roundtableIssueState;
+  if (!state) return null;
+
+  const activeIndex = roundtableStageIndex(state.stage);
+  const isFinished = state.status === 'summarized' || state.status === 'closed';
+  const detail = roundtableStepDetail(state);
+  const topic = state.topic.trim();
+
+  return (
+    <div
+      className="mt-1 flex min-w-0 max-w-full flex-col gap-1 text-micro text-cafe-secondary"
+      title={`圆桌议题：${topic}`}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex-shrink-0 rounded border border-cafe px-1.5 py-0.5 font-medium text-cafe-secondary">圆桌</span>
+        <span className="flex-shrink-0 text-cafe-muted">{detail}</span>
+        <span className="min-w-0 truncate text-cafe-muted">{topic}</span>
+      </div>
+      <div className="flex w-full max-w-[520px] items-center">
+        {ROUNDTABLE_PROGRESS_STEPS.map((step, index) => {
+          const isActive = !isFinished && index === activeIndex;
+          const isComplete = isFinished || index < activeIndex;
+          const dotClass = isActive
+            ? 'border-conn-green-text bg-conn-green-text animate-pulse'
+            : isComplete
+              ? 'border-conn-red-text bg-conn-red-text'
+              : 'border-cafe bg-transparent';
+          const lineClass = isFinished || index < activeIndex ? 'bg-conn-red-text' : 'bg-cafe-surface-sunken';
+          return (
+            <div key={step.stage} className="flex min-w-0 flex-1 items-center last:flex-none">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full border ${dotClass}`} />
+                <span className={`hidden truncate sm:inline ${isActive ? 'font-medium text-cafe-secondary' : 'text-cafe-muted'}`}>
+                  {step.label}
+                </span>
+              </div>
+              {index < ROUNDTABLE_PROGRESS_STEPS.length - 1 && <span className={`mx-1.5 h-px min-w-5 flex-1 ${lineClass}`} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

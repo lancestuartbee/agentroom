@@ -435,6 +435,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
 
     // Default to 'default' thread for lobby (prevents global broadcast)
     const resolvedThreadId = threadId ?? 'default';
+    let resolvedThreadMode: 'casual' | 'roundtable' | 'development' | undefined;
 
     // F167 L1 AC-A3: user message is a fresh turn — clear any in-flight ping-pong
     // streak on this thread's active worklist (no-op if none).
@@ -443,6 +444,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
     // Ensure thread exists and auto-title on first message
     if (resolvedThreadId !== 'default' && opts.threadStore) {
       const thread = await opts.threadStore.get(resolvedThreadId);
+      resolvedThreadMode = thread?.mode;
 
       if (!thread || thread.deletedAt) {
         // Thread doesn't exist or soft-deleted — reject to prevent orphaned messages (#21 + Phase D)
@@ -1267,7 +1269,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
             if (msg.type === 'done' && msg.errorCode) {
               governanceErrorCode = msg.errorCode;
             }
-            if ((msg.type === 'done' || msg.type === 'error') && msg.catId) {
+            if (resolvedThreadMode !== 'roundtable' && (msg.type === 'done' || msg.type === 'error') && msg.catId) {
               opts.invocationTracker?.completeSlot?.(resolvedThreadId, msg.catId, controller);
             }
 

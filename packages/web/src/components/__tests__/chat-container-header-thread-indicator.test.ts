@@ -152,6 +152,118 @@ describe('ChatContainerHeader thread indicator', () => {
     }
   });
 
+  it('shows both development and roundtable upgrade actions for casual threads', () => {
+    mockStore.threads = [{ ...TEST_THREADS[0], mode: 'casual' }];
+    const html = renderToStaticMarkup(
+      React.createElement(ChatContainerHeader, {
+        ...defaultProps,
+        threadId: 'thread_xyz',
+        onUpgradeToDevelopment: vi.fn(),
+        onUpgradeToRoundtable: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('升级到开发');
+    expect(html).toContain('升级到圆桌');
+  });
+
+  it('keeps upgrade actions visible below the sm breakpoint', () => {
+    mockStore.threads = [{ ...TEST_THREADS[0], mode: 'casual' }];
+    const html = renderToStaticMarkup(
+      React.createElement(ChatContainerHeader, {
+        ...defaultProps,
+        threadId: 'thread_xyz',
+        onUpgradeToDevelopment: vi.fn(),
+        onUpgradeToRoundtable: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('data-testid="thread-upgrade-actions"');
+    expect(html).not.toContain('hidden sm:flex');
+    expect(html).toContain('圆桌');
+    expect(html).toContain('开发');
+  });
+
+  it('shows development upgrade action for roundtable threads', () => {
+    mockStore.threads = [{ ...TEST_THREADS[0], mode: 'roundtable' }];
+    const html = renderToStaticMarkup(
+      React.createElement(ChatContainerHeader, {
+        ...defaultProps,
+        threadId: 'thread_xyz',
+        onUpgradeToDevelopment: vi.fn(),
+        onUpgradeToRoundtable: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('升级到开发');
+    expect(html).not.toContain('升级到圆桌');
+    expect(html).toContain('基于当前圆桌结论创建开发协作会话');
+  });
+
+  it('renders roundtable progress dots as completed red, active green pulse, and future hollow', () => {
+    mockStore.threads = [
+      {
+        ...TEST_THREADS[0],
+        id: 'thread_roundtable',
+        mode: 'roundtable',
+        roundtableIssueState: {
+          v: 1,
+          issueId: 'roundtable-test',
+          threadId: 'thread_roundtable',
+          topic: '测试圆桌进度条',
+          status: 'open',
+          stage: 'critique_loop',
+          critiqueStep: 'response',
+          critiqueRound: 2,
+          maxCritiqueRounds: 5,
+          participants: ['opus'],
+          updatedAt: Date.now(),
+        },
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      React.createElement(ChatContainerHeader, { ...defaultProps, threadId: 'thread_roundtable' }),
+    );
+
+    expect(html).toContain('阶段一·立场');
+    expect(html).toContain('阶段二·互评');
+    expect(html).toContain('border-conn-red-text bg-conn-red-text');
+    expect(html).toContain('border-conn-green-text bg-conn-green-text animate-pulse');
+    expect(html).toContain('border-cafe bg-transparent');
+  });
+
+  it('renders every roundtable progress dot as completed when the issue is summarized', () => {
+    mockStore.threads = [
+      {
+        ...TEST_THREADS[0],
+        id: 'thread_roundtable_done',
+        mode: 'roundtable',
+        roundtableIssueState: {
+          v: 1,
+          issueId: 'roundtable-done',
+          threadId: 'thread_roundtable_done',
+          topic: '已总结的圆桌进度条',
+          status: 'summarized',
+          stage: 'final_summary',
+          critiqueRound: 5,
+          maxCritiqueRounds: 5,
+          participants: ['opus'],
+          updatedAt: Date.now(),
+        },
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      React.createElement(ChatContainerHeader, { ...defaultProps, threadId: 'thread_roundtable_done' }),
+    );
+
+    expect(html).toContain('阶段四·总结');
+    expect(html).not.toContain('animate-pulse');
+    expect(html).not.toContain('border-conn-green-text bg-conn-green-text');
+    expect(html.match(/border-conn-red-text bg-conn-red-text/g)?.length).toBe(4);
+  });
+
   it('splits title and project chip into flex siblings so long titles do not eat the project label', () => {
     mockStore.threads = [
       {

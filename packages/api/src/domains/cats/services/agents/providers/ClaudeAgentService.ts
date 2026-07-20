@@ -28,7 +28,13 @@ import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
 import { CliRawArchive } from '../../session/CliRawArchive.js';
-import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentService,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+} from '../../types.js';
 import type { RawArchiveSink } from '../providers/codex-audit-hooks.js';
 import { sanitizeRawEvent } from '../providers/codex-audit-hooks.js';
 import { appendLocalImagePathHints, collectImageAccessDirectories } from '../providers/image-cli-bridge.js';
@@ -384,7 +390,7 @@ export class ClaudeAgentService implements AgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const effectiveSessionId = options?.sessionId;
     let effectivePrompt = prompt;
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
@@ -428,7 +434,7 @@ export class ClaudeAgentService implements AgentService {
       '--setting-sources',
       isApiKeyMode ? 'project,local' : 'project,local,user',
       // Enable Chrome MCP integration (built-in, requires Chrome + extension running)
-      ...(isCasualProfile ? [] : ['--chrome']),
+      ...(isLightweightProfile ? [] : ['--chrome']),
     ];
 
     if (effectiveSessionId) {
@@ -442,7 +448,7 @@ export class ClaudeAgentService implements AgentService {
     // Add MCP server config when callback env is present
     // On Windows, Claude CLI treats inline JSON as a file path — write to temp file instead.
     // The file is per-invocation because it carries per-turn callback credentials.
-    if (!isCasualProfile && options?.callbackEnv && this.mcpServerPath) {
+    if (!isLightweightProfile && options?.callbackEnv && this.mcpServerPath) {
       const mcpConfig = buildCatCafeMcpConfig(this.mcpServerPath, options.callbackEnv);
       if (IS_WINDOWS) {
         mcpConfigPath = writeMcpConfigToTempFile(mcpConfig);
@@ -463,8 +469,9 @@ export class ClaudeAgentService implements AgentService {
     let l0Path: string | undefined;
     let appendPromptPath: string | undefined;
     try {
-      const nativeSystemPromptOverride =
-        options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined;
+      const nativeSystemPromptOverride = isLightweightPromptProfile(options?.promptProfile)
+        ? options?.nativeSystemPrompt?.trim() || undefined
+        : undefined;
       l0Path = nativeSystemPromptOverride
         ? this.writeNativeSystemPromptOverrideToTempFile(nativeSystemPromptOverride)
         : await this.compileL0ToTempFile();
@@ -482,7 +489,7 @@ export class ClaudeAgentService implements AgentService {
       // User flags win when they overlap with ordinary system-injected flags,
       // but native L0 flags are reserved: user overrides would silently remove
       // the compression-immune identity/governance layer.
-      const cliConfigArgs = isCasualProfile ? undefined : options?.cliConfigArgs;
+      const cliConfigArgs = isLightweightProfile ? undefined : options?.cliConfigArgs;
       const userParts = stripReservedSystemPromptArgs(
         cliConfigArgs ? cliConfigArgs.flatMap((arg) => arg.trim().split(/\s+/)) : [],
         this.catId as string,

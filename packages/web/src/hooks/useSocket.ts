@@ -91,6 +91,7 @@ export interface SocketCallbacks {
     title?: string;
     participants?: string[];
     bootcampState?: Record<string, unknown>;
+    roundtableIssueState?: import('../stores/chat-types').Thread['roundtableIssueState'] | null;
   }) => void;
   onIntentMode?: (data: { threadId: string; mode: string; targetCats: string[] }) => void;
   /** F118 D2: Earliest signal that cats are being spawned (before intent_mode) */
@@ -585,6 +586,7 @@ export function useSocket(callbacks: SocketCallbacks, threadId?: string) {
         title?: string;
         participants?: string[];
         bootcampState?: Record<string, unknown>;
+        roundtableIssueState?: import('../stores/chat-types').Thread['roundtableIssueState'] | null;
       }) => {
         callbacksRef.current.onThreadUpdated?.(data);
       },

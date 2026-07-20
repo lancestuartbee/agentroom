@@ -67,6 +67,15 @@ export function getSenderName(catId: string | null): string {
   return `${config.displayName}(${variantLabel})`;
 }
 
+export function isUpgradeBackgroundMessage(msg: Pick<StoredMessage, 'userId' | 'extra'>): boolean {
+  return msg.userId === 'system' && msg.extra?.systemKind === 'upgrade_background';
+}
+
+function getMessageSenderName(msg: StoredMessage): string {
+  if (isUpgradeBackgroundMessage(msg)) return '系统背景';
+  return msg.source ? msg.source.label : getSenderName(msg.catId);
+}
+
 /**
  * Truncate content preserving both head and tail.
  * Head gets 40% of budget, tail gets 60% (conclusions/requests live at the end).
@@ -104,7 +113,7 @@ export function formatMessage(
   // export route) pass their own formatter to avoid leaking UTC into documents
   // whose header/footer use host-local time.
   const time = (options?.formatTime ?? formatPromptTime)(msg.timestamp);
-  const sender = msg.source ? msg.source.label : getSenderName(msg.catId);
+  const sender = getMessageSenderName(msg);
   // F52: Annotate cross-thread messages with source thread
   const crossPostTag = msg.extra?.crossPost?.sourceThreadId
     ? ` ← from thread:${msg.extra.crossPost.sourceThreadId.slice(0, 8)}`
@@ -116,7 +125,7 @@ export function formatMessage(
   if (msg.replyTo && options?.messageMap) {
     const parent = options.messageMap.get(msg.replyTo);
     if (parent) {
-      const parentSender = parent.source ? parent.source.label : getSenderName(parent.catId);
+      const parentSender = getMessageSenderName(parent);
       const sanitized = options?.sanitizeContent ? options.sanitizeContent(parent.content) : parent.content;
       const raw = sanitized.replaceAll('\n', ' ');
       const preview = raw.length > REPLY_PREVIEW_LENGTH ? `${raw.slice(0, REPLY_PREVIEW_LENGTH)}…` : raw;
@@ -155,7 +164,7 @@ export function assembleContext(messages: StoredMessage[], options?: ContextAsse
   const deliveredMessages = messages.filter(
     (m) =>
       isDelivered(m) &&
-      m.userId !== 'system' &&
+      (m.userId !== 'system' || isUpgradeBackgroundMessage(m)) &&
       m.origin !== 'briefing' &&
       !(m.catId && m.content?.startsWith('[错误]')),
   );

@@ -21,14 +21,20 @@ import { type CliEffortLevel, getCatEffort } from '../../../../../config/cat-con
 import { getCatModel } from '../../../../../config/cat-models.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { buildSilentCompletionDiagnostic } from '../../../../../utils/cli-diagnostics.js';
-import { buildChildEnv } from '../../../../../utils/cli-spawn.js';
-import type { ChildProcessLike, SpawnFn } from '../../../../../utils/cli-types.js';
-import { resolveCliTimeoutMs } from '../../../../../utils/cli-timeout.js';
 import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/cli-resolve.js';
+import { buildChildEnv } from '../../../../../utils/cli-spawn.js';
+import { resolveCliTimeoutMs } from '../../../../../utils/cli-timeout.js';
+import type { ChildProcessLike, SpawnFn } from '../../../../../utils/cli-types.js';
 import { isParseError, parseNDJSON } from '../../../../../utils/ndjson-parser.js';
 import { sanitizeCliStderr } from '../../../../../utils/sanitize-cli-stderr.js';
 import { CliRawArchive } from '../../session/CliRawArchive.js';
-import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentService,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+} from '../../types.js';
 import type { RawArchiveSink } from '../providers/codex-audit-hooks.js';
 import { sanitizeRawEvent } from '../providers/codex-audit-hooks.js';
 import { extractImagePaths } from '../providers/image-paths.js';
@@ -233,7 +239,7 @@ function withMessageSystemPrompt(prompt: string, options?: AgentServiceOptions):
 
 function resolveStreamJsonEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
   const configured = getCatEffort(catId, undefined, 'anthropic');
-  if (options?.promptProfile !== 'casual') return configured;
+  if (!isLightweightPromptProfile(options?.promptProfile)) return configured;
   return configured === 'low' ? 'low' : CASUAL_MAX_EFFORT;
 }
 
@@ -305,7 +311,7 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
     if (options?.spawnCliOverride) return false;
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
     if (imagePaths.length > 0) return false;
-    if (options?.promptProfile === 'casual') return true;
+    if (isLightweightPromptProfile(options?.promptProfile)) return true;
     if (options?.promptProfile !== 'development') return false;
     return !hasPerTurnCallbackCredentials(options?.callbackEnv);
   }
@@ -339,7 +345,9 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
     const effort = resolveStreamJsonEffort(this.catId as string, options);
     const modelArgs = !useEnvModelOverride && effectiveModel ? ['--model', effectiveModel] : [];
     const nativeSystemPrompt =
-      (options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined) ||
+      (isLightweightPromptProfile(options?.promptProfile)
+        ? options?.nativeSystemPrompt?.trim() || undefined
+        : undefined) ||
       options?.resumeFallbackSystemPrompt?.trim() ||
       (await this.l0CompilerFn({ catId: this.catId as string }));
 
@@ -684,7 +692,10 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
     if (!proc.closing && proc.activeTurn) {
       proc.activeTurn.fail(new Error(`Claude stream-json CLI process ${details}`));
     }
-    log.info({ catId: this.catId, key: proc.key, pid: proc.child.pid, reason }, 'Claude stream-json CLI process closed');
+    log.info(
+      { catId: this.catId, key: proc.key, pid: proc.child.pid, reason },
+      'Claude stream-json CLI process closed',
+    );
   }
 
   private closeProcess(proc: PersistentClaudeProcess, reason: string): void {

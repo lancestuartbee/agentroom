@@ -190,4 +190,21 @@ describe('casual mention options', () => {
     expect(inserts).not.toContain('@fable ');
     expect(inserts).not.toContain('@全体布偶猫 ');
   });
+
+  it('shows only fixed participants and @all in roundtable mode', () => {
+    const scoped = scopeCatsForMentionOptions(RAGDOLL_CATS, {
+      mode: 'roundtable',
+      preferredCats: ['opus'],
+    });
+    const options = buildCatOptions(scoped, { lightweight: true });
+    const optionIds = options.map((option) => option.id);
+    const inserts = options.map((option) => option.insert);
+
+    expect(optionIds).toEqual(['opus', 'all']);
+    expect(inserts).toContain('@all ');
+    expect(inserts).not.toContain('@thread ');
+    expect(inserts).not.toContain('@sonnet ');
+    expect(inserts).not.toContain('@fable ');
+    expect(inserts).not.toContain('@全体布偶猫 ');
+  });
 });

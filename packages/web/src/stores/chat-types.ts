@@ -1,4 +1,11 @@
-import type { CliDiagnostics, ReplyPreview, SchedulerMessageExtra, ThreadAudience, ThreadMode } from '@cat-cafe/shared';
+import type {
+  CliDiagnostics,
+  ReplyPreview,
+  RoundtableIssueStateV1,
+  SchedulerMessageExtra,
+  ThreadAudience,
+  ThreadMode,
+} from '@cat-cafe/shared';
 
 // F212 Phase B: re-export so existing web imports (panel + tests) can pull the contract via the
 // canonical chat-types entry point without each consumer reaching into @cat-cafe/shared.
@@ -307,7 +314,7 @@ export interface ChatMessage {
      * pipeline race; without marker it ends up visually after the bubble it
      * should precede.
      */
-    systemKind?: 'a2a_routing' | 'context_briefing';
+    systemKind?: 'a2a_routing' | 'context_briefing' | 'upgrade_background';
     /** Machine-readable A2A route metadata. The visible pill text is human-readable; this survives F5. */
     a2aRouting?: { fromCatId?: string; targetCatId?: string; invocationId?: string };
   };
@@ -365,6 +372,8 @@ export interface Thread {
   bubbleCli?: 'global' | 'expanded' | 'collapsed';
   /** F32-b: Thread-level default cat preference */
   preferredCats?: string[];
+  /** Roundtable mode issue progress. Content remains in message history. */
+  roundtableIssueState?: RoundtableIssueStateV1;
   /** F049: workflow phase for mission-control dispatch */
   phase?: 'coding' | 'research' | 'brainstorm';
   /** F049 Phase2: reverse link to source backlog item */

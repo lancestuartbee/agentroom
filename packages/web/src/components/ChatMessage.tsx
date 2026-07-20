@@ -22,6 +22,7 @@ import { toCliEvents } from './cli-output/toCliEvents';
 import { DirectionPill } from './DirectionPill';
 import { EvidencePanel } from './EvidencePanel';
 import { GovernanceBlockedCard } from './GovernanceBlockedCard';
+import { MarkdownContent } from './MarkdownContent';
 import { MessageBubble } from './MessageBubble';
 import { MetadataBadge } from './MetadataBadge';
 import { ReplyPill } from './ReplyPill';
@@ -66,6 +67,256 @@ function isSchedulerReplyPreview(replyPreview?: ChatMessageType['replyPreview'])
 function isConnectorSystemNotice(message: ChatMessageType): boolean {
   if (message.type !== 'connector' || !message.source?.meta) return false;
   return (message.source.meta as Record<string, unknown>).presentation === 'system_notice';
+}
+
+interface RoundtableSection {
+  title: string;
+  body: string;
+}
+
+interface RoundtableParsedContent {
+  meta: string[];
+  prelude: string;
+  sections: RoundtableSection[];
+}
+
+type RoundtableSectionRole = 'claim' | 'reasoning' | 'challenge' | 'vote' | 'risk' | 'next' | 'neutral';
+type RoundtableControlKey = 'CHANGE' | 'NEW_CHALLENGE' | 'READY_TO_VOTE' | 'BLOCKER' | 'VOTE';
+
+const ROUNDTABLE_CONTROL_KEYS: readonly RoundtableControlKey[] = [
+  'CHANGE',
+  'NEW_CHALLENGE',
+  'READY_TO_VOTE',
+  'BLOCKER',
+  'VOTE',
+];
+
+export function roundtableSectionRole(title: string): RoundtableSectionRole {
+  if (/(立场|结论|讨论结果|多数|共识|采纳|当前判断)/.test(title)) return 'claim';
+  if (/(挑战|反对|分歧|阻塞|保留|条件|少数)/.test(title)) return 'challenge';
+  if (/(投票|票型|表决)/.test(title)) return 'vote';
+  if (/(风险|不确定|证据|数据|事实)/.test(title)) return 'risk';
+  if (/(下一步|后续|注意|建议)/.test(title)) return 'next';
+  if (/(理由|解释|回应|接受|修订|判断)/.test(title)) return 'reasoning';
+  return 'neutral';
+}
+
+function roundtableControlKeyFromLabel(label: string): RoundtableControlKey | null {
+  const normalized = label.trim().replace(/\s+/g, '').toUpperCase();
+  if ((ROUNDTABLE_CONTROL_KEYS as readonly string[]).includes(normalized)) return normalized as RoundtableControlKey;
+  if (/^(立场|判断|当前立场|当前判断).*(变化|改变|修订)$/.test(label)) return 'CHANGE';
+  if (/^新(的)?挑战$/.test(label)) return 'NEW_CHALLENGE';
+  if (/^(准备投票|可进入投票|是否准备投票)$/.test(label)) return 'READY_TO_VOTE';
+  if (/^(阻塞|仍有阻塞|仍有阻碍|关键阻塞)$/.test(label)) return 'BLOCKER';
+  if (/^(投票|票型|表决)$/.test(label)) return 'VOTE';
+  return null;
+}
+
+function normalizeRoundtableControlValue(key: RoundtableControlKey, value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (key === 'VOTE') return normalized || value.trim();
+  if (/^(yes|y|true|1|是|有|已|变化|改变|修订|可|可以|准备好)(?:\b|$)/.test(normalized)) return 'yes';
+  if (/^(no|n|false|0|否|无|没有|不|未|无需|不变|保持)(?:\b|$)/.test(normalized)) return 'no';
+  if (/(可以|准备好|进入投票|有阻塞|有挑战|改变|修订)/.test(value)) return 'yes';
+  if (/(没有|无|不变|保持|不需要|不进入|不能|不可以)/.test(value)) return 'no';
+  return value.trim();
+}
+
+function normalizeRoundtableControlLine(line: string): string | null {
+  const match = /^\s*([^:：]{1,32})\s*[:：]\s*(.+?)\s*$/.exec(line);
+  if (!match) return null;
+  const key = roundtableControlKeyFromLabel(match[1] ?? '');
+  if (!key) return null;
+  return `${key}: ${normalizeRoundtableControlValue(key, match[2] ?? '')}`;
+}
+
+function roundtableMetaKey(line: string): RoundtableControlKey | null {
+  const match = /^\s*([A-Z_]+)\s*:/i.exec(line);
+  if (!match) return null;
+  const key = match[1]?.toUpperCase();
+  return (ROUNDTABLE_CONTROL_KEYS as readonly string[]).includes(key ?? '') ? (key as RoundtableControlKey) : null;
+}
+
+function inferRoundtableResponseMeta(text: string, existingMeta: readonly string[]): string[] {
+  const existingKeys = new Set(
+    existingMeta.map(roundtableMetaKey).filter((key): key is RoundtableControlKey => key != null),
+  );
+  const looksLikeResponse =
+    /(立场修订|立场保持|当前立场是否变化|我接受的论点|我仍然反对|对.+回应|可以进入投票|准备投票|仍未消除|新的挑战)/.test(
+      text,
+    );
+  if (!looksLikeResponse) return [];
+
+  const inferred: string[] = [];
+  if (!existingKeys.has('CHANGE')) {
+    if (/(立场修订|我修正|修订后的|改变了?我的|调整为|接受.*(?:修订|修正)|部分接受)/.test(text)) {
+      inferred.push('CHANGE: yes');
+    } else if (/(立场保持|维持.*立场|立场不变|无变化|没有改变|我维持|仍支持|仍坚持)/.test(text)) {
+      inferred.push('CHANGE: no');
+    }
+  }
+  if (!existingKeys.has('NEW_CHALLENGE')) {
+    if (
+      /(^|\n)\s*(?:[-*]\s*)?(?:#{2,4}\s*)?(?:\*\*)?新的?挑战(?:\*\*)?\s*[:：]?|我(?:仍然)?(?:要|会)?挑战|继续挑战|新的实质挑战/.test(
+        text,
+      )
+    ) {
+      inferred.push('NEW_CHALLENGE: yes');
+    } else if (/(无新的?挑战|没有新的?挑战|不再提出新的?挑战)/.test(text)) {
+      inferred.push('NEW_CHALLENGE: no');
+    }
+  }
+  if (!existingKeys.has('READY_TO_VOTE')) {
+    if (/(可以进入投票|可进入投票|准备投票|可以投票|足够收束|进入投票)/.test(text)) {
+      inferred.push('READY_TO_VOTE: yes');
+    } else if (/(不(?:能|宜|建议).*投票|还不能投票|不进入投票|不要.*投票)/.test(text)) {
+      inferred.push('READY_TO_VOTE: no');
+    }
+  }
+  if (!existingKeys.has('BLOCKER')) {
+    if (/(仍未消除|仍有.*不确定|关键分歧|证据不足|缺少证据|未解决|阻塞|保留分歧|不确定性)/.test(text)) {
+      inferred.push('BLOCKER: yes');
+    } else if (/(无阻塞|没有阻塞|无关键分歧|可以进入投票|可以投票)/.test(text)) {
+      inferred.push('BLOCKER: no');
+    }
+  }
+  return inferred;
+}
+
+function parseRoundtableSectionHeading(line: string): { title: string; rest: string } | null {
+  const heading = /^(#{2,4})\s+(.+?)\s*$/.exec(line);
+  if (heading) return { title: heading[2]?.trim() ?? '', rest: '' };
+
+  const boldLabel = /^\s*(?:[-*]\s*)?\*\*(.{1,48}?)\*\*\s*[:：]\s*(.*?)\s*$/.exec(line);
+  if (!boldLabel) return null;
+  const title = boldLabel[1]?.trim() ?? '';
+  if (!title || /[。！？.!?]$/.test(title)) return null;
+  return { title, rest: boldLabel[2]?.trim() ?? '' };
+}
+
+function roundtableSectionClasses(role: RoundtableSectionRole): string {
+  if (role === 'claim') {
+    return 'rounded-md border border-cafe bg-cafe-surface-sunken px-3 py-2 shadow-inner';
+  }
+  if (role === 'challenge') {
+    return 'rounded-r-md border-l-4 border-[var(--semantic-warning)] bg-[var(--semantic-warning-surface)]/45 px-3 py-2';
+  }
+  if (role === 'vote') {
+    return 'rounded-r-md border-l-4 border-[var(--semantic-info)] bg-[var(--semantic-info-surface)]/45 px-3 py-2';
+  }
+  if (role === 'risk') {
+    return 'rounded-r-md border-l-4 border-conn-amber-ring bg-conn-amber-bg/45 px-3 py-2';
+  }
+  return 'rounded-r-md border-l-4 border-cafe bg-cafe-surface-sunken/45 px-3 py-2';
+}
+
+function roundtableSectionTitleClasses(role: RoundtableSectionRole): string {
+  if (role === 'challenge' || role === 'risk') return 'text-[11px] font-semibold text-conn-amber-text';
+  if (role === 'vote') return 'text-[11px] font-semibold text-[var(--semantic-info)]';
+  if (role === 'claim') return 'text-[11px] font-semibold text-cafe-secondary';
+  return 'text-[11px] font-semibold text-cafe-muted';
+}
+
+export function parseRoundtableContent(content: string): RoundtableParsedContent | null {
+  const lines = content.trim().split(/\r?\n/);
+  const meta: string[] = [];
+  const bodyLines: string[] = [];
+  for (const line of lines) {
+    const normalizedControl = normalizeRoundtableControlLine(line);
+    if (normalizedControl) meta.push(normalizedControl);
+    else bodyLines.push(line);
+  }
+  const bodyText = bodyLines.join('\n');
+  meta.push(...inferRoundtableResponseMeta(bodyText, meta));
+
+  const sections: RoundtableSection[] = [];
+  const prelude: string[] = [];
+  let current: RoundtableSection | null = null;
+  for (const line of bodyLines) {
+    const heading = parseRoundtableSectionHeading(line);
+    if (heading) {
+      if (current) sections.push({ ...current, body: current.body.trim() });
+      current = { title: heading.title, body: heading.rest ? `${heading.rest}\n` : '' };
+      continue;
+    }
+    if (current) current.body += `${line}\n`;
+    else prelude.push(line);
+  }
+  if (current) sections.push({ ...current, body: current.body.trim() });
+
+  const meaningfulSections = sections.filter((section) => section.title && section.body);
+  if (meta.length === 0 && meaningfulSections.length < 2) return null;
+  return {
+    meta,
+    prelude: prelude.join('\n').trim(),
+    sections: meaningfulSections,
+  };
+}
+
+export function roundtableMetaLabel(line: string): string {
+  const match = /^\s*([A-Z_]+)\s*:\s*(.+?)\s*$/i.exec(line);
+  if (!match) return line;
+  const key = match[1]?.toUpperCase();
+  const value = match[2] ?? '';
+  if (key === 'CHANGE') return `立场变化: ${value}`;
+  if (key === 'NEW_CHALLENGE') return `新挑战: ${value}`;
+  if (key === 'READY_TO_VOTE') return `准备投票: ${value}`;
+  if (key === 'BLOCKER') return `仍有阻塞: ${value}`;
+  if (key === 'VOTE') return `投票: ${value}`;
+  return `${key}: ${value}`;
+}
+
+function RoundtableMessageContent({
+  content,
+  className,
+  artifactThreadId,
+}: {
+  content: string;
+  className?: string;
+  artifactThreadId?: string;
+}) {
+  const parsed = parseRoundtableContent(content);
+  if (!parsed) {
+    return <CollapsibleMarkdown content={content} className={className} artifactThreadId={artifactThreadId} />;
+  }
+
+  return (
+    <div className={`space-y-2.5 ${className ?? ''}`}>
+      {parsed.meta.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {parsed.meta.map((line, index) => (
+            <span
+              key={`${line}-${index}`}
+              className="rounded-md border border-cafe bg-cafe-surface-sunken/60 px-2 py-0.5 text-[11px] font-medium text-cafe-secondary"
+            >
+              {roundtableMetaLabel(line)}
+            </span>
+          ))}
+        </div>
+      )}
+      {parsed.prelude && (
+        <div className="rounded-r-md border-l-4 border-cafe bg-cafe-surface-sunken/45 px-3 py-2">
+          <MarkdownContent content={parsed.prelude} className="!text-xs" disableCommandPrefix artifactThreadId={artifactThreadId} />
+        </div>
+      )}
+      <div className="space-y-2">
+        {parsed.sections.map((section, index) => {
+          const role = roundtableSectionRole(section.title);
+          return (
+            <section key={`${section.title}-${index}`} className={roundtableSectionClasses(role)}>
+              <div className={`${roundtableSectionTitleClasses(role)} mb-1.5 tracking-normal`}>{section.title}</div>
+              <MarkdownContent
+                content={section.body}
+                className="!text-xs leading-relaxed"
+                disableCommandPrefix
+                artifactThreadId={artifactThreadId}
+              />
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 interface ChatMessageProps {
@@ -162,6 +413,7 @@ export function ChatMessage({
       })()
     : null;
   const currentThread = useChatStore((s) => s.threads.find((t) => t.id === s.currentThreadId));
+  const isRoundtableThread = currentThread?.mode === 'roundtable';
   const bubbleRestorePending = isLoadingThreads && !!currentThreadId && !currentThread;
   const hasBlocks = message.contentBlocks && message.contentBlocks.length > 0;
   const hasTextContent = message.content.trim().length > 0;
@@ -191,7 +443,8 @@ export function ChatMessage({
   // working log while the callback terminal text renders as the body.
   const mergedCliStdout = message.extra?.stream?.cliStdout;
   const mergedSpeechContent = message.extra?.stream?.speechContent;
-  const cliStdoutContent = mergedCliStdout ?? (isStreamOrigin ? message.content : undefined);
+  const renderRoundtableBody = isRoundtableThread && hasTextContent;
+  const cliStdoutContent = renderRoundtableBody ? undefined : (mergedCliStdout ?? (isStreamOrigin ? message.content : undefined));
   const cliEvents = toCliEvents(message.toolEvents, cliStdoutContent);
   const hasCliBlock = cliEvents.length > 0;
   const cliStatus = message.isStreaming
@@ -249,6 +502,7 @@ export function ChatMessage({
     const canRenderCliDiagnostics = isError || (message.type === 'system' && Boolean(message.extra?.cliDiagnostics));
     const isTool = message.variant === 'tool';
     const isFollowup = message.variant === 'a2a_followup';
+    const isRoundtableSummary = isRoundtableThread && message.content.trimStart().startsWith('# 圆桌会议总结');
 
     // F212 Phase B routing precedence (砚砚 P1-1 + 云端 codex P2-3, 2026-05-27):
     //   1. Classified CLI error (reasonCode in REASON_PALETTE) → CLI panel
@@ -303,6 +557,16 @@ export function ChatMessage({
               diagnostics={message.extra.cliDiagnostics}
               dedupCount={dedupCount}
             />
+          </div>
+        </div>
+      );
+    }
+
+    if (message.extra?.systemKind === 'upgrade_background' || isRoundtableSummary) {
+      return (
+        <div data-message-id={message.id} className="flex justify-center mb-3">
+          <div className="max-w-[85%] w-full rounded-lg border border-cafe-border bg-cafe-surface px-4 py-3 text-left shadow-sm">
+            <MarkdownContent content={message.content} disableCommandPrefix artifactThreadId={artifactThreadId} />
           </div>
         </div>
       );
@@ -568,7 +832,13 @@ export function ChatMessage({
       }
       footer={!message.isStreaming && message.metadata ? <MetadataBadge metadata={message.metadata} /> : undefined}
     >
-      {hasCliBlock && isStreamOrigin ? null : !isStreamOrigin && hasBlocks ? (
+      {renderRoundtableBody ? (
+        <RoundtableMessageContent
+          content={mergedSpeechContent ?? message.content}
+          className={catStyle?.font}
+          artifactThreadId={artifactThreadId}
+        />
+      ) : hasCliBlock && isStreamOrigin ? null : !isStreamOrigin && hasBlocks ? (
         <ContentBlocks blocks={message.contentBlocks!} artifactThreadId={artifactThreadId} />
       ) : !isStreamOrigin && hasTextContent ? (
         <CollapsibleMarkdown

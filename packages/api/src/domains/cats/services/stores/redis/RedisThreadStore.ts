@@ -10,11 +10,19 @@
  * 默认持久化；用户可见状态禁止默认 TTL（LL-048）。
  */
 
-import type { CatId, ThreadAudience, ThreadKind, ThreadMode, ThreadPhase } from '@cat-cafe/shared';
+import type {
+  CatId,
+  RoundtableIssueStateV1,
+  ThreadAudience,
+  ThreadKind,
+  ThreadMode,
+  ThreadPhase,
+} from '@cat-cafe/shared';
 import {
   DEFAULT_THREAD_AUDIENCE,
   DEFAULT_THREAD_MODE,
   generateThreadId,
+  isRoundtableIssueStateV1,
   isThreadMode,
   normalizeThreadAudience,
 } from '@cat-cafe/shared';
@@ -570,6 +578,15 @@ export class RedisThreadStore implements IThreadStore {
     }
   }
 
+  async updateRoundtableIssueState(threadId: string, state: RoundtableIssueStateV1 | null): Promise<void> {
+    const key = ThreadKeys.detail(threadId);
+    if (state === null) {
+      await this.deleteDetailFields(key, 'roundtableIssueState');
+    } else {
+      await this.setDetailFields(key, 'roundtableIssueState', JSON.stringify(state));
+    }
+  }
+
   async updateBootcampState(threadId: string, state: BootcampStateV1 | null): Promise<void> {
     const key = ThreadKeys.detail(threadId);
     if (state === null) {
@@ -1045,6 +1062,9 @@ export class RedisThreadStore implements IThreadStore {
     if (thread.threadMemory) {
       result.threadMemory = JSON.stringify(thread.threadMemory);
     }
+    if (thread.roundtableIssueState) {
+      result.roundtableIssueState = JSON.stringify(thread.roundtableIssueState);
+    }
     if (thread.voiceMode) {
       result.voiceMode = '1';
     }
@@ -1159,6 +1179,16 @@ export class RedisThreadStore implements IThreadStore {
     if (data.threadMemory) {
       const mem = parseThreadMemoryJson(data.threadMemory);
       if (mem) result.threadMemory = mem;
+    }
+    if (data.roundtableIssueState) {
+      try {
+        const parsed = JSON.parse(data.roundtableIssueState);
+        if (isRoundtableIssueStateV1(parsed)) {
+          result.roundtableIssueState = parsed;
+        }
+      } catch {
+        /* ignore malformed JSON */
+      }
     }
     if (data.voiceMode === '1') {
       result.voiceMode = true;

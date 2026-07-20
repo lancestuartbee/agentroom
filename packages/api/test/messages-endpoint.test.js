@@ -199,6 +199,30 @@ describe('GET /api/messages', () => {
     });
   });
 
+  it('maps upgrade_background system messages to type=system with extra.systemKind', async () => {
+    messageStore.append({
+      userId: 'system',
+      catId: null,
+      content: '# 升级背景\n由闲聊会话升级为圆桌会议。',
+      mentions: [],
+      timestamp: 3100,
+      threadId: 'thread-upgrade-background',
+      extra: { systemKind: 'upgrade_background' },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/messages?threadId=thread-upgrade-background',
+    });
+    const body = JSON.parse(res.body);
+
+    assert.equal(body.messages.length, 1);
+    assert.equal(body.messages[0].type, 'system');
+    assert.equal(body.messages[0].catId, null);
+    assert.equal(body.messages[0].extra.systemKind, 'upgrade_background');
+    assert.match(body.messages[0].content, /升级背景/);
+  });
+
   it('respects limit parameter', async () => {
     for (let i = 0; i < 10; i++) {
       messageStore.append({

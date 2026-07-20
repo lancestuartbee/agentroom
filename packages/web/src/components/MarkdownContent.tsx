@@ -464,24 +464,26 @@ function buildMdComponents(tp?: (children: ReactNode) => ReactNode, artifactThre
 
   return {
     p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{ml(children)}</p>,
-    strong: ({ children }) => <strong className="font-semibold">{m(children)}</strong>,
-    em: ({ children }) => <em>{m(children)}</em>,
-    del: ({ children }) => <del className="opacity-60">{m(children)}</del>,
+    strong: ({ children }) => <strong className="font-semibold">{ml(children)}</strong>,
+    em: ({ children }) => <em>{ml(children)}</em>,
+    del: ({ children }) => <del className="opacity-60">{ml(children)}</del>,
 
-    h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">{m(children)}</h1>,
-    h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{m(children)}</h2>,
-    h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2 first:mt-0">{m(children)}</h3>,
-    h4: ({ children }) => <h4 className="text-sm font-semibold mb-1 mt-2 first:mt-0">{m(children)}</h4>,
+    h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">{ml(children)}</h1>,
+    h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{ml(children)}</h2>,
+    h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2 first:mt-0">{ml(children)}</h3>,
+    h4: ({ children }) => <h4 className="text-sm font-semibold mb-1 mt-2 first:mt-0">{ml(children)}</h4>,
     h5: ({ children }) => (
-      <h5 className="text-xs font-semibold mb-1 mt-1.5 first:mt-0 uppercase tracking-wide">{m(children)}</h5>
+      <h5 className="text-xs font-semibold mb-1 mt-1.5 first:mt-0 uppercase tracking-wide">{ml(children)}</h5>
     ),
-    h6: ({ children }) => <h6 className="text-xs font-medium mb-1 mt-1.5 first:mt-0 text-cafe-muted">{m(children)}</h6>,
+    h6: ({ children }) => (
+      <h6 className="text-xs font-medium mb-1 mt-1.5 first:mt-0 text-cafe-muted">{ml(children)}</h6>
+    ),
 
     ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-0.5">{children}</ul>,
     ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-0.5">{children}</ol>,
     li: ({ children, className }) => (
       <li className={className === 'task-list-item' ? 'list-none -ml-5 flex items-start gap-1.5' : undefined}>
-        {m(children)}
+        {ml(children)}
       </li>
     ),
     input: ({ type, checked }) =>
@@ -523,12 +525,25 @@ function buildMdComponents(tp?: (children: ReactNode) => ReactNode, artifactThre
 
     /* Code blocks with copy button — textProcessor intentionally excluded */
     pre: ({ children }) => (isMermaidPre(children) ? children : <CodeBlock>{children}</CodeBlock>),
-    code: ({ className = '', children }) =>
-      hasMermaidLanguage(className) ? (
-        <MermaidDiagram source={codeChildrenToString(children)} />
+    code: ({ className = '', children }) => {
+      const source = codeChildrenToString(children).trim();
+      const artifactHref =
+        !hasMermaidLanguage(className) && source && !source.includes('\n')
+          ? resolveArtifactDownloadHref(source, artifactThreadId)
+          : null;
+      if (artifactHref) {
+        return (
+          <ArtifactReportLink href={artifactHref} title={`下载当前对话产物\n${source}`}>
+            <code className={inlineCodeClassName(className)}>{children}</code>
+          </ArtifactReportLink>
+        );
+      }
+      return hasMermaidLanguage(className) ? (
+        <MermaidDiagram source={source} />
       ) : (
         <code className={inlineCodeClassName(className)}>{children}</code>
-      ),
+      );
+    },
 
     /* Tables (GFM) */
     table: ({ children }) => (
@@ -538,9 +553,9 @@ function buildMdComponents(tp?: (children: ReactNode) => ReactNode, artifactThre
     ),
     thead: ({ children }) => <thead className="bg-cafe-surface-elevated">{children}</thead>,
     th: ({ children }) => (
-      <th className="border border-cafe px-2 py-1 text-left font-semibold text-xs">{m(children)}</th>
+      <th className="border border-cafe px-2 py-1 text-left font-semibold text-xs">{ml(children)}</th>
     ),
-    td: ({ children }) => <td className="border border-cafe px-2 py-1">{m(children)}</td>,
+    td: ({ children }) => <td className="border border-cafe px-2 py-1">{ml(children)}</td>,
   };
 }
 

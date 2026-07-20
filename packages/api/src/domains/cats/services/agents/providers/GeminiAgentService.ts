@@ -40,7 +40,14 @@ import { resolveCliTimeoutMs } from '../../../../../utils/cli-timeout.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
 import { readJsonlTail } from '../../../../../utils/jsonl-tail-reader.js';
 import { sanitizeCliStderr } from '../../../../../utils/sanitize-cli-stderr.js';
-import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata, TokenUsage } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentService,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+  type TokenUsage,
+} from '../../types.js';
 import { appendLocalImagePathHints, collectImageAccessDirectories } from '../providers/image-cli-bridge.js';
 import { extractImagePaths } from '../providers/image-paths.js';
 import { type AgyProfile, preflightAgyProfile, resolveAgyProfile, resolveAgySpawnCwd } from './agy-profile-manager.js';
@@ -483,7 +490,7 @@ export class GeminiAgentService implements AgentService {
   }
 
   private async *invokeGeminiCLI(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const effectiveSessionId = options?.sessionId;
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_GEMINI_MODEL_OVERRIDE ?? this.model;
     const metadata: MessageMetadata = { provider: 'google', model: effectiveModel };
@@ -511,7 +518,7 @@ export class GeminiAgentService implements AgentService {
 
     // User-defined CLI args from the member editor (#567).
     const userParts: string[] = [];
-    for (const arg of isCasualProfile ? [] : (options?.cliConfigArgs ?? [])) {
+    for (const arg of isLightweightProfile ? [] : (options?.cliConfigArgs ?? [])) {
       userParts.push(...arg.trim().split(/\s+/));
     }
     if (userParts.length > 0) {
@@ -715,7 +722,7 @@ export class GeminiAgentService implements AgentService {
   }
 
   private async *invokeAntigravityCLI(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const yieldedToolCallIds = new Set<string>();
     const yieldedToolResults = new Set<string>();
     const requestedModelOverride = options?.callbackEnv?.CAT_CAFE_GEMINI_MODEL_OVERRIDE;
@@ -827,7 +834,7 @@ export class GeminiAgentService implements AgentService {
     args.push('--print', effectivePrompt);
 
     const userParts: string[] = [];
-    for (const arg of isCasualProfile ? [] : (options?.cliConfigArgs ?? [])) {
+    for (const arg of isLightweightProfile ? [] : (options?.cliConfigArgs ?? [])) {
       userParts.push(...arg.trim().split(/\s+/));
     }
     const filteredUserParts = removeValuedCliFlags(userParts, ANTIGRAVITY_USER_BLOCKED_FLAGS);

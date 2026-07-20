@@ -42,7 +42,12 @@ import { classifyTool } from '../../tool-usage/classify.js';
 import { deriveResultSummary } from '../../tool-usage/derive-result-summary.js';
 import { normalizeMcpToolName } from '../../tool-usage/normalize-mcp-tool-name.js';
 import { getVoiceBlockSynthesizer } from '../../tts/VoiceBlockSynthesizer.js';
-import type { AgentMessage, AgentMessageType, MessageMetadata } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentMessageType,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+} from '../../types.js';
 import { buildCapsuleFromRouteState } from '../invocation/CollaborationContinuityCapsule.js';
 import { invokeSingleCat } from '../invocation/invoke-single-cat.js';
 import { buildMcpCallbackInstructions, needsMcpInjection } from '../invocation/McpPromptInjector.js';
@@ -51,15 +56,20 @@ import { mergeStreams } from '../invocation/stream-merge.js';
 import { resolveDefaultClaudeMcpServerPath } from '../providers/ClaudeAgentService.js';
 import { parseA2AMentions } from '../routing/a2a-mentions.js';
 import { accumulateTextAggregate } from '../text-aggregation.js';
+import {
+  buildPromptProfileStaticIdentity,
+  getPromptProfileContextBudget,
+  resolvePromptProfile,
+} from './casual-prompt-profile.js';
 import { type ContextEvalInput, extractContextEvalSignals } from './context-eval.js';
 import { buildBriefingMessage } from './format-briefing.js';
-import { extractRichFromText, isValidRichBlock } from './rich-block-extract.js';
 import {
   isCasualModePrompt,
   promptTextSegment,
-  shouldRecordPromptSegmentDiagnostics,
   type RoutePromptSegmentDiagnostics,
+  shouldRecordPromptSegmentDiagnostics,
 } from './prompt-segment-diagnostics.js';
+import { extractRichFromText, isValidRichBlock } from './rich-block-extract.js';
 import type { RouteOptions, RouteStrategyDeps } from './route-helpers.js';
 import {
   assembleIncrementalContext,
@@ -76,11 +86,6 @@ import {
 } from './route-helpers.js';
 import { appendThinkingChunk, renderThinkingChunks } from './thinking-chunks.js';
 import { buildVoteTally, checkVoteCompletion, extractVoteFromText, VOTE_RESULT_SOURCE } from './vote-intercept.js';
-import {
-  buildPromptProfileStaticIdentity,
-  getPromptProfileContextBudget,
-  resolvePromptProfile,
-} from './casual-prompt-profile.js';
 
 const log = createModuleLogger('route-parallel');
 
@@ -105,12 +110,14 @@ export async function* routeParallel(
     modeSystemPromptByCat,
     promptProfile: requestedPromptProfile,
   } = options;
+  const bufferTextUntilDoneForCats = new Set((options.bufferTextUntilDoneForCats ?? []).map(String));
+  const suppressedFinalTextCats = new Set<string>();
   const thinkingMode = options.thinkingMode ?? 'play';
   // P2-3 fix: also consider default MCP server path (ClaudeAgentService has fallback resolution)
   const mcpServerPath = process.env.CAT_CAFE_MCP_SERVER_PATH || resolveDefaultClaudeMcpServerPath();
   const incrementalMode = Boolean(currentUserMessageId && deps.deliveryCursorStore);
   const routePromptProfile = resolvePromptProfile(requestedPromptProfile, modeSystemPrompt);
-  const isCasualProfile = routePromptProfile === 'casual';
+  const isLightweightProfile = isLightweightPromptProfile(routePromptProfile);
 
   const degradationMsgs: AgentMessage[] = [];
   const boundaryByCat = new Map<CatId, string | undefined>();
@@ -233,7 +240,7 @@ export async function* routeParallel(
       );
       // F041: inject HTTP callback only when MCP is NOT actually available (fallback)
       const mcpInstructions =
-        !isCasualProfile && needsMcpInjection(mcpAvailable, catConfig?.clientId)
+        !isLightweightProfile && needsMcpInjection(mcpAvailable, catConfig?.clientId)
           ? buildMcpCallbackInstructions({
               currentCatId: catId as string,
               teammates: teammates.map((id) => id as string),
@@ -251,7 +258,7 @@ export async function* routeParallel(
             relatedDiscussions?: readonly { sessionId: string; snippet: string; score: number }[] | undefined;
           }[]
         | undefined;
-      if (!isCasualProfile && deps.invocationDeps.signalArticleLookup) {
+      if (!isLightweightProfile && deps.invocationDeps.signalArticleLookup) {
         try {
           const signals = await deps.invocationDeps.signalArticleLookup(threadId);
           if (signals.length > 0) activeSignals = signals;
@@ -266,7 +273,7 @@ export async function* routeParallel(
       // off: skip entirely
       let alwaysOnDocs: readonly { anchor: string; title: string; summary: string }[] | undefined;
       let alwaysOnInjectionMode: 'off' | 'shadow' | 'on' = 'off';
-      if (!isCasualProfile && deps.evidenceStore) {
+      if (!isLightweightProfile && deps.evidenceStore) {
         try {
           const { freezeFlags } = await import('../../../../../domains/memory/f163-types.js');
           const f163Flags = freezeFlags();
@@ -285,7 +292,7 @@ export async function* routeParallel(
         }
       }
 
-      const invocationContext = isCasualProfile
+      const invocationContext = isLightweightProfile
         ? ''
         : buildInvocationContext({
             catId,
@@ -332,7 +339,7 @@ export async function* routeParallel(
         );
       }
       if (
-        !isCasualProfile &&
+        !isLightweightProfile &&
         !isParReborn &&
         isSessionChainEnabled(catId) &&
         deps.invocationDeps.sessionChainStore &&
@@ -994,6 +1001,13 @@ export async function* routeParallel(
       }
 
       if (effectiveMsg.type === 'text' && !effectiveMsg.content) continue;
+      if (
+        effectiveMsg.type === 'text' &&
+        effectiveMsg.catId &&
+        bufferTextUntilDoneForCats.has(String(effectiveMsg.catId))
+      ) {
+        continue;
+      }
       // F194 Phase Z9 砚砚 R1 P1-1: stamp ownInvocationId on yielded events
       // (same as route-serial.ts). CLI text/done/tool events don't carry
       // invocationId; only system_info=invocation_created does. Without explicit
@@ -1046,7 +1060,18 @@ export async function* routeParallel(
       // per-cat invocation_created id, creating duplicate bubbles after refresh.
       const persistedInvocationId = options.parentInvocationId ?? ownInvId;
       let catProducedOutput = false;
-      const text = catText.get(msg.catId);
+      const rawText = catText.get(msg.catId);
+      const shouldSuppressFinalText =
+        !!rawText &&
+        !!options.suppressTextPredicate?.({
+          catId: msg.catId as CatId,
+          content: rawText,
+        });
+      if (shouldSuppressFinalText) {
+        suppressedFinalTextCats.add(String(msg.catId));
+        catText.delete(msg.catId);
+      }
+      const text = shouldSuppressFinalText ? undefined : rawText;
       if (text) {
         catProducedOutput = true;
         const meta = catMeta.get(msg.catId);
@@ -1251,6 +1276,19 @@ export async function* routeParallel(
               ...allRichBlocks,
             ];
           }
+          if (bufferTextUntilDoneForCats.has(String(msg.catId)) && storedContent) {
+            yield {
+              type: 'text',
+              catId: msg.catId as CatId,
+              content: storedContent,
+              textMode: 'replace',
+              origin: 'stream',
+              timestamp: invocationStartedAt,
+              ...(persistedInvocationId ? { invocationId: persistedInvocationId } : {}),
+              messageId: storedMsg.id,
+              ...(meta ? { metadata: meta } : {}),
+            };
+          }
           // #80: Clean up draft only after successful append
           if (deps.draftStore && ownInvId) {
             deps.draftStore.delete(userId, threadId, ownInvId)?.catch?.(noop);
@@ -1282,6 +1320,7 @@ export async function* routeParallel(
         // No text content and no error.
         // Persist only when there is non-text payload (tool/thinking/rich).
         // Purely empty turns should not create blank chat bubbles.
+        const suppressSilentNoText = suppressedFinalTextCats.has(String(msg.catId));
         const meta = catMeta.get(msg.catId);
         const catTools = catToolEvents.get(msg.catId);
         const thinking = catThinking.get(msg.catId);
@@ -1289,10 +1328,12 @@ export async function* routeParallel(
         const hasRichBlocks = noTextBlocks.length > 0;
         const sawUserFacingSystemInfo = catSawUserFacingSystemInfo.get(msg.catId) === true;
         const shouldPersistNoTextMessage =
-          hasRichBlocks ||
-          (catTools?.length ?? 0) > 0 ||
-          Boolean(thinking && renderThinkingChunks(thinking).trim().length > 0);
-        const shouldEmitSilentCompletion = (catTools?.length ?? 0) > 0 && !hasRichBlocks && !sawUserFacingSystemInfo;
+          !suppressSilentNoText &&
+          (hasRichBlocks ||
+            (catTools?.length ?? 0) > 0 ||
+            Boolean(thinking && renderThinkingChunks(thinking).trim().length > 0));
+        const shouldEmitSilentCompletion =
+          !suppressSilentNoText && (catTools?.length ?? 0) > 0 && !hasRichBlocks && !sawUserFacingSystemInfo;
 
         // Diagnostic: if cat ran tools but produced no text, emit a system_info so the
         // user sees *something* instead of a silent vanish (bugfix: silent-exit P1).
@@ -1309,7 +1350,7 @@ export async function* routeParallel(
           } as AgentMessage;
         }
 
-        if (shouldPersistNoTextMessage || sawUserFacingSystemInfo || shouldEmitSilentCompletion) {
+        if (!suppressSilentNoText && (shouldPersistNoTextMessage || sawUserFacingSystemInfo || shouldEmitSilentCompletion)) {
           catProducedOutput = true;
         }
 
@@ -1377,7 +1418,7 @@ export async function* routeParallel(
               });
             }
           }
-        } else if (!sawUserFacingSystemInfo) {
+        } else if (!sawUserFacingSystemInfo && !suppressSilentNoText) {
           yield {
             type: 'system_info' as AgentMessageType,
             catId: msg.catId,

@@ -71,7 +71,11 @@ import { ThinkingIndicator } from './ThinkingIndicator';
 import { ThreadExecutionBar } from './ThreadExecutionBar';
 import { ThreadSidebar } from './ThreadSidebar';
 import { DirectoryPickerModal, type NewThreadOptions } from './ThreadSidebar/DirectoryPickerModal';
-import { assignDocumentRoute, CHAT_THREAD_ROUTE_EVENT, pushThreadRouteWithHistory } from './ThreadSidebar/thread-navigation';
+import {
+  assignDocumentRoute,
+  CHAT_THREAD_ROUTE_EVENT,
+  pushThreadRouteWithHistory,
+} from './ThreadSidebar/thread-navigation';
 import { getProjectPaths } from './ThreadSidebar/thread-utils';
 import { VoteActiveBar } from './VoteActiveBar';
 import { type VoteConfig, VoteConfigModal } from './VoteConfigModal';
@@ -83,6 +87,8 @@ import { TranscriptPanel } from './workspace/TranscriptPanel';
 interface ChatContainerProps {
   threadId: string;
 }
+
+type UpgradeTargetMode = 'development' | 'roundtable';
 
 export function ChatContainer({ threadId }: ChatContainerProps) {
   const bottomChromeRef = useRef<HTMLDivElement | null>(null);
@@ -190,7 +196,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   const [statusPanelOpen, setStatusPanelOpen] = useState(true);
   const [mobileStatusOpen, setMobileStatusOpen] = useState(false);
   const [showBootcampList, setShowBootcampList] = useState(false);
-  const [showUpgradePicker, setShowUpgradePicker] = useState(false);
+  const [upgradeTargetMode, setUpgradeTargetMode] = useState<UpgradeTargetMode | null>(null);
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const editingCat = editingCatId ? (getCatById(editingCatId) ?? null) : null;
   const [coCreatorEditorOpen, setCoCreatorEditorOpen] = useState(false);
@@ -462,6 +468,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
           ? (res.json() as Promise<{
               bootcampState?: Thread['bootcampState'];
               firstRunQuestState?: { phase: string; firstCatName?: string };
+              roundtableIssueState?: Thread['roundtableIssueState'];
             }>)
           : null,
       )
@@ -476,6 +483,13 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
           useChatStore.setState((state) => ({
             threads: state.threads.map((t) =>
               t.id === threadId ? { ...t, firstRunQuestState: thread.firstRunQuestState } : t,
+            ),
+          }));
+        }
+        if (thread.roundtableIssueState || local?.roundtableIssueState) {
+          useChatStore.setState((state) => ({
+            threads: state.threads.map((t) =>
+              t.id === threadId ? { ...t, roundtableIssueState: thread.roundtableIssueState } : t,
             ),
           }));
         }
@@ -880,27 +894,31 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
     [navigateToThread, setThreads],
   );
 
-  const handleUpgradeToDevelopment = useCallback(
+  const handleUpgradeThread = useCallback(
     async (opts: NewThreadOptions) => {
-      if (!opts.projectPath) return;
+      const targetMode = opts.mode === 'development' || opts.mode === 'roundtable' ? opts.mode : upgradeTargetMode;
+      if (!targetMode) return;
+      if (targetMode === 'development' && !opts.projectPath) return;
       try {
         const res = await apiFetch(`/api/threads/${encodeURIComponent(threadId)}/upgrade`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            targetMode: 'development',
-            projectPath: opts.projectPath,
+            targetMode,
+            ...(targetMode === 'development' ? { projectPath: opts.projectPath } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(opts.preferredCats?.length ? { preferredCats: opts.preferredCats } : {}),
           }),
         });
         if (!res.ok) {
-          console.error('[upgradeToDevelopment] POST /api/threads/:id/upgrade failed:', res.status, await res.text());
+          console.error('[upgradeThread] POST /api/threads/:id/upgrade failed:', res.status, await res.text());
           return;
         }
         const body = (await res.json()) as { thread: Thread };
-        setShowUpgradePicker(false);
-        setCurrentProject(opts.projectPath);
+        setUpgradeTargetMode(null);
+        if (targetMode === 'development' && opts.projectPath) {
+          setCurrentProject(opts.projectPath);
+        }
         try {
           const listRes = await apiFetch('/api/threads');
           if (listRes.ok) {
@@ -912,10 +930,10 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
         }
         navigateToThread(body.thread.id);
       } catch (err) {
-        console.error('[upgradeToDevelopment] exception:', err);
+        console.error('[upgradeThread] exception:', err);
       }
     },
-    [navigateToThread, setCurrentProject, setThreads, threadId],
+    [navigateToThread, setCurrentProject, setThreads, threadId, upgradeTargetMode],
   );
 
   const handleSearchKnowledge = useCallback(() => {
@@ -999,19 +1017,20 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
               setStatusPanelOpen(true);
             }
           }}
-          onUpgradeFromCasual={() => setShowUpgradePicker(true)}
+          onUpgradeToDevelopment={() => setUpgradeTargetMode('development')}
+          onUpgradeToRoundtable={() => setUpgradeTargetMode('roundtable')}
           defaultCatId={targetCats[0] || 'opus'}
         />
-        {showUpgradePicker && (
+        {upgradeTargetMode && (
           <DirectoryPickerModal
             existingProjects={existingProjectPaths}
-            onSelect={handleUpgradeToDevelopment}
-            onCancel={() => setShowUpgradePicker(false)}
-            initialMode="development"
-            modeOptions={['development']}
-            heading="升级到开发协作"
-            submitLabel="创建开发会话"
-            allowLobby={false}
+            onSelect={handleUpgradeThread}
+            onCancel={() => setUpgradeTargetMode(null)}
+            initialMode={upgradeTargetMode}
+            modeOptions={[upgradeTargetMode]}
+            heading={upgradeTargetMode === 'roundtable' ? '升级到圆桌会议' : '升级到开发协作'}
+            submitLabel={upgradeTargetMode === 'roundtable' ? '创建圆桌会话' : '创建开发会话'}
+            allowLobby={upgradeTargetMode !== 'development'}
           />
         )}
 

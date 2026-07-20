@@ -250,6 +250,10 @@ export type SpawnCliOverride = (options: CliSpawnOptions) => AsyncGenerator<unkn
 
 export type PromptProfile = SessionPromptProfile;
 
+export function isLightweightPromptProfile(promptProfile?: PromptProfile): boolean {
+  return promptProfile === 'casual' || promptProfile === 'roundtable';
+}
+
 /**
  * Options for invoking an agent
  */

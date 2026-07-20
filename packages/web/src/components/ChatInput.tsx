@@ -53,7 +53,7 @@ const MAX_IMAGE_DRAFT_THREADS = 5;
 
 function hasMentionRoutingMetadata(thread: Thread | null | undefined): thread is Thread {
   if (!thread?.mode) return false;
-  if (thread.mode !== 'casual') return true;
+  if (thread.mode !== 'casual' && thread.mode !== 'roundtable') return true;
   return (
     Array.isArray(thread.preferredCats) ||
     (Array.isArray(thread.participants) && thread.participants.length > 0) ||
@@ -99,18 +99,16 @@ export function ChatInput({
 }: ChatInputProps) {
   const { cats } = useCatData();
   const ime = useIMEGuard();
-  const storeThread = useChatStore((s) =>
-    threadId ? s.threads.find((thread) => thread.id === threadId) : undefined,
-  );
+  const storeThread = useChatStore((s) => (threadId ? s.threads.find((thread) => thread.id === threadId) : undefined));
   const setThreads = useChatStore((s) => s.setThreads);
   const [fetchedThread, setFetchedThread] = useState<Thread | null>(null);
   const currentThread = fetchedThread?.id === threadId ? fetchedThread : storeThread;
-  const isCasualThread = currentThread?.mode === 'casual';
+  const isLightweightThread = currentThread?.mode === 'casual' || currentThread?.mode === 'roundtable';
   const mentionCats = useMemo(() => scopeCatsForMentionOptions(cats, currentThread), [cats, currentThread]);
   const hasThreadMetadata = !threadId || hasMentionRoutingMetadata(currentThread);
   const catOptions = useMemo(
-    () => (hasThreadMetadata ? buildCatOptions(mentionCats, { casual: isCasualThread }) : []),
-    [hasThreadMetadata, mentionCats, isCasualThread],
+    () => (hasThreadMetadata ? buildCatOptions(mentionCats, { lightweight: isLightweightThread }) : []),
+    [hasThreadMetadata, mentionCats, isLightweightThread],
   );
   // F108 Scene 2: whisper-eligible cats (CatData[] for WhisperCatSelector)
   const whisperCats = useMemo(() => cats.filter((c) => c.roster?.available !== false), [cats]);

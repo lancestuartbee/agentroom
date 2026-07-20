@@ -20,6 +20,7 @@ interface MentionThreadScope {
 }
 
 export interface BuildCatOptionsOptions {
+  lightweight?: boolean;
   casual?: boolean;
 }
 
@@ -99,7 +100,7 @@ function isAvailable(cat: CatData): boolean {
 }
 
 export function scopeCatsForMentionOptions(cats: CatData[], thread?: MentionThreadScope | null): CatData[] {
-  if (thread?.mode !== 'casual') return cats;
+  if (thread?.mode !== 'casual' && thread?.mode !== 'roundtable') return cats;
   const scopedIds = thread.preferredCats?.length ? thread.preferredCats : thread.participants;
   if (!scopedIds?.length) return cats;
 
@@ -108,7 +109,8 @@ export function scopeCatsForMentionOptions(cats: CatData[], thread?: MentionThre
 }
 
 export function buildCatOptions(cats: CatData[], options: BuildCatOptionsOptions = {}): CatOption[] {
-  const breedGroups = options.casual ? [] : buildBreedGroupOptions(cats);
+  const lightweight = options.lightweight ?? options.casual ?? false;
+  const breedGroups = lightweight ? [] : buildBreedGroupOptions(cats);
   const individuals = cats
     .filter((cat) => cat.mentionPatterns.length > 0 && isAvailable(cat))
     .map((cat) => ({
@@ -119,7 +121,7 @@ export function buildCatOptions(cats: CatData[], options: BuildCatOptionsOptions
       color: catColorVar(cat.id, 'primary'),
       avatar: cat.avatar,
     }));
-  const groupMentions = options.casual ? [CASUAL_ALL_GROUP_MENTION] : DEFAULT_GROUP_MENTIONS;
+  const groupMentions = lightweight ? [CASUAL_ALL_GROUP_MENTION] : DEFAULT_GROUP_MENTIONS;
   // Group mentions (@thread, @all, @全体xx猫) are low-frequency — put them
   // at the bottom so individual cats occupy the prime visible slots.
   // Users can still reach groups via arrow-up or by typing the filter text.

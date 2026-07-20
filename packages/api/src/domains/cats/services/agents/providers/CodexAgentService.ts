@@ -25,11 +25,7 @@ import {
   getCatEffort,
 } from '../../../../../config/cat-config-loader.js';
 import { getCatModel } from '../../../../../config/cat-models.js';
-import {
-  type CodexSandboxMode,
-  getCodexApprovalPolicy,
-  getCodexSandboxMode,
-} from '../../../../../config/codex-cli.js';
+import { type CodexSandboxMode, getCodexApprovalPolicy, getCodexSandboxMode } from '../../../../../config/codex-cli.js';
 import { estimateCostFromTokens } from '../../../../../config/model-pricing.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { formatCliExitError } from '../../../../../utils/cli-format.js';
@@ -39,7 +35,14 @@ import type { SpawnFn } from '../../../../../utils/cli-types.js';
 import { sanitizeCliStderr } from '../../../../../utils/sanitize-cli-stderr.js';
 import { AuditEventTypes, getEventAuditLog } from '../../orchestration/EventAuditLog.js';
 import { CliRawArchive } from '../../session/CliRawArchive.js';
-import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata, TokenUsage } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentService,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+  type TokenUsage,
+} from '../../types.js';
 import type { AuditLogSink, RawArchiveSink } from '../providers/codex-audit-hooks.js';
 import { extractCommandExecutionLifecycle, sanitizeRawEvent } from '../providers/codex-audit-hooks.js';
 import { type CodexStreamState, transformCodexEvent } from '../providers/codex-event-transform.js';
@@ -116,13 +119,13 @@ const VOLATILE_CALLBACK_ENV_KEYS = ['CAT_CAFE_INVOCATION_ID', 'CAT_CAFE_CALLBACK
 
 function resolveCodexEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
   const configured = getCatEffort(catId, undefined, 'openai');
-  if (options?.promptProfile !== 'casual') return configured;
+  if (!isLightweightPromptProfile(options?.promptProfile)) return configured;
   return configured === 'low' ? 'low' : CASUAL_MAX_EFFORT;
 }
 
 function resolveCodexSandboxMode(options?: AgentServiceOptions): CodexSandboxMode {
   const configured = getCodexSandboxMode();
-  if (options?.promptProfile === 'casual' && configured === 'read-only') {
+  if (isLightweightPromptProfile(options?.promptProfile) && configured === 'read-only') {
     return 'workspace-write';
   }
   return configured;
@@ -448,8 +451,9 @@ export class CodexAgentService implements AgentService {
     cliModel: string,
     options?: AgentServiceOptions,
   ): Promise<{ args: string[] } | { error: string; metadata: MessageMetadata }> {
-    const nativeSystemPromptOverride =
-      options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined;
+    const nativeSystemPromptOverride = isLightweightPromptProfile(options?.promptProfile)
+      ? options?.nativeSystemPrompt?.trim() || undefined
+      : undefined;
     if (nativeSystemPromptOverride) {
       return { args: ['--config', `developer_instructions=${toTomlString(nativeSystemPromptOverride)}`] };
     }
@@ -465,7 +469,7 @@ export class CodexAgentService implements AgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const effectiveSessionId = options?.sessionId;
     // Codex CLI has no system prompt flag; prepend identity to prompt text
     const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
@@ -487,16 +491,18 @@ export class CodexAgentService implements AgentService {
           `model_auto_compact_token_limit=${ctxConfig.autoCompactTokenLimit}`,
         ]
       : [];
-    const catCafeMcpArgs = isCasualProfile ? [] : buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
-    const gitRepoArgs = isCasualProfile ? ['--skip-git-repo-check'] : buildGitRepoArgs(options?.workingDirectory);
-    const casualRuntimeArgs = isCasualProfile ? ['--ignore-user-config', '--ignore-rules'] : [];
+    const catCafeMcpArgs = isLightweightProfile
+      ? []
+      : buildCatCafeMcpConfigArgs(options?.workingDirectory, options?.callbackEnv);
+    const gitRepoArgs = isLightweightProfile ? ['--skip-git-repo-check'] : buildGitRepoArgs(options?.workingDirectory);
+    const lightweightRuntimeArgs = isLightweightProfile ? ['--ignore-user-config', '--ignore-rules'] : [];
     // User-defined CLI args from the member editor (#567) — passed as-is, no implicit wrapping.
     // Each entry is split by whitespace (e.g. "--config model_reasoning_effort=\"low\"").
     // F203 Phase C / 砚砚 P1: strip reserved system config keys (developer_instructions,
     // carries L0) before dedup — otherwise dedup() would skip the system push and the
     // L0 would be silently overridden by any cliConfigArgs entry with the same key.
     const userConfigArgs = stripReservedSystemConfigs(
-      (isCasualProfile ? [] : (options?.cliConfigArgs ?? [])).flatMap((arg) => arg.trim().split(/\s+/)),
+      (isLightweightProfile ? [] : (options?.cliConfigArgs ?? [])).flatMap((arg) => arg.trim().split(/\s+/)),
       this.catId as string,
     );
     // Collect user --config / -c keys so system-injected duplicates can be
@@ -612,7 +618,7 @@ export class CodexAgentService implements AgentService {
           ...dedup(approvalArgs),
           ...dedup(developerInstructionsArgs),
           ...dedup(customProviderArgs),
-          ...casualRuntimeArgs,
+          ...lightweightRuntimeArgs,
           ...userConfigArgs,
           ...gitRepoArgs,
           ...catCafeMcpArgs,
@@ -627,11 +633,11 @@ export class CodexAgentService implements AgentService {
           ...dedup(contextWindowArgs),
           '--sandbox',
           sandboxMode,
-          ...(isCasualProfile ? [] : ['--add-dir', '.git']),
+          ...(isLightweightProfile ? [] : ['--add-dir', '.git']),
           ...dedup(approvalArgs),
           ...dedup(developerInstructionsArgs),
           ...dedup(customProviderArgs),
-          ...casualRuntimeArgs,
+          ...lightweightRuntimeArgs,
           ...userConfigArgs,
           ...gitRepoArgs,
           ...catCafeMcpArgs,

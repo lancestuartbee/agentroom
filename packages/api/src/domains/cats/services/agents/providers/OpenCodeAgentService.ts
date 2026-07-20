@@ -23,7 +23,13 @@ import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
 import { CliRawArchive } from '../../session/CliRawArchive.js';
-import type { AgentMessage, AgentServiceOptions, L0InjectableAgentService, MessageMetadata } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+  type L0InjectableAgentService,
+  type MessageMetadata,
+} from '../../types.js';
 import type { RawArchiveSink } from '../providers/codex-audit-hooks.js';
 import { sanitizeRawEvent } from '../providers/codex-audit-hooks.js';
 import { transformOpenCodeEvent } from './opencode-event-transform.js';
@@ -135,9 +141,9 @@ export class OpenCodeAgentService implements L0InjectableAgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const effectiveSessionId = options?.sessionId;
-    const effectiveCliConfigArgs = isCasualProfile ? undefined : options?.cliConfigArgs;
+    const effectiveCliConfigArgs = isLightweightProfile ? undefined : options?.cliConfigArgs;
     // P1-2: runtime model override takes precedence over constructor model
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE ?? this.model;
     const args = this.buildArgs(prompt, effectiveSessionId, effectiveModel, effectiveCliConfigArgs);

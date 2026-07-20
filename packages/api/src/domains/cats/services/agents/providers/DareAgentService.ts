@@ -23,7 +23,13 @@ import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { formatCliExitError } from '../../../../../utils/cli-format.js';
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
-import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentService,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+} from '../../types.js';
 import { transformDareEvent } from './dare-event-transform.js';
 
 const log = createModuleLogger('dare-agent');
@@ -87,7 +93,7 @@ export class DareAgentService implements AgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_DARE_MODEL_OVERRIDE ?? this.model;
     // Runtime mode: require resolvable DARE module path to avoid opaque "No module named client".
     // Unit tests pass spawnFn and may not provide a real filesystem path; skip hard check there.
@@ -123,7 +129,7 @@ export class DareAgentService implements AgentService {
       options?.sessionId,
       endpoint,
       effectiveModel,
-      isCasualProfile ? undefined : options?.cliConfigArgs,
+      isLightweightProfile ? undefined : options?.cliConfigArgs,
     );
     // P1-1: cwd must ALWAYS be darePath (where `python -m client` can find the module).
     // Thread's workingDirectory goes to --workspace instead.

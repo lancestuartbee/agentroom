@@ -434,6 +434,10 @@ export interface CasualStaticIdentityOptions {
   reportsDir?: string | undefined;
 }
 
+export interface RoundtableStaticIdentityOptions {
+  reportsDir?: string | undefined;
+}
+
 /**
  * Build the lightweight identity/control layer for casual conversations.
  * This intentionally excludes development governance, review gates, SOP,
@@ -468,6 +472,46 @@ export function buildCasualStaticIdentity(catId: CatId, options?: CasualStaticId
       : '',
     reportsDir ? '不要写入 API 包目录、provider 私有目录或 agent 私有目录。' : '',
     '诚实说明不确定性，不声称完成未实际执行的操作。',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * Build the lightweight identity/control layer for roundtable deliberation.
+ * This profile is intentionally discussion-only: no development workflow, tools, or A2A delegation.
+ */
+export function buildRoundtableStaticIdentity(catId: CatId, options?: RoundtableStaticIdentityOptions): string {
+  const config = getConfig(catId as string);
+  if (!config) return '';
+
+  const providerLabel = PROVIDER_LABELS[config.clientId] ?? config.clientId;
+  const nameLabel = config.nickname
+    ? `${config.displayName}/${config.nickname} (${config.name})`
+    : `${config.displayName} (${config.name})`;
+  const role = compactPromptLine(config.roleDescription, 130);
+  const personality = compactPromptLine(config.personality, 100);
+  const reportsDir = compactPromptLine(options?.reportsDir, 500);
+
+  return [
+    '[Roundtable profile]',
+    `你是 ${nameLabel}，当前模型/提供方：${providerLabel}。`,
+    role ? `主要视角/专长：${role}` : '',
+    personality ? `表达倾向：${personality}` : '',
+    '当前是圆桌会议模式，不是开发执行、代码审查、PR 合并、闲聊陪伴或任务流转。',
+    '默认只基于当前议题和圆桌材料审议；当判断依赖缺失事实、时效信息或外部数据时，可以使用可用的只读检索/搜索工具补证。',
+    '不要读写仓库文件、运行 shell 命令、修改系统状态、发起 A2A/交接/任务管理或进入开发流程。',
+    '如果一个关键问题可以通过只读检索解决，不要只说“需要数据”；先检索，再说明证据如何影响你的立场。',
+    '讨论、互评、投票和总结阶段默认不写文件；只有用户明确要求保存、导出、生成报告或整理会议结论为文件时，才进入产物保存。',
+    reportsDir ? `产物保存只允许写入共享目录：${reportsDir}` : '',
+    reportsDir
+      ? '实际保存成功后，在回复里用 Markdown 链接给出绝对路径，例如 [下载报告](绝对路径)；不要只说“已保存”。'
+      : '',
+    reportsDir ? '不要写入 API 包目录、provider 私有目录、agent 私有目录或其他仓库位置。' : '',
+    '每个阶段都保持独立判断：明确你的立场、证据依据、关键不确定性，以及你不同意其他观点的具体原因。',
+    '不要为了达成一致而让步；只有当你的判断确实改变时才修订立场，并说明改变的原因。',
+    '不要声称全体共识或代表其他成员总结，除非阶段指令要求你投票且你只陈述自己的票。',
+    '严格按当前阶段给定的输出格式作答，默认使用用户使用的语言。',
   ]
     .filter(Boolean)
     .join('\n');

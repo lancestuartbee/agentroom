@@ -57,6 +57,7 @@ import type { TaskProgressStore } from '../invocation/TaskProgressStore.js';
 import type { AgentRegistry } from '../registry/AgentRegistry.js';
 import type { PersistenceContext, RouteOptions, RouteStrategyDeps } from '../routing/route-helpers.js';
 import { routeParallel } from '../routing/route-parallel.js';
+import { routeRoundtable } from '../routing/route-roundtable.js';
 import { routeSerial } from '../routing/route-serial.js';
 import { resolveCatTarget } from './cat-target-resolver.js';
 
@@ -71,15 +72,33 @@ function buildCasualModeSystemPrompt(thread: Thread): string {
   ].join('\n');
 }
 
+function buildRoundtableModeSystemPrompt(thread: Thread): string {
+  return [
+    '[Roundtable mode]',
+    `Thread ${thread.id}.`,
+    'Use the roundtable deliberation profile.',
+    'Do not enter development workflow, use development tools, or route free-form A2A.',
+  ].join('\n');
+}
+
 function getModeRouteOptions(
   thread: Thread | null | undefined,
 ): Pick<RouteOptions, 'modeSystemPrompt' | 'maxA2ADepth' | 'promptProfile'> {
-  if (thread?.mode !== 'casual') return {};
-  return {
-    promptProfile: 'casual',
-    modeSystemPrompt: buildCasualModeSystemPrompt(thread),
-    maxA2ADepth: 0,
-  };
+  if (thread?.mode === 'casual') {
+    return {
+      promptProfile: 'casual',
+      modeSystemPrompt: buildCasualModeSystemPrompt(thread),
+      maxA2ADepth: 0,
+    };
+  }
+  if (thread?.mode === 'roundtable') {
+    return {
+      promptProfile: 'roundtable',
+      modeSystemPrompt: buildRoundtableModeSystemPrompt(thread),
+      maxA2ADepth: 0,
+    };
+  }
+  return {};
 }
 
 function applyCasualIntentRules(intent: IntentResult, targetCatCount: number): IntentResult {
@@ -854,6 +873,25 @@ export class AgentRouter {
     return this.getAllRoutableCats();
   }
 
+  private getRoundtableTargets(thread?: Thread | null): CatId[] {
+    const preferred = this.filterRoutableCats(thread?.preferredCats ?? []);
+    if (preferred.length > 0) return preferred;
+    return this.getAllRoutableCats();
+  }
+
+  private hasRoundtableCollectiveCue(message: string): boolean {
+    return (
+      /(^|[\s,，。！？!?:：;；])@(?:all|全体)(?=$|[\s,，。！？!?:：;；])/i.test(message) ||
+      /(重新投票|开始投票|进入投票|投票|表决|重新总结|总结一下|会议总结|最终总结|收束总结|继续圆桌|继续讨论|继续互评|继续收束|大家讨论|大家继续|形成共识|重新收束|继续推进)/.test(
+        message,
+      )
+    );
+  }
+
+  private hasRoundtableStrictFocusCue(message: string): boolean {
+    return /(只让|只要|只需|只请|仅让|仅要|仅需|仅请|只听|只看)/.test(message);
+  }
+
   private filterCasualMentionTargets(
     thread: Thread | null | undefined,
     catIds: Iterable<string | null | undefined>,
@@ -918,6 +956,35 @@ export class AgentRouter {
 
     const intent = applyCasualIntentRules(parseIntent(message, targetCats.length), targetCats.length);
     return { targetCats, intent, hasMentions, routing_warnings };
+  }
+
+  private async resolveRoundtableTargetsAndIntent(
+    message: string,
+    threadId: string,
+    thread: Thread | null,
+    options?: { persist?: boolean },
+  ): Promise<{ targetCats: CatId[]; intent: IntentResult; hasMentions: boolean; routing_warnings: CatRoutingError[] }> {
+    const fixedParticipants = this.getRoundtableTargets(thread);
+    const allowed = new Set(fixedParticipants.map(String));
+    const allMentions = await this.parseAllMentions(message, threadId);
+    const mentionedParticipants = this.filterRoutableCats(allMentions.mentions).filter((catId) =>
+      allowed.has(String(catId)),
+    );
+    const strictFocusOnly =
+      mentionedParticipants.length > 0 &&
+      this.hasRoundtableStrictFocusCue(message) &&
+      !this.hasRoundtableCollectiveCue(message);
+    const targetCats = strictFocusOnly ? mentionedParticipants : fixedParticipants;
+    if (options?.persist && this.threadStore && targetCats.length > 0) {
+      await this.threadStore.addParticipants(threadId, targetCats);
+    }
+    const parsed = parseIntent(message, targetCats.length);
+    return {
+      targetCats,
+      intent: { ...parsed, intent: 'ideate', explicit: false, promptTags: [] },
+      hasMentions: false,
+      routing_warnings: [],
+    };
   }
 
   /**
@@ -1522,6 +1589,9 @@ export class AgentRouter {
   ): Promise<{ targetCats: CatId[]; intent: IntentResult; hasMentions: boolean; routing_warnings: CatRoutingError[] }> {
     const resolvedThreadId = threadId ?? DEFAULT_THREAD_ID;
     const thread = this.threadStore ? await this.threadStore.get(resolvedThreadId) : null;
+    if (thread?.mode === 'roundtable') {
+      return this.resolveRoundtableTargetsAndIntent(message, resolvedThreadId, thread, options);
+    }
     if (thread?.mode === 'casual') {
       return this.resolveCasualTargetsAndIntent(message, resolvedThreadId, thread, options);
     }
@@ -1652,7 +1722,9 @@ export class AgentRouter {
     };
 
     try {
-      if (strategy === 'parallel') {
+      if (routeThread?.mode === 'roundtable') {
+        yield* routeRoundtable(strategyDeps, targetCats, cleanMessage, userId, resolvedThreadId, routeOptions);
+      } else if (strategy === 'parallel') {
         yield* routeParallel(strategyDeps, targetCats, cleanMessage, userId, resolvedThreadId, routeOptions);
       } else {
         yield* routeSerial(strategyDeps, targetCats, cleanMessage, userId, resolvedThreadId, routeOptions);
@@ -1836,7 +1908,9 @@ export class AgentRouter {
     };
 
     try {
-      if (strategy === 'parallel') {
+      if (routeThread?.mode === 'roundtable') {
+        yield* routeRoundtable(strategyDeps, targetCats, cleanMessage, userId, threadId, routeOptions);
+      } else if (strategy === 'parallel') {
         yield* routeParallel(strategyDeps, targetCats, cleanMessage, userId, threadId, routeOptions);
       } else {
         yield* routeSerial(strategyDeps, targetCats, cleanMessage, userId, threadId, routeOptions);

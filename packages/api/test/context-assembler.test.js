@@ -670,4 +670,30 @@ describe('#699: inline reply-to preview', () => {
     assert.ok(!result.contextText.includes('system error badge'), 'system parent content must not appear in preview');
     assert.ok(!result.contextText.includes('↩'), 'reply should not have preview when parent is filtered out');
   });
+
+  test('upgrade background system message is included as system background only', async () => {
+    const { assembleContext, formatMessage } = await import(
+      '../dist/domains/cats/services/context/ContextAssembler.js'
+    );
+    const upgradeBackground = mockMsg({
+      id: 'upgrade-bg',
+      userId: 'system',
+      catId: null,
+      content: '# 升级背景\n由闲聊会话升级为圆桌会议。',
+      extra: { systemKind: 'upgrade_background' },
+      timestamp: new Date('2026-02-07T14:04:00Z').getTime(),
+    });
+
+    const formatted = formatMessage(upgradeBackground);
+    assert.ok(formatted.includes('系统背景'));
+    assert.ok(!formatted.includes('co-creator'));
+
+    const result = assembleContext([
+      mockMsg({ userId: 'system', content: '普通系统提示仍然不进上下文', timestamp: 1000 }),
+      upgradeBackground,
+    ]);
+    assert.ok(result.contextText.includes('系统背景'));
+    assert.ok(result.contextText.includes('由闲聊会话升级为圆桌会议'));
+    assert.ok(!result.contextText.includes('普通系统提示仍然不进上下文'));
+  });
 });

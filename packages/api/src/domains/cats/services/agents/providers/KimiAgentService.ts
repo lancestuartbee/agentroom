@@ -10,7 +10,13 @@ import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
 import { CliRawArchive } from '../../session/CliRawArchive.js';
-import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentService,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+} from '../../types.js';
 import type { RawArchiveSink } from '../providers/codex-audit-hooks.js';
 import { sanitizeRawEvent } from '../providers/codex-audit-hooks.js';
 import { resolveDefaultClaudeMcpServerPath } from './ClaudeAgentService.js';
@@ -64,7 +70,7 @@ export class KimiAgentService implements AgentService {
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const effectiveSessionId = options?.sessionId;
     const requestedModel = options?.callbackEnv?.CAT_CAFE_KIMI_MODEL_OVERRIDE ?? this.model;
     const effectiveModel = resolveKimiModelAlias(requestedModel, options?.callbackEnv);
@@ -90,9 +96,10 @@ export class KimiAgentService implements AgentService {
     // before the not-found early-return (kimi/kimi-cli both absent + mcpServerPath set),
     // the temp dir would leak — finally cleanup (line ~440) is gated by the try block below
     // and the early-return jumps over it. Source clowder-ai#944 has the same regression.
-    const tempMcpConfig = !isCasualProfile && this.mcpServerPath
-      ? writeMcpConfigFile(workingDirectory, this.mcpServerPath, options?.callbackEnv)
-      : null;
+    const tempMcpConfig =
+      !isLightweightProfile && this.mcpServerPath
+        ? writeMcpConfigFile(workingDirectory, this.mcpServerPath, options?.callbackEnv)
+        : null;
     const modelConfig = readKimiModelConfigInfo(effectiveModel, options?.callbackEnv);
     const supportsThinking =
       modelConfig.capabilities.includes('thinking') ||
@@ -125,7 +132,7 @@ export class KimiAgentService implements AgentService {
       }
       if (tempMcpConfig) {
         args.push('--mcp-config-file', tempMcpConfig);
-      } else if (!isCasualProfile) {
+      } else if (!isLightweightProfile) {
         args.push(...buildProjectMcpArgs(workingDirectory));
       }
       for (const dir of imageAccessDirs) {
@@ -143,7 +150,7 @@ export class KimiAgentService implements AgentService {
 
     // User-defined CLI args from the member editor (#567).
     const userParts: string[] = [];
-    for (const arg of isCasualProfile ? [] : (options?.cliConfigArgs ?? [])) {
+    for (const arg of isLightweightProfile ? [] : (options?.cliConfigArgs ?? [])) {
       userParts.push(...arg.trim().split(/\s+/));
     }
     if (userParts.length > 0) {

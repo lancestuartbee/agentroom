@@ -6,7 +6,14 @@
  * Phase 3.3 可扩展 Redis 版本。
  */
 
-import type { CatId, ThreadAudience, ThreadKind, ThreadMode, ThreadPhase } from '@cat-cafe/shared';
+import type {
+  CatId,
+  RoundtableIssueStateV1,
+  ThreadAudience,
+  ThreadKind,
+  ThreadMode,
+  ThreadPhase,
+} from '@cat-cafe/shared';
 import {
   DEFAULT_THREAD_AUDIENCE,
   DEFAULT_THREAD_MODE,
@@ -156,6 +163,8 @@ export interface Thread {
   threadMemory?: ThreadMemoryV1;
   /** F079: Active voting state */
   votingState?: VotingStateV1;
+  /** Roundtable mode issue progress. Content remains in message history; this only drives routing/progress UI. */
+  roundtableIssueState?: RoundtableIssueStateV1;
   /** UI bubble display override: thinking block expand/collapse. 'global' = follow config hub default. */
   bubbleThinking?: 'global' | 'expanded' | 'collapsed';
   /** UI bubble display override: CLI output block expand/collapse. 'global' = follow config hub default. */
@@ -413,6 +422,8 @@ export interface IThreadStore {
   /** F079: Get/update voting state */
   getVotingState(threadId: string): VotingStateV1 | null | Promise<VotingStateV1 | null>;
   updateVotingState(threadId: string, state: VotingStateV1 | null): void | Promise<void>;
+  /** Roundtable mode issue progress. `null` clears the current issue state. */
+  updateRoundtableIssueState?(threadId: string, state: RoundtableIssueStateV1 | null): void | Promise<void>;
   /** Update bubble display overrides (thinking/CLI expand/collapse). */
   updateBubbleDisplay(
     threadId: string,
@@ -844,6 +855,16 @@ export class ThreadStore implements IThreadStore {
       delete thread.votingState;
     } else {
       thread.votingState = state;
+    }
+  }
+
+  updateRoundtableIssueState(threadId: string, state: RoundtableIssueStateV1 | null): void {
+    const thread = this.get(threadId);
+    if (!thread) return;
+    if (state === null) {
+      delete thread.roundtableIssueState;
+    } else {
+      thread.roundtableIssueState = state;
     }
   }
 

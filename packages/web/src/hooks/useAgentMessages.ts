@@ -1591,10 +1591,7 @@ function addBackgroundSystemMessage(
   variant: 'info' | 'a2a_followup' = 'info',
   extra?: ChatMessage['extra'],
 ): void {
-  const id =
-    extra?.systemKind === 'a2a_routing' && msg.messageId
-      ? msg.messageId
-      : `bg-sys-${msg.timestamp}-${msg.catId}-${options.nextBgSeq()}`;
+  const id = msg.messageId ? msg.messageId : `bg-sys-${msg.timestamp}-${msg.catId}-${options.nextBgSeq()}`;
   options.store.addMessageToThread(msg.threadId, {
     id,
     type: 'system',
@@ -5468,11 +5465,11 @@ export function useAgentMessages() {
         if (!consumed) {
           const sysCliDiag = msg.metadata?.cliDiagnostics;
           addMessage({
-            id: `sysinfo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: msg.messageId ?? `sysinfo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             type: 'system',
             variant: sysVariant,
             content: sysContent,
-            timestamp: Date.now(),
+            timestamp: msg.timestamp ?? Date.now(),
             ...(sysCliDiag ? { extra: { cliDiagnostics: sysCliDiag } } : {}),
           });
         }

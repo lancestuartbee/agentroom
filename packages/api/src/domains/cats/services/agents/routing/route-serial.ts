@@ -96,7 +96,12 @@ import { deriveResultSummary } from '../../tool-usage/derive-result-summary.js';
 import { normalizeMcpToolName } from '../../tool-usage/normalize-mcp-tool-name.js';
 import { getStreamingTtsRegistry, StreamingTtsChunker } from '../../tts/StreamingTtsChunker.js';
 import { getVoiceBlockSynthesizer } from '../../tts/VoiceBlockSynthesizer.js';
-import type { AgentMessage, AgentMessageType, MessageMetadata } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentMessageType,
+  isLightweightPromptProfile,
+  type MessageMetadata,
+} from '../../types.js';
 import { buildCapsuleFromRouteState } from '../invocation/CollaborationContinuityCapsule.js';
 import { invokeSingleCat } from '../invocation/invoke-single-cat.js';
 import { buildMcpCallbackInstructions, needsMcpInjection } from '../invocation/McpPromptInjector.js';
@@ -121,13 +126,13 @@ import { extractContextEvalSignals } from './context-eval.js';
 import { validateRoutingSyntax } from './final-routing-slot.js';
 import { buildBriefingMessage } from './format-briefing.js';
 import { buildRemedialPrompt, hasValidRoutingExit, shouldRemediateRouting } from './guards/routing-guard-remedial.js';
-import { extractRichFromText, isValidRichBlock } from './rich-block-extract.js';
 import {
   isCasualModePrompt,
   promptTextSegment,
-  shouldRecordPromptSegmentDiagnostics,
   type RoutePromptSegmentDiagnostics,
+  shouldRecordPromptSegmentDiagnostics,
 } from './prompt-segment-diagnostics.js';
+import { extractRichFromText, isValidRichBlock } from './rich-block-extract.js';
 import type { RouteOptions, RouteStrategyDeps } from './route-helpers.js';
 import {
   assembleIncrementalContext,
@@ -493,7 +498,7 @@ export async function* routeSerial(
   const mcpServerPath = process.env.CAT_CAFE_MCP_SERVER_PATH || resolveDefaultClaudeMcpServerPath();
   const incrementalMode = Boolean(currentUserMessageId && deps.deliveryCursorStore);
   const routePromptProfile = resolvePromptProfile(requestedPromptProfile, modeSystemPrompt);
-  const isCasualProfile = routePromptProfile === 'casual';
+  const isLightweightProfile = isLightweightPromptProfile(routePromptProfile);
 
   // Worklist pattern: starts with targetCats, may grow via A2A mentions
   // F27: Register worklist so callback A2A can push targets here
@@ -696,7 +701,7 @@ export async function* routeSerial(
         packBlocks = await getActivePackBlocks(deps.packStore);
       }
       const service = getService(deps.services, catId);
-      const needsServerRoutingGuard = !isCasualProfile && (service.needsServerRoutingGuard?.() ?? false);
+      const needsServerRoutingGuard = !isLightweightProfile && (service.needsServerRoutingGuard?.() ?? false);
       const hasNativeL0 = service.injectsL0Natively?.() ?? false;
       const staticIdentity = buildPromptProfileStaticIdentity(catId, threadId, routePromptProfile, () =>
         hasNativeL0
@@ -711,7 +716,7 @@ export async function* routeSerial(
       // independently (mirrors F225 contextHintPrefix pattern).
       // F041: inject HTTP callback only when MCP is NOT actually available (fallback)
       const mcpInstructions =
-        !isCasualProfile && needsMcpInjection(mcpAvailable, catConfig?.clientId)
+        !isLightweightProfile && needsMcpInjection(mcpAvailable, catConfig?.clientId)
           ? buildMcpCallbackInstructions({
               currentCatId: catId as string,
               teammates: teammates.map((id) => id as string),
@@ -729,7 +734,7 @@ export async function* routeSerial(
             relatedDiscussions?: readonly { sessionId: string; snippet: string; score: number }[] | undefined;
           }[]
         | undefined;
-      if (!isCasualProfile && deps.invocationDeps.signalArticleLookup) {
+      if (!isLightweightProfile && deps.invocationDeps.signalArticleLookup) {
         try {
           const signals = await deps.invocationDeps.signalArticleLookup(threadId);
           if (signals.length > 0) activeSignals = signals;
@@ -744,7 +749,7 @@ export async function* routeSerial(
       // off: skip entirely
       let alwaysOnDocs: readonly { anchor: string; title: string; summary: string }[] | undefined;
       let alwaysOnInjectionMode: 'off' | 'shadow' | 'on' = 'off';
-      if (!isCasualProfile && deps.evidenceStore) {
+      if (!isLightweightProfile && deps.evidenceStore) {
         try {
           const { freezeFlags } = await import('../../../../../domains/memory/f163-types.js');
           const f163Flags = freezeFlags();
@@ -783,7 +788,7 @@ export async function* routeSerial(
 
       const invocationMode = worklist.length > 1 ? 'serial' : 'independent';
       const a2aEnabled = worklistEntry.a2aCount < maxDepth;
-      const invocationContext = isCasualProfile
+      const invocationContext = isLightweightProfile
         ? ''
         : buildInvocationContext({
             catId,
@@ -841,7 +846,7 @@ export async function* routeSerial(
         );
       }
       if (
-        !isCasualProfile &&
+        !isLightweightProfile &&
         !isSerialReborn &&
         isSessionChainEnabled(catId) &&
         deps.invocationDeps.sessionChainStore &&

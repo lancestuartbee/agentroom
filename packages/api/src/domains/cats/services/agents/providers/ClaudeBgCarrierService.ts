@@ -33,7 +33,12 @@ import { getCatModel } from '../../../../../config/cat-models.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { resolveCliCommandOrBare } from '../../../../../utils/cli-resolve.js';
 import { buildChildEnv } from '../../../../../utils/cli-spawn.js';
-import type { AgentMessage, AgentService, AgentServiceOptions } from '../../types.js';
+import {
+  type AgentMessage,
+  type AgentService,
+  type AgentServiceOptions,
+  isLightweightPromptProfile,
+} from '../../types.js';
 import {
   accumulateUsageFromEntries,
   createUsageAccumulator,
@@ -220,10 +225,11 @@ export class ClaudeBgCarrierService implements AgentService {
    * reject instead of hanging.
    */
   async startJob(prompt: string, options?: AgentServiceOptions): Promise<StartJobResult> {
-    const isCasualProfile = options?.promptProfile === 'casual';
+    const isLightweightProfile = isLightweightPromptProfile(options?.promptProfile);
     const effectiveSessionId = options?.sessionId;
-    const nativeSystemPromptOverride =
-      options?.promptProfile === 'casual' ? options.nativeSystemPrompt?.trim() || undefined : undefined;
+    const nativeSystemPromptOverride = isLightweightPromptProfile(options?.promptProfile)
+      ? options?.nativeSystemPrompt?.trim() || undefined
+      : undefined;
     const l0Path = nativeSystemPromptOverride
       ? this.writeNativeSystemPromptOverrideToTempFile(nativeSystemPromptOverride)
       : await this.compileL0ToTempFile();
@@ -321,7 +327,7 @@ export class ClaudeBgCarrierService implements AgentService {
       //
       // Windows: claude CLI treats inline JSON as a file path → write JSON
       // to a temp file. POSIX: pass JSON inline (matches ClaudeAgentService).
-      if (!isCasualProfile && options?.callbackEnv && this.mcpServerPath) {
+      if (!isLightweightProfile && options?.callbackEnv && this.mcpServerPath) {
         const IS_WINDOWS = process.platform === 'win32';
         if (IS_WINDOWS) {
           if (!this.mcpConfigFilePath || !existsSync(this.mcpConfigFilePath)) {

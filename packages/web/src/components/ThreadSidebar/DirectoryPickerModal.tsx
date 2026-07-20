@@ -49,7 +49,7 @@ export function DirectoryPickerModal({
   submitLabel?: string;
   allowLobby?: boolean;
 }) {
-  const availableModes = modeOptions ?? (['development', 'casual'] as ThreadMode[]);
+  const availableModes = modeOptions ?? (['development', 'casual', 'roundtable'] as ThreadMode[]);
   const [threadMode, setThreadMode] = useState<ThreadMode>(
     availableModes.includes(initialMode) ? initialMode : (availableModes[0] ?? 'development'),
   );
@@ -113,7 +113,7 @@ export function DirectoryPickerModal({
         sessionBindings: bindings.length > 0 ? bindings : undefined,
         title: threadTitle.trim() || undefined,
         pinned: pinOnCreate || undefined,
-        backlogItemId: threadMode === 'casual' ? undefined : selectedBacklogItemId || undefined,
+        backlogItemId: threadMode === 'development' ? selectedBacklogItemId || undefined : undefined,
       });
     },
     [onSelect, selectedCats, sessionInputs, threadTitle, pinOnCreate, selectedBacklogItemId, threadMode],
@@ -122,7 +122,7 @@ export function DirectoryPickerModal({
   // F068-R7: Confirm creation with currently selected project
   const confirmCreate = useCallback(() => {
     console.log('[DirectoryPicker] confirmCreate called, selectedPath=', selectedPath);
-    if (threadMode === 'casual') {
+    if (threadMode === 'casual' || threadMode === 'roundtable') {
       selectWithOptions(undefined);
       return;
     }
@@ -193,15 +193,16 @@ export function DirectoryPickerModal({
 
   const [catsExpanded, setCatsExpanded] = useState(false);
   const catSummary = selectedCats.length > 0 ? `已选 ${selectedCats.length} 只猫` : '';
-  const isCasualMode = threadMode === 'casual';
-  const createButtonLabel = submitLabel ?? (isCasualMode ? '创建闲聊' : '创建对话');
+  const isLightweightMode = threadMode === 'casual' || threadMode === 'roundtable';
+  const createButtonLabel =
+    submitLabel ?? (threadMode === 'casual' ? '创建闲聊' : threadMode === 'roundtable' ? '创建圆桌' : '创建对话');
 
   useEffect(() => {
-    if (!isCasualMode) return;
+    if (!isLightweightMode) return;
     setSelectedPath('lobby');
     setShowBrowser(false);
     setPathError(null);
-  }, [isCasualMode]);
+  }, [isLightweightMode]);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-to-close
@@ -262,18 +263,14 @@ export function DirectoryPickerModal({
           )}
         </div>
 
-        {isCasualMode && (
+        {isLightweightMode && (
           <div className="flex-1 min-h-[220px] overflow-y-auto px-5 py-4">
-            <CatSelector
-              selectedCats={selectedCats}
-              onSelectionChange={setSelectedCats}
-              title="参与成员（可选）"
-            />
+            <CatSelector selectedCats={selectedCats} onSelectionChange={setSelectedCats} title="参与成员（可选）" />
           </div>
         )}
 
         {/* ── Project list (PRIMARY ACTION — takes most space, hidden when browser is open) ── */}
-        {!isCasualMode && !showBrowser && (
+        {!isLightweightMode && !showBrowser && (
           <div className="overflow-y-auto px-5 py-3 space-y-1 flex-1 min-h-[180px]">
             <div className="text-micro text-cafe-muted font-medium mb-1">选择项目</div>
 
@@ -346,7 +343,7 @@ export function DirectoryPickerModal({
         <div
           className={`px-5 py-2 border-t border-cafe-subtle flex items-center gap-3 flex-wrap ${showBrowser ? 'hidden' : ''}`}
         >
-          {backlogItems.length > 0 && !isCasualMode && (
+          {backlogItems.length > 0 && !isLightweightMode && (
             <div className="flex-1 min-w-[140px]">
               <select
                 value={selectedBacklogItemId}
@@ -371,7 +368,7 @@ export function DirectoryPickerModal({
             />
             <span>创建后置顶</span>
           </label>
-          {!isCasualMode && (
+          {!isLightweightMode && (
             <button
               type="button"
               onClick={() => setCatsExpanded((v) => !v)}
@@ -393,11 +390,11 @@ export function DirectoryPickerModal({
               </svg>
             </button>
           )}
-          {isCasualMode && catSummary && <span className="ml-auto text-xs text-cafe-accent">{catSummary}</span>}
+          {isLightweightMode && catSummary && <span className="ml-auto text-xs text-cafe-accent">{catSummary}</span>}
         </div>
 
         {/* ── Cat selector (collapsed by default, hidden when browser is open) ── */}
-        {catsExpanded && !showBrowser && !isCasualMode && (
+        {catsExpanded && !showBrowser && !isLightweightMode && (
           <div className="px-5 py-2 border-t border-cafe-subtle overflow-y-auto max-h-[40vh]">
             <CatSelector selectedCats={selectedCats} onSelectionChange={setSelectedCats} />
             {/* F33: Session binding */}
@@ -451,7 +448,7 @@ export function DirectoryPickerModal({
         )}
 
         {/* ── F113: Inline directory browser (replaces osascript picker) ── */}
-        {showBrowser && !isCasualMode && (
+        {showBrowser && !isLightweightMode && (
           <div className="border-t border-cafe-subtle flex-1 min-h-0 flex flex-col overflow-hidden">
             <DirectoryBrowser
               initialPath={cwdPath ?? undefined}
@@ -464,7 +461,7 @@ export function DirectoryPickerModal({
 
         {/* ── Bottom: browse button + path input + confirm ── */}
         <div className="px-5 py-3 border-t border-cafe-subtle space-y-2 flex-shrink-0">
-          {!isCasualMode && (
+          {!isLightweightMode && (
             <div className="flex gap-2">
               <button
                 type="button"
@@ -508,10 +505,10 @@ export function DirectoryPickerModal({
               )}
             </div>
           )}
-          {pathError && !isCasualMode && <p className="text-micro text-conn-red-text">{pathError}</p>}
+          {pathError && !isLightweightMode && <p className="text-micro text-conn-red-text">{pathError}</p>}
           {/* F068-R7: Selected path hint + confirm button */}
           <div className="flex items-center gap-2 pt-1">
-            {selectedPath && !isCasualMode && (
+            {selectedPath && !isLightweightMode && (
               <span
                 className={`truncate flex-1 ${
                   showBrowser
@@ -526,7 +523,7 @@ export function DirectoryPickerModal({
             <button
               type="button"
               onClick={confirmCreate}
-              disabled={!isCasualMode && (selectedPath === null || (!allowLobby && selectedPath === 'lobby'))}
+              disabled={!isLightweightMode && (selectedPath === null || (!allowLobby && selectedPath === 'lobby'))}
               className="ml-auto px-5 py-2 rounded-lg bg-cafe-accent hover:bg-cafe-interactive text-[var(--cafe-surface)] text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {createButtonLabel}

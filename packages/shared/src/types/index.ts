@@ -582,8 +582,13 @@ export {
 export {
   DEFAULT_THREAD_AUDIENCE,
   DEFAULT_THREAD_MODE,
+  isRoundtableIssueStateV1,
   isThreadMode,
   normalizeThreadAudience,
+  type RoundtableCritiqueStep,
+  type RoundtableIssueStage,
+  type RoundtableIssueStateV1,
+  type RoundtableIssueStatus,
   THREAD_MODES,
   type ThreadAudience,
   type ThreadMode,
