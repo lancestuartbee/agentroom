@@ -349,6 +349,128 @@ function collectResolvedCatIds(breeds: BreedWithResolvedCatIds[]): Set<string> {
   return catIds;
 }
 
+const LEGACY_PERSONA_TERMS = ['布偶猫', '缅因猫', '暹罗猫', '狸花猫', '孟加拉猫', '金吉拉', '月影猫'];
+
+const BREED_IDENTITY_FIELDS = [
+  'name',
+  'displayName',
+  'nickname',
+  'avatar',
+  'roleDescription',
+  'teamStrengths',
+  'caution',
+  'restrictions',
+  'modelFamily',
+  'modelLine',
+  'capabilityLevel',
+  'runtimeClient',
+  'mentionPatterns',
+] as const;
+
+const VARIANT_IDENTITY_FIELDS = [
+  'displayName',
+  'variantLabel',
+  'nickname',
+  'avatar',
+  'color',
+  'roleDescription',
+  'personality',
+  'teamStrengths',
+  'caution',
+  'restrictions',
+  'strengths',
+  'modelFamily',
+  'modelLine',
+  'capabilityLevel',
+  'runtimeClient',
+  'mentionPatterns',
+] as const;
+
+function stringHasLegacyPersonaTerm(value: unknown): boolean {
+  return typeof value === 'string' && LEGACY_PERSONA_TERMS.some((term) => value.includes(term));
+}
+
+function recordHasLegacyPersonaIdentity(record: Record<string, unknown>): boolean {
+  return (
+    stringHasLegacyPersonaTerm(record.name) ||
+    stringHasLegacyPersonaTerm(record.displayName) ||
+    stringHasLegacyPersonaTerm(record.nickname) ||
+    stringHasLegacyPersonaTerm(record.roleDescription) ||
+    stringHasLegacyPersonaTerm(record.teamStrengths) ||
+    stringHasLegacyPersonaTerm(record.personality) ||
+    (Array.isArray(record.mentionPatterns) && record.mentionPatterns.some(stringHasLegacyPersonaTerm))
+  );
+}
+
+function copyIdentityFields(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  fields: readonly string[],
+): void {
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      target[field] = source[field];
+    } else {
+      delete target[field];
+    }
+  }
+}
+
+function resolvedVariantCatId(breed: Record<string, unknown>, variant: Record<string, unknown>): string | null {
+  const variantCatId = variant.catId;
+  if (typeof variantCatId === 'string' && variantCatId.length > 0) return variantCatId;
+  const breedCatId = breed.catId;
+  return typeof breedCatId === 'string' && breedCatId.length > 0 ? breedCatId : null;
+}
+
+/**
+ * Existing runtime catalogs are user-owned config and must not be overwritten
+ * during startup. Project old defaults used cat persona names, though, so a
+ * normal template/catalog merge would keep surfacing "布偶猫" etc. forever.
+ *
+ * This is a read-time compatibility projection: only legacy-looking identity
+ * fields are replaced with the canonical model-member defaults from the current
+ * template. Runtime config files remain unchanged.
+ */
+function projectLegacyPersonaIdentityToModelMembers(
+  merged: Record<string, unknown>,
+  template: Record<string, unknown>,
+): void {
+  const mergedBreeds = Array.isArray(merged.breeds) ? (merged.breeds as Record<string, unknown>[]) : [];
+  const templateBreeds = Array.isArray(template.breeds) ? (template.breeds as Record<string, unknown>[]) : [];
+  const templateBreedById = new Map(templateBreeds.map((breed) => [String(breed.id), breed]));
+
+  for (const breed of mergedBreeds) {
+    const templateBreed = templateBreedById.get(String(breed.id));
+    if (!templateBreed) continue;
+
+    const breedLooksLegacy = recordHasLegacyPersonaIdentity(breed);
+    if (breedLooksLegacy) {
+      copyIdentityFields(breed, templateBreed, BREED_IDENTITY_FIELDS);
+    }
+
+    const variants = Array.isArray(breed.variants) ? (breed.variants as Record<string, unknown>[]) : [];
+    const templateVariants = Array.isArray(templateBreed.variants)
+      ? (templateBreed.variants as Record<string, unknown>[])
+      : [];
+    const templateVariantById = new Map(templateVariants.map((variant) => [String(variant.id), variant]));
+    const templateVariantByCatId = new Map<string, Record<string, unknown>>();
+    for (const templateVariant of templateVariants) {
+      const catId = resolvedVariantCatId(templateBreed, templateVariant);
+      if (catId) templateVariantByCatId.set(catId, templateVariant);
+    }
+
+    for (const variant of variants) {
+      const catId = resolvedVariantCatId(breed, variant);
+      const templateVariant = templateVariantById.get(String(variant.id)) ?? (catId ? templateVariantByCatId.get(catId) : null);
+      if (!templateVariant) continue;
+      if (breedLooksLegacy || recordHasLegacyPersonaIdentity(variant)) {
+        copyIdentityFields(variant, templateVariant, VARIANT_IDENTITY_FIELDS);
+      }
+    }
+  }
+}
+
 /**
  * Merge template + catalog with #772 template-only breed filter applied.
  * Shared by loadCatConfig() and getAcpConfig() to avoid duplicate merge paths.
@@ -362,6 +484,7 @@ function mergeTemplateWithCatalog(templatePath: string): string | null {
   const baseJson = JSON.parse(baseRaw) as Record<string, unknown>;
   const catalogJson = JSON.parse(catalogRaw) as Record<string, unknown>;
   const merged = deepMergeConfig(baseJson, catalogJson);
+  projectLegacyPersonaIdentityToModelMembers(merged, baseJson);
 
   // #772: Template-only breeds must not leak into runtime.
   // When a catalog exists, only catalog breeds are runtime members.
