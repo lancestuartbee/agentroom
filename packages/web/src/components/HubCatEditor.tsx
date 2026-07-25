@@ -9,6 +9,7 @@ import type { TemplateCard } from './first-run-quest/TemplateStep';
 import type { AccountsResponse, ProfileItem } from './hub-accounts.types';
 import { uploadAvatarAsset, uploadRefAudioAsset } from './hub-cat-editor.client';
 import {
+  applyDerivedModelProfile,
   autoSlug,
   buildCatPatchPayload,
   buildCatPayload,
@@ -283,11 +284,17 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
 
   const patchForm = (patch: Partial<HubCatEditorFormState>) => {
     setHasUnsavedChanges(true);
-    setForm((prev) => ({ ...prev, ...patch }));
+    setForm((prev) => {
+      const next = { ...prev, ...patch };
+      if (patch.clientId !== undefined || patch.defaultModel !== undefined) {
+        return applyDerivedModelProfile(prev, next, { force: patch.clientId !== undefined });
+      }
+      return next;
+    });
     if (patch.mentionPatterns !== undefined) {
       setFieldErrors((prev) => ({ ...prev, routing: false }));
     }
-    if (patch.name !== undefined || patch.roleDescription !== undefined) {
+    if (patch.name !== undefined) {
       setFieldErrors((prev) => ({ ...prev, identity: false }));
     }
     if (patch.defaultModel !== undefined || patch.clientId !== undefined) {
@@ -336,6 +343,12 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
       colorSecondary: t.color.secondary,
       roleDescription: t.roleDescription,
       personality: t.personality,
+      modelFamily: t.modelFamily ?? form.modelFamily,
+      modelLine: t.modelLine ?? form.modelLine,
+      capabilityLevel: t.capabilityLevel
+        ? (String(t.capabilityLevel) as HubCatEditorFormState['capabilityLevel'])
+        : form.capabilityLevel,
+      runtimeClient: t.runtimeClient ?? form.runtimeClient,
       teamStrengths: t.teamStrengths ?? '',
       catId,
       mentionPatterns: joinTags(deduped),
@@ -378,10 +391,6 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
       if (!form.name.trim()) {
         errors.identity = true;
         errorMessages.push('名称');
-      }
-      if (!form.roleDescription.trim()) {
-        errors.identity = true;
-        errorMessages.push('角色描述');
       }
       if (!form.defaultModel.trim() && selectedProfile?.authType === 'api_key') {
         errors.account = true;

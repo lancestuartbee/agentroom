@@ -886,8 +886,8 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
       if (guard?.acquired) guard.release(); // Release tracker guard if we're blocking on MM
       reply.status(409);
       return {
-        error: '猫猫正在工作中',
-        detail: '请等待猫猫完成当前任务后再删除对话',
+        error: '成员正在工作中',
+        detail: '请等待成员完成当前任务后再删除对话',
         code: 'ACTIVE_INVOCATION',
       };
     }

@@ -49,7 +49,7 @@ export function auditSlashCommand(trimmed: string, duration: number, registry?: 
 /** Hardcoded fallback when no registry is available */
 const FALLBACK_COMMANDS = [
   { cmd: '/commands', desc: '列出所有可用命令' },
-  { cmd: '/cats', desc: '查看当前 thread 的猫猫' },
+  { cmd: '/cats', desc: '查看当前 thread 的成员' },
   { cmd: '/status', desc: '查看当前 thread 状态' },
   { cmd: '/where', desc: '查看当前绑定的 thread' },
   { cmd: '/new [标题]', desc: '创建新 thread 并切换' },
@@ -68,10 +68,10 @@ const COMMAND_BUTTON_LABELS: Record<string, string> = {
   '/unbind': '🔓 解绑',
   '/history': '📜 历史',
   '/where': '📍 位置',
-  '/cats': '🐾 猫猫',
+  '/cats': '成员',
   '/status': '📊 状态',
   '/focus': '🎯 聚焦',
-  '/ask': '💬 问猫',
+  '/ask': '💬 问成员',
   '/commands': '❓ 帮助',
 };
 
@@ -101,7 +101,7 @@ export async function buildCatsInfo(threadId: string, deps: CommandInfoDeps): Pr
   const lines: string[] = [];
 
   if (participantActivity.length > 0) {
-    lines.push('🐾 参与猫：');
+    lines.push('参与成员：');
     for (const p of participantActivity) {
       const available = roster[p.catId]?.available !== false;
       const routable = available && (deps.agentRegistry?.has(p.catId) ?? false);
@@ -126,7 +126,7 @@ export async function buildCatsInfo(threadId: string, deps: CommandInfoDeps): Pr
 
   return {
     kind: 'cats',
-    response: lines.join('\n') || '没有找到猫猫。',
+    response: lines.join('\n') || '没有找到成员。',
     contextThreadId: threadId,
   };
 }
@@ -147,15 +147,15 @@ export async function buildStatusInfo(
     '📊 Thread 状态',
     `  标题：${title}`,
     `  创建：${created}`,
-    `  参与猫：${participants.length} 只`,
+    `  参与成员：${participants.length} 位`,
     `  最近活跃：${lastActive}`,
   ];
 
-  // F154 Phase B (AC-B3): show preferred cat info
+  // F154 Phase B (AC-B3): show preferred member info
   const preferred = thread.preferredCats;
   if (preferred && preferred.length > 0) {
     const names = preferred.map((id) => deps.catRoster?.[id]?.displayName ?? id);
-    lines.push(`  首选猫：${names.join(', ')}`);
+    lines.push(`  首选成员：${names.join(', ')}`);
   }
 
   lines.push(`  🔗 ${link}`);

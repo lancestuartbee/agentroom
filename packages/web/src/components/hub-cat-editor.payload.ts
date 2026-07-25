@@ -4,8 +4,10 @@ import {
   DEFAULT_ANTIGRAVITY_COMMAND_ARGS,
   defaultAcpCommandForClient,
   defaultAcpStartupArgsForClient,
+  deriveModelProfile,
   type HubCatEditorFormState,
   normalizeMentionPattern,
+  resolveModelSuffix,
   splitCommandArgs,
   splitMentionPatterns,
   splitStrengthTags,
@@ -14,6 +16,24 @@ import { defaultMcpSupportForClient } from './hub-cat-editor.protocols';
 
 function trimText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function buildFallbackRoleDescription(form: HubCatEditorFormState): string {
+  const profile = deriveModelProfile(form);
+  const family = trimText(form.modelFamily) || profile.modelFamily;
+  const line = trimText(form.modelLine) || profile.modelLine;
+  return `${family}${line ? ` ${line}` : ''} 模型档案`;
+}
+
+function buildModelProfilePayload(form: HubCatEditorFormState): Record<string, unknown> {
+  const derived = deriveModelProfile(form);
+  const capabilityLevel = Number.parseInt(trimText(form.capabilityLevel) || derived.capabilityLevel, 10);
+  return {
+    modelFamily: trimText(form.modelFamily) || derived.modelFamily,
+    modelLine: trimText(form.modelLine) || derived.modelLine,
+    capabilityLevel,
+    runtimeClient: trimText(form.runtimeClient) || derived.runtimeClient,
+  };
 }
 
 function usesOpenCodeProvider(form: HubCatEditorFormState): boolean {
@@ -155,6 +175,7 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
   const displayName = trimText(form.displayName) || name;
   const createName = name || displayName;
   const updateName = name || displayName || cat?.name || cat?.displayName || '';
+  const modelSuffix = resolveModelSuffix(form);
   const trimmedAccountRef = resolveFormAccountRef(form);
   const accountRefPatch =
     trimmedAccountRef.length > 0
@@ -176,8 +197,8 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
     voiceConfig !== undefined ? { voiceConfig } : cat?.voiceConfig ? { voiceConfig: null } : {};
   const common = {
     displayName,
-    variantLabel: trimText(form.variantLabel),
-    nickname: trimText(form.nickname),
+    variantLabel: modelSuffix,
+    nickname: modelSuffix,
     avatar: trimText(form.avatar),
     color: {
       primary: trimText(form.colorPrimary),
@@ -186,8 +207,9 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
     mentionPatterns: Array.from(
       new Set(splitMentionPatterns(form.mentionPatterns).map(normalizeMentionPattern).filter(Boolean)),
     ),
-    roleDescription: trimText(form.roleDescription),
+    roleDescription: trimText(form.roleDescription) || buildFallbackRoleDescription(form),
     personality: trimText(form.personality),
+    ...buildModelProfilePayload(form),
     teamStrengths: trimText(form.teamStrengths),
     caution: trimText(form.caution) || null,
     strengths: splitStrengthTags(form.strengths),

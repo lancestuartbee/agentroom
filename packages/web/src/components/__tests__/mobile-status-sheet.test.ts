@@ -208,7 +208,7 @@ describe('MobileStatusSheet', () => {
     act(() => {
       root.render(React.createElement(MobileStatusSheet, props));
     });
-    expect(container.textContent).toContain('猫猫状态');
+    expect(container.textContent).toContain('成员状态');
     expect(container.textContent).not.toContain('当前调用');
   });
 

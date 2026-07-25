@@ -64,7 +64,7 @@ export function LabelFilterBar({
           type="button"
           onClick={onOrganize}
           className="rounded-full px-1 py-0.5 text-cafe-muted transition-colors hover:bg-[var(--console-hover-bg)] hover:text-conn-amber-text"
-          title="猫猫帮你分类"
+          title="成员帮你分类"
         >
           <svg
             aria-hidden="true"

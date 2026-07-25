@@ -46,9 +46,9 @@ interface RulesData {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  claude: '布偶猫 (Claude)',
-  codex: '缅因猫 (Codex)',
-  gemini: '暹罗猫 (Gemini)',
+  claude: 'Claude',
+  codex: 'GPT (Codex CLI)',
+  gemini: 'Gemini',
 };
 
 // ── Main component ────────────────────────────────────────────
@@ -227,7 +227,7 @@ function AgentRulesTabContent({
 
       <SettingsSection
         title="模型指南"
-        description="每只猫的角色定义和模型特定约束。"
+        description="每位成员的模型指南和特定约束。"
         badge={<SettingsBadge tone="slate">{rulesData.providerGuides.length} guides</SettingsBadge>}
       >
         <div className="space-y-3">

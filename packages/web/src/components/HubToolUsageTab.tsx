@@ -14,18 +14,18 @@ interface ToolUsageReport {
 }
 
 const CAT_LABELS: Record<string, string> = {
-  opus: '布偶猫 Opus',
-  sonnet: '布偶猫 Sonnet',
-  'opus-45': '布偶猫 Opus 4.5',
-  codex: '缅因猫 Codex',
-  gpt52: '缅因猫 GPT-5.4',
-  spark: '缅因猫 Spark',
-  gemini: '暹罗猫 Gemini',
-  gemini25: '暹罗猫 Gemini 2.5',
-  dare: '狸花猫',
-  antigravity: '孟加拉猫',
-  'antig-opus': '孟加拉猫 Opus',
-  opencode: '金渐层',
+  opus: 'Claude Opus',
+  sonnet: 'Claude Sonnet',
+  'opus-45': 'Claude Opus 4.5',
+  codex: 'GPT Codex',
+  gpt52: 'GPT 5.4',
+  spark: 'GPT Spark',
+  gemini: 'Gemini Pro',
+  gemini25: 'Gemini Flash',
+  dare: 'Dare',
+  antigravity: 'Gemini AGY',
+  'antig-opus': 'Claude Opus / AGY',
+  opencode: 'OpenCode',
 };
 
 /* Dataviz tokens defined in console-tokens.css (--dataviz-*), derived from chart palette.
@@ -88,7 +88,7 @@ export function HubToolUsageTab() {
       <div className="flex items-center justify-between rounded-xl bg-[var(--console-card-bg)] px-4 py-3">
         <div>
           <h3 className="text-sm font-semibold text-cafe">工具使用日志</h3>
-          <p className="text-label text-cafe-muted">猫猫们的每日工具箱使用记录</p>
+          <p className="text-label text-cafe-muted">成员的每日工具箱使用记录</p>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -96,7 +96,7 @@ export function HubToolUsageTab() {
             onChange={(e) => setCatFilter(e.target.value)}
             className="console-form-input text-xs"
           >
-            <option value="">全部猫猫</option>
+            <option value="">全部成员</option>
             {Object.entries(CAT_LABELS).map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
@@ -143,7 +143,7 @@ export function HubToolUsageTab() {
         <div className="rounded-xl border border-dashed border-[var(--console-border-soft)] bg-[var(--console-card-bg)] py-10 text-center">
           <HubIcon name="store" className="h-7 w-7 text-cafe-muted" />
           <p className="mt-2 text-xs text-cafe-muted">还没有工具使用记录</p>
-          <p className="text-label text-cafe-muted">猫猫们开始工作后，数据会自动出现在这里</p>
+          <p className="text-label text-cafe-muted">成员开始工作后，数据会自动出现在这里</p>
         </div>
       )}
 
@@ -317,7 +317,7 @@ function ByCatSection({ byCat }: { byCat: Record<string, Record<string, number>>
 
   return (
     <section className="space-y-3 console-list-card rounded-xl shadow-[0_8px_22px_rgba(43,33,26,0.04)] p-4">
-      <h4 className="text-xs font-semibold text-cafe">猫猫工具使用分布</h4>
+      <h4 className="text-xs font-semibold text-cafe">成员工具使用分布</h4>
       <div className="space-y-2">
         {entries.map(([catId, cats]) => {
           const catTotal = Object.values(cats).reduce((s, v) => s + v, 0);

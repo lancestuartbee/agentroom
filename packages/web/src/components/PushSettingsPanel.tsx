@@ -16,8 +16,8 @@ const STORAGE_KEY = 'cat-cafe-notify-prefs';
 type NotifyTypeId = 'reply' | 'permission' | 'mention' | 'schedule' | 'signal';
 
 const NOTIFY_TYPES: { id: NotifyTypeId; label: string; desc: string; defaultOn: boolean }[] = [
-  { id: 'reply', label: '猫猫消息', desc: 'AI 回复和主动消息', defaultOn: true },
-  { id: 'permission', label: '权限请求', desc: '猫猫需要授权时通知', defaultOn: true },
+  { id: 'reply', label: '成员消息', desc: 'AI 回复和主动消息', defaultOn: true },
+  { id: 'permission', label: '权限请求', desc: '成员需要授权时通知', defaultOn: true },
   { id: 'mention', label: '@提及', desc: '协作成员提及你时', defaultOn: true },
   { id: 'schedule', label: '定时任务', desc: '定时任务执行结果', defaultOn: true },
   { id: 'signal', label: '信号更新', desc: '新信号入站提醒', defaultOn: false },

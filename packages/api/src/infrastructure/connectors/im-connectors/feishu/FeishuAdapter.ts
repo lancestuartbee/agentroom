@@ -788,7 +788,7 @@ export class FeishuAdapter implements IStreamableOutboundAdapter {
     const card = {
       config: { update_multi: true },
       header: {
-        title: { tag: 'plain_text' as const, content: `✅ ${catDisplayName || '猫猫'}已回复` },
+        title: { tag: 'plain_text' as const, content: `✅ ${catDisplayName || '成员'}已回复` },
         template: 'green' as const,
       },
       elements: [] as unknown[],

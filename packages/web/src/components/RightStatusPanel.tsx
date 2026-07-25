@@ -131,7 +131,7 @@ function ThinkingModeToggle({ threadId }: { threadId: string }) {
       <button
         onClick={toggle}
         className="shrink-0 rounded-full px-3 py-1 text-label transition-colors hover:text-cafe"
-        title={isDebug ? '切换到游戏模式（猫猫互相看不到心里话）' : '切换到调试模式（猫猫互相分享心里话）'}
+        title={isDebug ? '切换到游戏模式（成员互相看不到心里话）' : '切换到调试模式（成员互相分享心里话）'}
       >
         {isDebug ? '切换游戏' : '切换调试'}
       </button>
@@ -405,7 +405,7 @@ export function RightStatusPanel({
       </div>
 
       <section className={`${SIDEBAR_CARD} p-2.5`}>
-        <h3 className="text-label font-bold text-cafe mb-2">猫猫状态</h3>
+        <h3 className="text-label font-bold text-cafe mb-2">成员状态</h3>
         <div className="space-y-2">
           {activeCats.length > 0 ? (
             activeCats.map((catId) => {
@@ -476,7 +476,7 @@ export function RightStatusPanel({
         <h3 className="text-label font-bold text-cafe mb-2">消息统计</h3>
         <div className="console-list-card rounded-xl p-2.5 text-label text-cafe-secondary space-y-1">
           <div>
-            总数 {messageSummary.total} 猫猫消息 {messageSummary.assistant}
+            总数 {messageSummary.total} 成员消息 {messageSummary.assistant}
           </div>
           <div>
             系统消息 {messageSummary.system} Evidence {messageSummary.evidence}

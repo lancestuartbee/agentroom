@@ -52,7 +52,7 @@ describe('BootcampListModal navigation', () => {
     apiFetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
-        threads: [{ id: 'thread-bootcamp', title: '🎓 猫猫训练营', phase: 'phase-2-env-check' }],
+        threads: [{ id: 'thread-bootcamp', title: '🎓 成员训练营', phase: 'phase-2-env-check' }],
       }),
     });
     const onClose = vi.fn();

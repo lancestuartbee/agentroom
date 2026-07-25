@@ -13,7 +13,7 @@ interface CatSelectorProps {
  * F32-b Phase 3: Breed-grouped cat chip selector.
  * Used in thread creation (DirectoryPickerModal) and thread settings.
  */
-export function CatSelector({ selectedCats, onSelectionChange, title = '默认猫猫 (可选)' }: CatSelectorProps) {
+export function CatSelector({ selectedCats, onSelectionChange, title = '默认成员 (可选)' }: CatSelectorProps) {
   const { getCatsByBreed } = useCatData();
   const groups = getCatsByBreed();
 
@@ -43,7 +43,7 @@ export function CatSelector({ selectedCats, onSelectionChange, title = '默认�
         return (
           <div key={breedId}>
             <div className="text-micro text-cafe-muted mb-1">
-              {breedName}家族 · {clientIdLabel(cats[0].clientId)}
+              {breedName} 家族 · {clientIdLabel(cats[0].clientId)}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {cats.map((cat) => {

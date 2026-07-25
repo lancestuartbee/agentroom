@@ -100,7 +100,7 @@ describe('ThreadCatStatus', () => {
       }),
     );
     expect(html).toContain('🐾');
-    expect(html).toContain('猫猫 @ 了你');
+    expect(html).toContain('成员 @ 了你');
   });
 
   it('shows red unread badge when hasUserMention is true', () => {

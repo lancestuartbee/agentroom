@@ -68,7 +68,7 @@ function NavItem({
 }
 
 const SECTION_KEYWORDS: Record<string, string> = {
-  members: '猫猫 成员 名册 roster cat',
+  members: '成员 模型 名册 roster model',
   accounts: '密钥 API key 账号 credentials',
   im: '飞书 钉钉 企微 telegram 微信 connector',
   skills: 'skill 技能 能力 marketplace',
@@ -79,7 +79,7 @@ const SECTION_KEYWORDS: Record<string, string> = {
   system: '配置 环境 .env bubble A2A codex',
   notify: '推送 通知 push web',
   ops: '运维 监控 排行 记忆 健康 命令 救援 usage',
-  concierge: '猫猫球 悬浮球 值班猫 前台 主动性 proactive ball persona',
+  concierge: '前台助手 悬浮球 值班成员 前台 主动性 proactive ball persona',
 };
 
 export function SettingsNav({ activeSection, onSelect, searchQuery }: SettingsNavProps) {

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="OpenCode comic avatar">
+  <rect width="256" height="256" rx="54" fill="#101827"/>
+  <rect x="39" y="55" width="178" height="125" rx="18" fill="#e8fbff" stroke="#07111f" stroke-width="7"/>
+  <rect x="39" y="55" width="178" height="29" rx="18" fill="#34d399" stroke="#07111f" stroke-width="7"/>
+  <circle cx="65" cy="70" r="5" fill="#07111f"/>
+  <circle cx="83" cy="70" r="5" fill="#07111f"/>
+  <path fill="none" stroke="#0284c7" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" d="M99 107l-28 25 28 25M157 107l28 25-28 25"/>
+  <path fill="none" stroke="#07111f" stroke-width="8" stroke-linecap="round" d="M138 103l-20 58"/>
+  <text x="128" y="223" fill="#e8fbff" font-family="Arial, sans-serif" font-size="23" font-weight="900" text-anchor="middle">OPENCODE</text>
+</svg>

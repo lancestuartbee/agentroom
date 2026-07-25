@@ -669,7 +669,7 @@ export class ClaudeAgentService implements AgentService {
           yield {
             type: 'error',
             catId: this.catId,
-            error: `布偶猫 CLI 响应超时 (${Math.round(event.timeoutMs / 1000)}s${event.firstEventAt == null ? ', 未收到首帧' : ''})`,
+            error: `Claude CLI 响应超时 (${Math.round(event.timeoutMs / 1000)}s${event.firstEventAt == null ? ', 未收到首帧' : ''})`,
             // F212 Phase A (云端 codex P2): timeout cliDiagnostics 也透传到 metadata.
             metadata: event.cliDiagnostics ? { ...metadata, cliDiagnostics: event.cliDiagnostics } : metadata,
             timestamp: Date.now(),

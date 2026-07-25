@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * F208 Phase C+D: Cat Dossier — Model-grouped capability profiles page.
+ * F208 Phase C+D: Capability Dossier — Model-grouped capability profiles page.
  *
  * KD-15: 画像单位 = model（认知能力），catId 是索引便利。
  * 数据来自 GET /api/dossier + GET /api/dossier/observations（split endpoints）。
@@ -69,13 +69,13 @@ export function formatModelName(model: string): string {
 /** Family → badge tone mapping. */
 function familyTone(family?: string): 'purple' | 'blue' | 'amber' | 'emerald' | 'slate' {
   switch (family) {
-    case 'ragdoll':
+    case 'claude':
       return 'purple';
-    case 'maine-coon':
+    case 'gpt':
       return 'blue';
-    case 'siamese':
+    case 'gemini':
       return 'amber';
-    case 'bengal':
+    case 'kimi':
       return 'emerald';
     default:
       return 'slate';
@@ -85,14 +85,18 @@ function familyTone(family?: string): 'purple' | 'blue' | 'amber' | 'emerald' | 
 /** Family → display name. */
 function familyLabel(family?: string): string {
   switch (family) {
-    case 'ragdoll':
-      return '布偶猫';
-    case 'maine-coon':
-      return '缅因猫';
-    case 'siamese':
-      return '暹罗猫';
-    case 'bengal':
-      return '孟加拉猫';
+    case 'claude':
+      return 'Claude';
+    case 'gpt':
+      return 'GPT';
+    case 'gemini':
+      return 'Gemini';
+    case 'kimi':
+      return 'Kimi';
+    case 'opencode':
+      return 'OpenCode';
+    case 'dare':
+      return 'Dare';
     default:
       return family ?? '未知';
   }
@@ -169,7 +173,7 @@ function ObservationForm({
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        placeholder="记录对这只猫的体感观察..."
+        placeholder="记录对这个成员的体感观察..."
         className="w-full rounded-md border border-[var(--console-border-soft)] bg-[var(--console-bg)] px-3 py-2 text-xs text-[var(--console-text)] placeholder:text-[var(--console-text-muted)] focus:border-[var(--cafe-accent)] focus:outline-none"
         rows={2}
       />
@@ -321,7 +325,7 @@ function CatProfileCard({
 
   return (
     <div className="border-t border-[var(--console-border-soft)] py-3 first:border-t-0">
-      {/* Cat header */}
+      {/* Member header */}
       <div className="flex items-center gap-2.5">
         <SettingsText variant="sm" tone="default" className="font-semibold">
           {cat.displayName}
@@ -470,7 +474,7 @@ function ModelGroupSection({
       {/* Model coverage indicator */}
       {catsWithDossier < group.cats.length && (
         <SettingsText as="p" variant="xs" tone="muted" className="pb-2">
-          {catsWithDossier}/{group.cats.length} 只猫有画像数据
+          {catsWithDossier}/{group.cats.length} 个成员有画像数据
         </SettingsText>
       )}
       {group.cats.map((cat) => (
@@ -510,7 +514,7 @@ function CoverageBar({
           </SettingsBadge>
         </div>
         <SettingsText variant="xs" tone="muted">
-          {totalCats} 只猫 · {totalModels} 个模型
+          {totalCats} 个成员 · {totalModels} 个模型
         </SettingsText>
       </div>
       {/* Progress bar */}
@@ -532,7 +536,7 @@ export function CatDossierContent() {
 
   return (
     <div className="space-y-5">
-      <SettingsPageHeader title="猫猫画像" subtitle="按模型分组的能力画像、路由信号与来源追溯" />
+      <SettingsPageHeader title="能力画像" subtitle="按模型分组的能力画像、路由信号与来源追溯" />
 
       {loading && (
         <SettingsText as="p" variant="sm" tone="muted">
@@ -553,7 +557,7 @@ export function CatDossierContent() {
       {data && data.modelGroups.length > 0 && (
         <div className="space-y-4">
           {/* Coverage overview */}
-          <SettingsSection title="按模型分组" description="画像描述的是模型认知能力，每只猫是模型的一个实例化引用。">
+          <SettingsSection title="按模型分组" description="画像描述的是模型认知能力，每个成员是模型的一种运行配置。">
             <CoverageBar
               coverage={data.meta.dossierCoverage}
               totalCats={data.meta.totalCats}

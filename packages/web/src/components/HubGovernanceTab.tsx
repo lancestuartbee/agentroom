@@ -116,7 +116,7 @@ export function HubGovernanceTab() {
     return (
       <div className="text-center py-8 text-cafe-muted">
         <p className="text-sm">暂无外部项目治理记录</p>
-        <p className="text-xs mt-1">当猫猫首次被派遣到外部项目时，治理规则会自动同步</p>
+        <p className="text-xs mt-1">当成员首次被派遣到外部项目时，治理规则会自动同步</p>
       </div>
     );
   }

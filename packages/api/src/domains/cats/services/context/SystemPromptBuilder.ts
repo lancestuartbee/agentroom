@@ -395,7 +395,7 @@ function buildTeammateRoster(currentCatId: CatId): string | null {
 
   return [
     '## 队友名册',
-    '| 猫猫 | @mention · 当前模型 | 擅长 | 注意 |',
+    '| 成员 | @mention · 当前模型 | 擅长 | 注意 |',
     '|------|---------|------|------|',
     ...rows,
   ].join('\n');
@@ -541,7 +541,7 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
   const nameLabel = config.nickname
     ? `${config.displayName}/${config.nickname}（${config.name}）`
     : `${config.displayName}（${config.name}）`;
-  const nicknameOrigin = config.nickname ? `昵称 "${config.nickname}" 的由来见 docs/stories/cat-names/。\n` : '';
+  const nicknameOrigin = config.nickname ? `模型后缀: "${config.nickname}"。\n` : '';
   const s1 = renderSegment('S1', {
     NAME_LABEL: nameLabel,
     PROVIDER_LABEL: providerLabel,
@@ -1064,7 +1064,7 @@ export function buildReviewerSection(catId: CatId): string | null {
         sameFamily.push(line);
       }
     } else {
-      unavailable.push(`- ${mention} (${displayName}, 没猫粮)`);
+      unavailable.push(`- ${mention} (${displayName}, 配额不足)`);
     }
   }
 
@@ -1079,7 +1079,7 @@ export function buildReviewerSection(catId: CatId): string | null {
     } else if (sameFamily.length > 0) {
       // Cloud Codex R5 P2 fix: No cross-family, but same-family available as fallback
       available = sameFamily;
-      fallbackNote = '[注意] 没有跨家族 reviewer 可用，以下同家族猫可作为 fallback：';
+      fallbackNote = '[注意] 没有跨家族 reviewer 可用，以下同家族成员可作为 fallback：';
     } else {
       available = [];
     }
@@ -1096,13 +1096,13 @@ export function buildReviewerSection(catId: CatId): string | null {
     if (fallbackNote) {
       lines.push(fallbackNote);
     } else {
-      lines.push('根据 roster 配置，你当前可以找以下猫 review：');
+      lines.push('根据 roster 配置，你当前可以找以下成员 review：');
     }
     lines.push(...available);
     lines.push('');
   }
   if (unavailable.length > 0) {
-    lines.push('[注意] 以下猫当前不可用：');
+    lines.push('[注意] 以下成员当前不可用：');
     lines.push(...unavailable);
     lines.push('');
   }

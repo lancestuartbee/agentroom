@@ -24,6 +24,7 @@ export type ClientId =
 /** @deprecated Use ClientId instead. */
 export type ClientValue = ClientId;
 export type SessionChainValue = 'true' | 'false';
+export type CapabilityLevelValue = '1' | '2' | '3';
 export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 export type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 export type CodexAuthMode = 'oauth' | 'api_key' | 'auto';
@@ -40,6 +41,10 @@ export interface HubCatEditorFormState {
   mentionPatterns: string;
   roleDescription: string;
   personality: string;
+  modelFamily: string;
+  modelLine: string;
+  capabilityLevel: CapabilityLevelValue;
+  runtimeClient: string;
   teamStrengths: string;
   caution: string;
   strengths: string;
@@ -83,6 +88,10 @@ export interface HubCatEditorDraft {
   templateColorSecondary?: string;
   templateRoleDescription?: string;
   templatePersonality?: string;
+  templateModelFamily?: string;
+  templateModelLine?: string;
+  templateCapabilityLevel?: 1 | 2 | 3;
+  templateRuntimeClient?: string;
   templateTeamStrengths?: string;
 }
 
@@ -103,14 +112,20 @@ export interface CodexRuntimeSettings {
 
 export const CLIENT_OPTIONS: Array<{ value: ClientId; label: string }> = [
   { value: 'anthropic', label: 'Claude' },
-  { value: 'openai', label: 'Codex' },
+  { value: 'openai', label: 'GPT / Codex CLI' },
   { value: 'google', label: 'Gemini' },
   { value: 'kimi', label: 'Kimi' },
   { value: 'dare', label: 'Dare' },
   { value: 'opencode', label: 'OpenCode' },
-  { value: 'antigravity', label: 'Antigravity' },
+  { value: 'antigravity', label: 'Gemini / AGY' },
   { value: 'catagent', label: 'CatAgent' },
   { value: 'acp', label: 'ACP Client' },
+];
+
+export const CAPABILITY_LEVEL_OPTIONS: Array<{ value: CapabilityLevelValue; label: string }> = [
+  { value: '3', label: 'Level 3' },
+  { value: '2', label: 'Level 2' },
+  { value: '1', label: 'Level 1' },
 ];
 
 export const SESSION_CHAIN_OPTIONS: Array<{ value: SessionChainValue; label: string }> = [
@@ -192,6 +207,155 @@ export function deriveModelMentionPattern(model: string): string {
     .replace(/-+/g, '-')
     .replace(/^[._-]+|[._-]+$/g, '');
   return alias ? normalizeMentionPattern(alias) : '';
+}
+
+function lastModelSegment(model: string): string {
+  return model.trim().split('/').filter(Boolean).at(-1)?.trim() ?? '';
+}
+
+function normalizedModel(model: string): string {
+  return lastModelSegment(model).toLowerCase();
+}
+
+export interface ModelProfileDraft {
+  clientId: ClientId;
+  defaultModel: string;
+  runtimeClient?: string;
+}
+
+export function deriveModelFamily(clientId: ClientId, model: string): string {
+  const normalized = normalizedModel(model);
+  if (clientId === 'anthropic' || normalized.startsWith('claude-')) return 'claude';
+  if (clientId === 'openai' || /^(gpt-|o[134]-|chatgpt)/.test(normalized)) return 'gpt';
+  if (clientId === 'google' || clientId === 'antigravity' || normalized.startsWith('gemini-')) return 'gemini';
+  if (clientId === 'kimi' || normalized.includes('kimi') || normalized.includes('moonshot')) return 'kimi';
+  if (clientId === 'opencode') return 'opencode';
+  if (clientId === 'dare') return 'dare';
+  if (clientId === 'catagent') return 'catagent';
+  return clientId;
+}
+
+export function deriveModelLine(clientId: ClientId, model: string): string {
+  const normalized = normalizedModel(model);
+  if (normalized.includes('opus')) return 'Opus';
+  if (normalized.includes('sonnet')) return 'Sonnet';
+  if (normalized.includes('fable')) return 'Fable';
+  if (/gpt-5(?:[.-]|\b)/.test(normalized) || normalized.startsWith('chatgpt-5')) return '5.x';
+  if (normalized.includes('flash')) return 'Flash';
+  if (normalized.includes('pro')) return 'Pro';
+  if (normalized === 'k3') return 'K3';
+  if (normalized.includes('kimi')) return normalized.includes('coding') ? 'Code' : 'Kimi';
+  if (clientId === 'antigravity') return 'AGY';
+  if (clientId === 'opencode') return 'Provider model';
+  if (clientId === 'dare') return 'Agent runtime';
+  if (clientId === 'acp') return 'ACP';
+  return lastModelSegment(model) || deriveModelFamily(clientId, model);
+}
+
+export function deriveCapabilityLevel(clientId: ClientId, model: string): CapabilityLevelValue {
+  const normalized = normalizedModel(model);
+  if (
+    normalized.includes('opus') ||
+    normalized.includes('fable') ||
+    /gpt-5(?:[.-]|\b)/.test(normalized) ||
+    normalized.includes('gemini-3.1-pro')
+  ) {
+    return '3';
+  }
+  if (
+    normalized.includes('sonnet') ||
+    normalized.includes('gemini') ||
+    normalized.includes('kimi') ||
+    clientId === 'opencode' ||
+    clientId === 'dare' ||
+    clientId === 'catagent'
+  ) {
+    return '2';
+  }
+  return '1';
+}
+
+export function deriveRuntimeClient(profile: ModelProfileDraft): string {
+  const runtime = profile.runtimeClient?.trim();
+  if (runtime) return runtime;
+  switch (profile.clientId) {
+    case 'anthropic':
+      return 'Claude CLI';
+    case 'openai':
+      return 'Codex CLI';
+    case 'google':
+      return 'Gemini CLI';
+    case 'antigravity':
+      return 'AGY';
+    case 'kimi':
+      return 'Kimi CLI';
+    case 'opencode':
+      return 'OpenCode';
+    case 'dare':
+      return 'Dare';
+    case 'acp':
+      return 'ACP';
+    default:
+      return profile.clientId;
+  }
+}
+
+export function deriveModelProfile(
+  profile: ModelProfileDraft,
+): Pick<HubCatEditorFormState, 'modelFamily' | 'modelLine' | 'capabilityLevel' | 'runtimeClient'> {
+  return {
+    modelFamily: deriveModelFamily(profile.clientId, profile.defaultModel),
+    modelLine: deriveModelLine(profile.clientId, profile.defaultModel),
+    capabilityLevel: deriveCapabilityLevel(profile.clientId, profile.defaultModel),
+    runtimeClient: deriveRuntimeClient(profile),
+  };
+}
+
+export function resolveModelSuffix(form: Partial<HubCatEditorFormState> & ModelProfileDraft): string {
+  return (
+    (form.variantLabel ?? '').trim() ||
+    (form.modelLine ?? '').trim() ||
+    deriveModelLine(form.clientId, form.defaultModel).trim() ||
+    (form.nickname ?? '').trim()
+  );
+}
+
+export function applyDerivedModelProfile(
+  previous: HubCatEditorFormState,
+  next: HubCatEditorFormState,
+  options: { force?: boolean } = {},
+): HubCatEditorFormState {
+  const previousDerived = deriveModelProfile(previous);
+  const nextDerived = deriveModelProfile(next);
+  const previousVariantLabel = previous.variantLabel.trim();
+  const shouldUpdateSuffix =
+    options.force || !previousVariantLabel || previousVariantLabel === previousDerived.modelLine;
+  const nextVariantLabel = shouldUpdateSuffix ? nextDerived.modelLine : next.variantLabel;
+  const previousSuffix = resolveModelSuffix({ ...previous, modelLine: previousDerived.modelLine });
+  const nextSuffix = resolveModelSuffix({ ...next, variantLabel: nextVariantLabel, modelLine: nextDerived.modelLine });
+  const keepOrDerive = (current: string, prevDerived: string, nextValue: string) => {
+    if (options.force) return nextValue;
+    const trimmed = current.trim();
+    if (!trimmed || trimmed === prevDerived) return nextValue;
+    return current;
+  };
+  const nextNickname =
+    options.force || !previous.nickname.trim() || previous.nickname.trim() === previousSuffix
+      ? nextSuffix
+      : next.nickname;
+  return {
+    ...next,
+    variantLabel: nextVariantLabel,
+    modelFamily: keepOrDerive(previous.modelFamily, previousDerived.modelFamily, nextDerived.modelFamily),
+    modelLine: keepOrDerive(previous.modelLine, previousDerived.modelLine, nextDerived.modelLine),
+    capabilityLevel: keepOrDerive(
+      previous.capabilityLevel,
+      previousDerived.capabilityLevel,
+      nextDerived.capabilityLevel,
+    ) as CapabilityLevelValue,
+    runtimeClient: keepOrDerive(previous.runtimeClient, previousDerived.runtimeClient, nextDerived.runtimeClient),
+    nickname: nextNickname,
+  };
 }
 
 export function withDefaultModelMentionPattern(form: HubCatEditorFormState): HubCatEditorFormState {
@@ -370,24 +534,39 @@ export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | n
   const nameForCreate = createDraft?.templateName ?? '';
   const catId = cat?.id ?? (nameForCreate ? autoSlug(nameForCreate) : '');
   const mentionPatterns = cat?.mentionPatterns ?? [];
+  const clientId = (cat?.clientId as ClientId | undefined) ?? createDraft?.clientId ?? 'anthropic';
+  const defaultModel = cat?.defaultModel ?? createDraft?.defaultModel ?? '';
+  const derivedModelProfile = deriveModelProfile({
+    clientId,
+    defaultModel,
+    runtimeClient: cat?.runtimeClient,
+  });
+  const variantLabel = cat?.variantLabel ?? cat?.nickname ?? createDraft?.templateNickname ?? derivedModelProfile.modelLine;
+  const nickname = cat?.nickname ?? variantLabel;
   return {
     catId,
     name: cat?.name ?? cat?.displayName ?? createDraft?.templateName ?? '',
     displayName: cat?.displayName ?? cat?.name ?? createDraft?.templateName ?? '',
-    variantLabel: cat?.variantLabel ?? '',
-    nickname: cat?.nickname ?? createDraft?.templateNickname ?? '',
+    variantLabel,
+    nickname,
     avatar: cat?.avatar ?? createDraft?.templateAvatar ?? '',
     colorPrimary: cat?.color.primary ?? createDraft?.templateColorPrimary ?? UNKNOWN_CAT_COLOR.primary,
     colorSecondary: cat?.color.secondary ?? createDraft?.templateColorSecondary ?? UNKNOWN_CAT_COLOR.secondary,
     mentionPatterns: joinTags(mentionPatterns),
     roleDescription: cat?.roleDescription ?? createDraft?.templateRoleDescription ?? '',
     personality: cat?.personality ?? createDraft?.templatePersonality ?? '',
+    modelFamily: cat?.modelFamily ?? createDraft?.templateModelFamily ?? derivedModelProfile.modelFamily,
+    modelLine: cat?.modelLine ?? createDraft?.templateModelLine ?? derivedModelProfile.modelLine,
+    capabilityLevel: String(
+      cat?.capabilityLevel ?? createDraft?.templateCapabilityLevel ?? derivedModelProfile.capabilityLevel,
+    ) as CapabilityLevelValue,
+    runtimeClient: cat?.runtimeClient ?? createDraft?.templateRuntimeClient ?? derivedModelProfile.runtimeClient,
     teamStrengths: cat?.teamStrengths ?? createDraft?.templateTeamStrengths ?? '',
     caution: cat?.caution ?? '',
     strengths: cat?.strengths?.join(', ') ?? '',
-    clientId: (cat?.clientId as ClientId | undefined) ?? createDraft?.clientId ?? 'anthropic',
+    clientId,
     accountRef: cat?.accountRef ?? createDraft?.accountRef ?? '',
-    defaultModel: cat?.defaultModel ?? createDraft?.defaultModel ?? '',
+    defaultModel,
     commandArgs: cat?.commandArgs?.join(' ') ?? createDraft?.commandArgs ?? '',
     cliConfigArgs: [...(cat?.cliConfigArgs ?? [])],
     cliEffort: isCliEffortValue(persistedCliEffort) ? persistedCliEffort : '',

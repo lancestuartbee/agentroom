@@ -11,6 +11,10 @@ export interface QuestTemplateCard {
   color: { primary: string; secondary: string };
   roleDescription: string;
   personality: string;
+  modelFamily?: string;
+  modelLine?: string;
+  capabilityLevel?: 1 | 2 | 3;
+  runtimeClient?: string;
   teamStrengths: string;
 }
 
@@ -19,8 +23,8 @@ export const QUEST_TASKS = [
   {
     id: 'FRQ-1',
     icon: '🎲',
-    label: '猫猫盲盒',
-    description: '每天随机介绍一只猫猫，含个性描述和运势 (~5分钟)',
+    label: '模型盲盒',
+    description: '每天随机介绍一位模型成员，含能力描述和今日建议 (~5分钟)',
     difficulty: 1,
   },
   {
@@ -51,7 +55,7 @@ export function buildQuestTaskSelectionBlock(questThreadId: string) {
     v: 1 as const,
     interactiveType: 'card-grid' as const,
     title: '选择你的首个任务',
-    description: '挑一个简单的任务，让你的猫猫大展身手！',
+    description: '挑一个简单的任务，让你的模型成员大展身手！',
     options: QUEST_TASKS.map((task) => ({
       id: task.id,
       label: task.label,
@@ -74,9 +78,9 @@ export function buildErrorEncounteredBlock(catName: string) {
     v: 1 as const,
     interactiveType: 'confirm' as const,
     title: `${catName} 好像遇到了一点问题...`,
-    description: '单独工作时犯错很正常！在真实团队里，我们会让另一只猫猫来 review 和监督。要不要再加一只猫猫？',
+    description: '单独工作时犯错很正常！在真实团队里，我们会让另一个模型成员来 review 和监督。要不要再加一个成员？',
     options: [
-      { id: 'add-second-cat', label: '好！再来一只猫猫', emoji: '🐱' },
+      { id: 'add-second-cat', label: '好！再来一个成员', emoji: '➕' },
       { id: 'skip', label: '先跳过', emoji: '⏭️' },
     ],
   };
@@ -97,14 +101,14 @@ export function buildCompletionBlock() {
     id: `quest-completion-${Date.now()}`,
     kind: 'card' as const,
     v: 1 as const,
-    title: '恭喜！你已经掌握了多猫协作的基本技能',
+    title: '恭喜！你已经掌握了多成员协作的基本技能',
     description: [
       '你学会了：',
-      '- 从模板创建猫猫成员',
+      '- 从模板创建模型成员',
       '- 用 @mention 指派任务',
-      '- 让多只猫猫协作和互相监督',
+      '- 让多个模型成员协作和互相监督',
       '',
-      '前往 Console 可以添加更多猫猫、修改配置，打造你的专属 AI 团队！',
+      '前往 Console 可以添加更多模型成员、修改配置，打造你的专属 AI 团队！',
     ].join('\n'),
     actions: [
       { id: 'go-console', label: '前往 Console', url: '/hub' },

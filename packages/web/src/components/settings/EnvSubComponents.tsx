@@ -189,7 +189,7 @@ function buildConfigFiles(projectRoot: string) {
     {
       name: 'cat-template.json',
       path: `${projectRoot}/cat-template.json`,
-      desc: '猫猫模板（只读 seed）',
+      desc: '成员模板（只读 seed）',
       isDir: false,
     },
     {
@@ -201,9 +201,9 @@ function buildConfigFiles(projectRoot: string) {
     { name: '.env', path: `${projectRoot}/.env`, desc: '可编辑环境变量真相源（不含认证凭证）', isDir: false },
     { name: '.env.local', path: `${projectRoot}/.env.local`, desc: '本地环境变量覆盖', isDir: false },
     { name: 'start-dev.sh', path: `${projectRoot}/scripts/start-dev.sh`, desc: '开发启动脚本', isDir: false },
-    { name: 'CLAUDE.md', path: `${projectRoot}/CLAUDE.md`, desc: '布偶猫项目指引', isDir: false },
-    { name: 'AGENTS.md', path: `${projectRoot}/AGENTS.md`, desc: '缅因猫项目指引', isDir: false },
-    { name: 'GEMINI.md', path: `${projectRoot}/GEMINI.md`, desc: '暹罗猫项目指引', isDir: false },
+    { name: 'CLAUDE.md', path: `${projectRoot}/CLAUDE.md`, desc: 'Claude 项目指引', isDir: false },
+    { name: 'AGENTS.md', path: `${projectRoot}/AGENTS.md`, desc: 'GPT/Codex 项目指引', isDir: false },
+    { name: 'GEMINI.md', path: `${projectRoot}/GEMINI.md`, desc: 'Gemini 项目指引', isDir: false },
   ];
 }
 

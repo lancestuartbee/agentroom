@@ -1,13 +1,13 @@
 /**
  * Cat Breed & Variant Types
- * Breed+Variant 两层 schema：Breed 是猫种（布偶/缅因/暹罗），
- * Variant 是同一猫种下的不同模型/配置。
+ * Breed+Variant 两层 schema：Breed 是兼容旧配置名的模型家族/成员组，
+ * Variant 是同一组下的不同模型/运行配置。
  *
  * Phase 3.5: 每 Breed 有 1 个 default Variant
  * Phase 4-F: 支持多 Variant（多版本猫召唤）
  */
 
-import type { AgyProfileConfig, CatColor, ClientId } from './cat.js';
+import type { AgyProfileConfig, CapabilityLevel, CatColor, ClientId } from './cat.js';
 import type { CatId } from './ids.js';
 import type { VoiceConfig } from './tts.js';
 
@@ -47,8 +47,7 @@ export interface CliConfig {
 }
 
 /**
- * A specific model/config variant within a breed.
- * e.g. ragdoll breed → opus-4.6 variant, opus-4.5 variant
+ * A specific model/config variant within a member group.
  *
  * F32-b: Variants can override catId, displayName, and mentionPatterns
  * to register as independent cats within the same breed.
@@ -61,6 +60,8 @@ export interface CatVariant {
   readonly displayName?: string;
   /** F32-b P4: Human-readable label for disambiguation (e.g. "4.5", "Sonnet") */
   readonly variantLabel?: string;
+  /** Display suffix for the member. Defaults to variantLabel/modelLine. */
+  readonly nickname?: string;
   /** Independent mention patterns for this variant (F32-b).
    *  Default variant inherits breed mentionPatterns; non-default variants fallback to @catId when unspecified. */
   readonly mentionPatterns?: readonly string[];
@@ -78,6 +79,10 @@ export interface CatVariant {
   /** Optional per-variant override for roleDescription; falls back to breed.roleDescription. */
   readonly roleDescription?: string;
   readonly personality?: string;
+  readonly modelFamily?: string;
+  readonly modelLine?: string;
+  readonly capabilityLevel?: CapabilityLevel;
+  readonly runtimeClient?: string;
   readonly strengths?: readonly string[];
   /** F32-b P4c: Override breed-level avatar for this variant */
   readonly avatar?: string;
@@ -141,20 +146,24 @@ export interface CatFeatures {
 export type MissionHubSelfClaimScope = 'disabled' | 'once' | 'thread' | 'global';
 
 /**
- * A cat breed — the identity layer (name, avatar, color, role).
+ * A member group — the identity layer (display name, avatar, color, baseline profile).
  * Each breed has one or more variants (model configs).
  */
 export interface CatBreed {
-  readonly id: string; // 'ragdoll', 'maine-coon', 'siamese'
+  readonly id: string; // legacy group id, e.g. 'ragdoll', 'maine-coon', 'siamese'
   readonly catId: CatId;
-  readonly name: string; // '布偶猫'
+  readonly name: string;
   readonly displayName: string;
-  /** Nickname given by co-creator. See docs/stories/cat-names/ */
+  /** Display suffix for the default member variant. */
   readonly nickname?: string;
   readonly avatar: string;
   readonly color: CatColor;
   readonly mentionPatterns: readonly string[];
   readonly roleDescription: string;
+  readonly modelFamily?: string;
+  readonly modelLine?: string;
+  readonly capabilityLevel?: CapabilityLevel;
+  readonly runtimeClient?: string;
   readonly defaultVariantId: string;
   readonly variants: readonly CatVariant[];
   /** Per-cat feature flags (optional, all features enabled by default) */

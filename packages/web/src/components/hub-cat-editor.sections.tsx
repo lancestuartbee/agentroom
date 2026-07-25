@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { CatData } from '@/hooks/useCatData';
 import { AvatarImageWithFallback } from './AvatarImageWithFallback';
 import type { ProfileItem } from './hub-accounts.types';
 import {
   ACP_TRANSPORT_OPTIONS,
   autoSlug,
+  CAPABILITY_LEVEL_OPTIONS,
   CLIENT_OPTIONS,
   defaultAcpCommandForClient,
   defaultAcpStartupArgsForClient,
@@ -20,7 +21,7 @@ import {
   splitStrengthTags,
 } from './hub-cat-editor.model';
 import { CatColorField } from './hub-cat-editor-color-field';
-import { SectionCard, SelectField, TextField } from './hub-cat-editor-fields';
+import { SectionCard, SelectField, TextAreaField, TextField } from './hub-cat-editor-fields';
 import { VoiceConfigSection } from './hub-cat-editor-voice';
 import { TagEditor } from './hub-tag-editor';
 
@@ -80,9 +81,17 @@ export function IdentitySection({
   const strengthTags = splitStrengthTags(form.strengths);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const avatarSrc = safeAvatarSrc(form.avatar);
+  const [personaOpen, setPersonaOpen] = useState(false);
+  const hasPersonaContent = Boolean(
+    form.roleDescription.trim() ||
+      form.personality.trim() ||
+      form.teamStrengths.trim() ||
+      form.caution.trim() ||
+      strengthTags.length > 0,
+  );
 
   return (
-    <SectionCard title="身份信息" tone={hasError ? 'error' : 'neutral'}>
+    <SectionCard title="基础档案" tone={hasError ? 'error' : 'neutral'}>
       {!cat ? (
         <>
           <TextField
@@ -118,26 +127,11 @@ export function IdentitySection({
       )}
 
       <TextField
-        label="昵称"
-        ariaLabel="Nickname"
-        value={form.nickname}
-        onChange={(value) => onChange({ nickname: value })}
-        placeholder="可选，co-creator给的昵称"
-      />
-      <TextField
-        label="显示后缀"
+        label="模型后缀"
         ariaLabel="Variant Label"
         value={form.variantLabel}
-        onChange={(value) => onChange({ variantLabel: value })}
-        placeholder="如 GPT-5.5 / Opus 4.7"
-      />
-      <TextField
-        label="角色描述"
-        ariaLabel="Description"
-        value={form.roleDescription}
-        onChange={(value) => onChange({ roleDescription: value })}
-        required
-        placeholder="角色定位，如 代码审查专家"
+        onChange={(value) => onChange({ variantLabel: value, nickname: value })}
+        placeholder="如 5.x / Opus / Sonnet / Pro"
       />
 
       <div className="flex items-center gap-3">
@@ -187,53 +181,79 @@ export function IdentitySection({
         onChange={(hex) => onChange({ colorPrimary: hex, colorSecondary: hex })}
       />
 
-      {hasDossier && (
-        <p className="rounded-lg bg-conn-purple-bg px-3 py-1.5 text-xs text-conn-purple-text">
-          此猫已有结构化能力画像，擅长领域由画像驱动。此字段保留为社区兜底。
-          <a href="/settings?s=profiles" className="ml-1 underline hover:no-underline">
-            前往画像页 →
-          </a>
-        </p>
-      )}
-      <TextField
-        label="擅长领域"
-        ariaLabel="Team Strengths"
-        value={form.teamStrengths}
-        onChange={(value) => onChange({ teamStrengths: value })}
-        placeholder="如 架构设计、安全分析"
-      />
-      <TextField
-        label="性格特征"
-        ariaLabel="Personality"
-        value={form.personality}
-        onChange={(value) => onChange({ personality: value })}
-        placeholder="如 温柔但有主见"
-      />
-      <TextField
-        label="注意事项"
-        ariaLabel="Caution"
-        value={form.caution}
-        onChange={(value) => onChange({ caution: value })}
-        placeholder="可选，留空表示无特殊注意"
-      />
+      <div className="rounded-[12px] border border-[var(--console-border-soft)] bg-[var(--console-field-bg,var(--console-card-bg))] px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setPersonaOpen((value) => !value)}
+          className="flex w-full items-center justify-between gap-3 text-left"
+          aria-expanded={personaOpen}
+        >
+          <span className="text-xs font-bold text-cafe-secondary">
+            {personaOpen ? '收起人物设定' : hasPersonaContent ? '查看人物设定' : '添加人物设定'}
+          </span>
+          <span className="text-micro font-semibold text-cafe-muted">
+            {hasPersonaContent ? '已填写，可选' : '可选，不影响基础模型配置'}
+          </span>
+        </button>
+        {personaOpen ? (
+          <div className="mt-3 space-y-2.5 border-t border-[var(--console-border-soft)] pt-3">
+            {hasDossier && (
+              <p className="rounded-lg bg-conn-purple-bg px-3 py-1.5 text-xs text-conn-purple-text">
+                此成员已有结构化能力画像，路由优先参考画像。以下字段只作为人工补充。
+                <a href="/settings?s=profiles" className="ml-1 underline hover:no-underline">
+                  前往画像页 →
+                </a>
+              </p>
+            )}
+            <TextAreaField
+              label="视角说明"
+              ariaLabel="Description"
+              value={form.roleDescription}
+              onChange={(value) => onChange({ roleDescription: value })}
+              placeholder="可选。留空时使用模型家族基础说明。"
+            />
+            <TextField
+              label="补充能力"
+              ariaLabel="Team Strengths"
+              value={form.teamStrengths}
+              onChange={(value) => onChange({ teamStrengths: value })}
+              placeholder="可选，如 长文整理、安全审查"
+            />
+            <TextField
+              label="表达倾向"
+              ariaLabel="Personality"
+              value={form.personality}
+              onChange={(value) => onChange({ personality: value })}
+              placeholder="可选，如 简洁、温和、强审查口吻"
+            />
+            <TextField
+              label="注意事项"
+              ariaLabel="Caution"
+              value={form.caution}
+              onChange={(value) => onChange({ caution: value })}
+              placeholder="可选，留空表示无特殊注意"
+            />
 
-      <div className="flex items-start gap-3">
-        <span className="w-[140px] shrink-0 pt-1 text-sm font-medium text-cafe-secondary">Strengths</span>
-        <div className="min-w-0 flex-1">
-          <TagEditor
-            tags={strengthTags}
-            onChange={(tags) => onChange({ strengths: joinTags(tags) })}
-            addLabel="+ 选择"
-            placeholder="输入标签，例如 security"
-            emptyLabel="(无)"
-          />
-        </div>
-        <input
-          aria-label="Strengths"
-          value={form.strengths}
-          onChange={(event) => onChange({ strengths: event.target.value })}
-          className="sr-only"
-        />
+            <div className="flex items-start gap-3">
+              <span className="w-[150px] shrink-0 pt-1 text-xs font-bold text-cafe-secondary">补充标签</span>
+              <div className="min-w-0 flex-1">
+                <TagEditor
+                  tags={strengthTags}
+                  onChange={(tags) => onChange({ strengths: joinTags(tags) })}
+                  addLabel="+ 选择"
+                  placeholder="输入标签，例如 security"
+                  emptyLabel="(无)"
+                />
+              </div>
+              <input
+                aria-label="Strengths"
+                value={form.strengths}
+                onChange={(event) => onChange({ strengths: event.target.value })}
+                className="sr-only"
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <VoiceConfigSection form={form} onChange={onChange} onRefAudioUpload={onRefAudioUpload} />
@@ -448,6 +468,41 @@ export function AccountSection({
           return acpWarn ? <p className="text-xs text-amber-600 dark:text-amber-400">⚠️ {acpWarn}</p> : null;
         })()}
 
+        <div className="space-y-2.5 rounded-[12px] border border-[var(--console-border-soft)] bg-[var(--console-field-bg,var(--console-card-bg))] px-3 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-bold text-cafe-secondary">模型档案</p>
+            <p className="text-micro font-semibold text-cafe-muted">预设可改，不代表本轮工具权限</p>
+          </div>
+          <TextField
+            label="模型家族"
+            ariaLabel="Model Family"
+            value={form.modelFamily}
+            onChange={(value) => onChange({ modelFamily: value })}
+            placeholder="claude / gpt / gemini / kimi"
+          />
+          <TextField
+            label="模型线"
+            ariaLabel="Model Line"
+            value={form.modelLine}
+            onChange={(value) => onChange({ modelLine: value })}
+            placeholder="Opus / Sonnet / Fable / 5.x / Pro"
+          />
+          <SelectField
+            label="能力档位"
+            ariaLabel="Capability Level"
+            value={form.capabilityLevel}
+            options={CAPABILITY_LEVEL_OPTIONS}
+            onChange={(value) => onChange({ capabilityLevel: value as HubCatEditorFormState['capabilityLevel'] })}
+          />
+          <TextField
+            label="运行客户端"
+            ariaLabel="Runtime Client"
+            value={form.runtimeClient}
+            onChange={(value) => onChange({ runtimeClient: value })}
+            placeholder="Claude CLI / Codex CLI / AGY"
+          />
+        </div>
+
         {form.clientId === 'antigravity' ? (
           <>
             <TextField
@@ -629,7 +684,7 @@ export function RoutingSection({
         aria-label="Aliases"
         value={form.mentionPatterns}
         onChange={(event) => onChange({ mentionPatterns: event.target.value })}
-        placeholder="@codex, @缅因猫"
+        placeholder="@gpt, @codex"
         className="sr-only"
       />
     </SectionCard>

@@ -15,13 +15,13 @@ const PHASE_TIPS: Record<string, (catName: string) => string> = {
 };
 
 const LIFECYCLE_TIPS: Record<string, LifecycleTipConfig> = {
-  'phase-5-kickoff': { icon: '\u{1F680}', text: '告诉猫猫你想做什么项目，TA 会帮你分析和拆解需求', variant: 'blue' },
-  'phase-6-design': { icon: '\u{1F3A8}', text: '猫猫会给出设计方案，选择你喜欢的然后继续', variant: 'purple' },
-  'phase-7-dev': { icon: '\u{1F4BB}', text: '猫猫正在开发，遇到关键决策会问你', variant: 'amber' },
-  'phase-8-collab': { icon: '\u{1F50D}', text: '多猫协作中，队友正在 review 代码', variant: 'blue' },
+  'phase-5-kickoff': { icon: '\u{1F680}', text: '告诉成员你想做什么项目，TA 会帮你分析和拆解需求', variant: 'blue' },
+  'phase-6-design': { icon: '\u{1F3A8}', text: '成员会给出设计方案，选择你喜欢的然后继续', variant: 'purple' },
+  'phase-7-dev': { icon: '\u{1F4BB}', text: '成员正在开发，遇到关键决策会问你', variant: 'amber' },
+  'phase-8-collab': { icon: '\u{1F50D}', text: '多成员协作中，队友正在 review 代码', variant: 'blue' },
   'phase-9-complete': { icon: '\u2705', text: 'Review 通过，准备合入主分支', variant: 'green' },
-  'phase-10-retro': { icon: '\u{1F4DD}', text: '和猫猫一起回顾这个项目，看看学到了什么', variant: 'amber' },
-  'phase-11-farewell': { icon: '\u{1F393}', text: '恭喜完成训练营！你已经掌握了多猫协作的基本流程', variant: 'green' },
+  'phase-10-retro': { icon: '\u{1F4DD}', text: '和成员一起回顾这个项目，看看学到了什么', variant: 'amber' },
+  'phase-11-farewell': { icon: '\u{1F393}', text: '恭喜完成训练营！你已经掌握了多成员协作的基本流程', variant: 'green' },
 };
 
 export function BootcampGuideOverlay({ catName, phase, hasMessages }: BootcampGuideOverlayProps) {
@@ -31,7 +31,7 @@ export function BootcampGuideOverlay({ catName, phase, hasMessages }: BootcampGu
   }
 
   if (hasMessages) return null;
-  const cat = catName ?? '猫猫';
+  const cat = catName ?? '成员';
   const tipFn = PHASE_TIPS[phase];
   if (!tipFn) return null;
   const tip = tipFn(cat);

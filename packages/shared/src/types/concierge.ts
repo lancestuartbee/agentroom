@@ -1,22 +1,22 @@
 /**
- * F229: 猫猫球前台猫 — 共享类型定义
+ * F229: 前台助手 — 共享类型定义
  *
  * ConciergeConfig: per-deployment 配置，per-user 存储（TTL=0，铁律 5）
  * ConciergeBallState: 球的八态状态机（UI 侧驱动）
  * ConciergeCardAction: CardBlock concierge actions（前端 action handler 注册）
  */
 
-/** ConciergeConfig: 前台猫配置（per-user 持久化，用户可见可追溯可恢复） */
+/** ConciergeConfig: 前台助手配置（per-user 持久化，用户可见可追溯可恢复） */
 export interface ConciergeConfig {
-  /** 是否启用前台猫 (default true) */
+  /** 是否启用前台助手 (default true) */
   enabled: boolean;
   /** 皮肤 — E0: ragdoll-v1 默认 | E1: yanyan-codex (9-state atlas) | yarn-ball legacy */
   skin: 'yarn-ball' | 'ragdoll-v1' | 'yanyan-codex';
-  /** 前台猫显示名（KD-6: per-deployment 可配置，本家 Phase A 落地投票） */
+  /** 前台助手显示名（KD-6: per-deployment 可配置，本家 Phase A 落地投票） */
   displayName: string;
   /** 一句话人设基调（注入岗位 prompt） */
   personaTone: string;
-  /** 值班猫 profileId — 指向已配置的 cat profile (KD-7: provider-agnostic) */
+  /** 值班成员 profileId — 指向已配置的 member profile (KD-7: provider-agnostic) */
   dutyCatProfileId: string;
   /**
    * 主动性等级（OQ-4 四级白名单）:
@@ -34,7 +34,7 @@ export interface ConciergeConfig {
 export const CONCIERGE_CONFIG_DEFAULTS: Omit<ConciergeConfig, 'dutyCatProfileId'> = {
   enabled: true,
   skin: 'yanyan-codex',
-  displayName: '猫猫球',
+  displayName: '前台助手',
   personaTone: '温暖、简短、不啰嗦',
   proactivePolicy: 'quiet-badge',
   muted: false,
@@ -46,7 +46,7 @@ export const CONCIERGE_CONFIG_DEFAULTS: Omit<ConciergeConfig, 'dutyCatProfileId'
  * idle        — 默认待机（呼吸动画）
  * sleeping    — 静音/非活跃（可配置降级态）
  * listening   — STT 录音中（Phase C）
- * thinking    — 值班猫 invocation 进行中
+ * thinking    — 值班成员 invocation 进行中
  * found       — 记忆/功能发现返回结果（态 3）
  * needs-confirmation — 待用户确认（态 4 转接 / 任何 action card）
  * handoff     — relay 投递完成，等回执
@@ -64,7 +64,7 @@ export type ConciergeBallState =
 
 /**
  * threadKind: Thread 字段扩展（F229 / F167）
- * concierge = 专属前台猫对话载体（per-user，sidebar 默认隐藏）
+ * concierge = 专属前台助手对话载体（per-user，sidebar 默认隐藏）
  * gate-keeping = 守门 thread（per-repo inbox / community ops 看板载体）。F167
  *   trigger-time guard 在 register_pr_tracking / register_issue_tracking / hold_ball
  *   端点 default-block 守门 thread 调用，避免「已 cross_post / propose 后还在守门
@@ -76,7 +76,7 @@ export type ThreadKind = ConciergeThreadKind | GateKeepingThreadKind;
 
 /**
  * CardBlock concierge actions（前端 action handler 注册点）
- * 前台猫不直接执行跳转/传话——发确认卡，用户点击后由前端执行（调研红线）
+ * 前台助手不直接执行跳转/传话——发确认卡，用户点击后由前端执行（调研红线）
  */
 export type ConciergeCardAction =
   /** 去：F227 teleport 跳转到目标 thread/message */

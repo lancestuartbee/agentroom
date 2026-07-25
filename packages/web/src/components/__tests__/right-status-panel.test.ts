@@ -68,7 +68,7 @@ describe('RightStatusPanel', () => {
     expect(html).toContain('状态栏');
     expect(html).toContain('当前模式');
     expect(html).toContain('执行');
-    expect(html).toContain('猫猫状态');
+    expect(html).toContain('成员状态');
     expect(html).toContain('消息统计');
     expect(html).toContain('布偶猫');
     expect(html).toContain('缅因猫');
@@ -173,7 +173,7 @@ describe('RightStatusPanel', () => {
       },
     });
 
-    expect(html).toContain('猫猫状态');
+    expect(html).toContain('成员状态');
     // IDs are now behind a collapsible toggle (default collapsed in SSR)
     expect(html).toContain('▸ IDs');
     // The cat name and invocation section still render
@@ -199,12 +199,12 @@ describe('RightStatusPanel', () => {
       },
     });
 
-    expect(html).toContain('猫猫状态');
+    expect(html).toContain('成员状态');
     expect(html).toContain('历史参与');
     expect(html).toContain('布偶猫');
   });
 
-  it('shows non-target cat in 猫猫状态 when it has task progress', () => {
+  it('shows non-target cat in 成员状态 when it has task progress', () => {
     const html = render({
       intentMode: 'execute',
       targetCats: ['opus'],
@@ -230,14 +230,14 @@ describe('RightStatusPanel', () => {
       },
     });
 
-    expect(html).toContain('猫猫状态');
+    expect(html).toContain('成员状态');
     expect(html).toContain('缅因猫');
-    // F055: task progress now in 猫猫祟祟 panel, not in 猫猫状态
-    expect(html).toContain('猫猫祟祟');
+    // F055: task progress now in 计划面板 panel, not in 成员状态
+    expect(html).toContain('计划面板');
     expect(html).toContain('Reviewing PR');
   });
 
-  it('keeps completed snapshots out of 猫猫状态', () => {
+  it('keeps completed snapshots out of 成员状态', () => {
     const html = render({
       intentMode: 'execute',
       targetCats: ['opus'],
@@ -263,14 +263,14 @@ describe('RightStatusPanel', () => {
       },
     });
 
-    expect(html).toContain('猫猫状态');
+    expect(html).toContain('成员状态');
     expect(html).toContain('布偶猫');
-    // F055: completed plan folds in 猫猫祟祟
-    expect(html).toContain('猫猫祟祟');
+    // F055: completed plan folds in 计划面板
+    expect(html).toContain('计划面板');
     expect(html).toContain('已完成 (1)');
   });
 
-  it('keeps interrupted snapshots in 猫猫祟祟 with continue action', () => {
+  it('keeps interrupted snapshots in 计划面板 with continue action', () => {
     const html = render({
       intentMode: 'execute',
       targetCats: ['opus'],
@@ -296,13 +296,13 @@ describe('RightStatusPanel', () => {
       },
     });
 
-    expect(html).toContain('猫猫祟祟');
+    expect(html).toContain('计划面板');
     expect(html).toContain('缅因猫');
     expect(html).toContain('已中断');
     expect(html).toContain('继续');
   });
 
-  it('renders task progress in 猫猫祟祟 panel', () => {
+  it('renders task progress in 计划面板 panel', () => {
     const html = render({
       intentMode: 'execute',
       targetCats: ['opus'],
@@ -330,7 +330,7 @@ describe('RightStatusPanel', () => {
       },
     });
 
-    expect(html).toContain('猫猫祟祟');
+    expect(html).toContain('计划面板');
     expect(html).toContain('1/3');
     expect(html).toContain('Fix auth bug');
     expect(html).toContain('Adding caching');

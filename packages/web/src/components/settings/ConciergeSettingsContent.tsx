@@ -65,7 +65,7 @@ export function ConciergeSettingsContent() {
           useConciergeStore.setState(data.config);
         }
       } catch {
-        if (!cancelled) setError('加载猫猫球配置失败');
+        if (!cancelled) setError('加载前台助手配置失败');
       }
     })();
     return () => {
@@ -164,9 +164,9 @@ export function ConciergeSettingsContent() {
       )}
 
       {/* Section 1: 基本开关 */}
-      <SettingsSection title="基本设置" description="控制猫猫球的显示与可用性。">
+      <SettingsSection title="基本设置" description="控制前台助手的显示与可用性。">
         <div className="space-y-4">
-          <SettingsField label="启用猫猫球" hint="关闭后悬浮球不再显示。" inline>
+          <SettingsField label="启用前台助手" hint="关闭后悬浮入口不再显示。" inline>
             <ToggleSwitch checked={state.enabled} disabled={saving} onChange={(v) => updateConfig({ enabled: v })} />
           </SettingsField>
 
@@ -177,15 +177,15 @@ export function ConciergeSettingsContent() {
       </SettingsSection>
 
       {/* Section 2: 皮肤 (E2: unlocked — was KD-14 locked in Phase A) */}
-      <SettingsSection title="皮肤" description="切换猫猫球的外观。">
+      <SettingsSection title="皮肤" description="切换前台助手的外观。">
         <div className="space-y-3">
           <RadioOption
             name="skin"
             value="yanyan-codex"
             checked={state.skin === 'yanyan-codex'}
             disabled={saving}
-            label="🐱 砚砚 v1"
-            hint="9 态动画精灵图，砚砚专属皮肤。（默认）"
+            label="Codex v1"
+            hint="9 态动画精灵图，Codex 风格皮肤。（默认）"
             onChange={() => updateConfig({ skin: 'yanyan-codex' })}
           />
           <RadioOption
@@ -193,8 +193,8 @@ export function ConciergeSettingsContent() {
             value="ragdoll-v1"
             checked={state.skin === 'ragdoll-v1'}
             disabled={saving}
-            label="🐱 布偶猫 v1"
-            hint="经典布偶猫皮肤。"
+            label="Claude v1"
+            hint="Claude 风格皮肤。"
             onChange={() => updateConfig({ skin: 'ragdoll-v1' })}
           />
           <RadioOption
@@ -210,9 +210,9 @@ export function ConciergeSettingsContent() {
       </SettingsSection>
 
       {/* Section 3: 身份与人设 (KD-6) */}
-      <SettingsSection title="身份与人设" description="自定义猫猫球的名字和性格基调。">
+      <SettingsSection title="身份与人设" description="自定义前台助手的名字和性格基调。">
         <div className="space-y-4">
-          <SettingsField label="显示名称" hint="猫猫球的名字，最多 50 字。">
+          <SettingsField label="显示名称" hint="前台助手的名字，最多 50 字。">
             <TextInput
               value={state.displayName}
               maxLength={50}
@@ -221,7 +221,7 @@ export function ConciergeSettingsContent() {
             />
           </SettingsField>
 
-          <SettingsField label="人设基调" hint="一句话描述人设风格，会注入值班猫的 prompt。最多 200 字。">
+          <SettingsField label="人设基调" hint="一句话描述人设风格，会注入值班成员的 prompt。最多 200 字。">
             <TextInput
               value={state.personaTone}
               maxLength={200}
@@ -232,10 +232,10 @@ export function ConciergeSettingsContent() {
         </div>
       </SettingsSection>
 
-      {/* Section 4: 值班猫 (KD-7) */}
-      <SettingsSection title="值班猫" description="选择哪只猫猫负责前台应答。Provider-agnostic，可配置任意已注册的猫。">
+      {/* Section 4: 值班成员 (KD-7) */}
+      <SettingsSection title="值班成员" description="选择哪位成员负责前台应答。Provider-agnostic，可配置任意已注册成员。">
         <div className="space-y-4">
-          <SettingsField label="值班猫" hint="前台对话由这只猫处理。">
+          <SettingsField label="值班成员" hint="前台对话由这位成员处理。">
             <select
               value={state.dutyCatProfileId}
               disabled={saving}
@@ -266,7 +266,7 @@ export function ConciergeSettingsContent() {
       </SettingsSection>
 
       {/* Section 5: 主动性 (OQ-4) */}
-      <SettingsSection title="主动性策略" description="控制猫猫球何时主动出现。">
+      <SettingsSection title="主动性策略" description="控制前台助手何时主动出现。">
         <div className="space-y-3">
           <RadioOption
             name="proactivePolicy"

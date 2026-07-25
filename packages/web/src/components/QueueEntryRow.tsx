@@ -54,7 +54,7 @@ function QueueEntryRow({
   const rowToneClass = isPaused ? 'bg-conn-amber-bg/60' : isAgent ? 'bg-[var(--color-cocreator-surface)]' : '';
 
   const sourceLabel = isAgent
-    ? `${entry.callerCatId ?? '猫猫'} → ${entry.targetCats[0] ?? '猫猫'}`
+    ? `${entry.callerCatId ?? '成员'} → ${entry.targetCats[0] ?? '成员'}`
     : entry.source === 'connector'
       ? 'Connector'
       : ownerName;

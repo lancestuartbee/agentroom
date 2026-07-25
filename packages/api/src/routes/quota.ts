@@ -609,7 +609,7 @@ function buildCodexSummaryPlatform(): QuotaSummaryPlatform {
   if (codexCache.error) {
     return {
       id: 'codex',
-      label: '缅因猫 (Codex + GPT-5.2)',
+      label: 'GPT (Codex CLI)',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -622,7 +622,7 @@ function buildCodexSummaryPlatform(): QuotaSummaryPlatform {
   if (!primary) {
     return {
       id: 'codex',
-      label: '缅因猫 (Codex + GPT-5.2)',
+      label: 'GPT (Codex CLI)',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -634,7 +634,7 @@ function buildCodexSummaryPlatform(): QuotaSummaryPlatform {
   const utilization = toUtilizationPercent(primary);
   return {
     id: 'codex',
-    label: '缅因猫 (Codex + GPT-5.2)',
+    label: 'GPT (Codex CLI)',
     displayPercent: normalizePercent(primary.usedPercent),
     displayKind: primary.percentKind ?? 'used',
     utilizationPercent: utilization,
@@ -648,7 +648,7 @@ function buildClaudeSummaryPlatform(): QuotaSummaryPlatform {
   if (claudeCache.error) {
     return {
       id: 'claude',
-      label: '布偶猫 (Claude)',
+      label: 'Claude',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -663,7 +663,7 @@ function buildClaudeSummaryPlatform(): QuotaSummaryPlatform {
     const utilization = toUtilizationPercent(primary);
     return {
       id: 'claude',
-      label: '布偶猫 (Claude)',
+      label: 'Claude',
       displayPercent: normalizePercent(primary.usedPercent),
       displayKind: primary.percentKind ?? 'used',
       utilizationPercent: utilization,
@@ -675,7 +675,7 @@ function buildClaudeSummaryPlatform(): QuotaSummaryPlatform {
   if (claudeCache.activeBlock) {
     return {
       id: 'claude',
-      label: '布偶猫 (Claude)',
+      label: 'Claude',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -686,7 +686,7 @@ function buildClaudeSummaryPlatform(): QuotaSummaryPlatform {
   }
   return {
     id: 'claude',
-    label: '布偶猫 (Claude)',
+    label: 'Claude',
     displayPercent: null,
     displayKind: null,
     utilizationPercent: null,
@@ -700,7 +700,7 @@ function buildAntigravitySummaryPlatform(): QuotaSummaryPlatform {
   if (antigravityCache.error) {
     return {
       id: 'antigravity',
-      label: '暹罗猫 (Antigravity)',
+      label: 'Gemini (AGY)',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -713,19 +713,19 @@ function buildAntigravitySummaryPlatform(): QuotaSummaryPlatform {
   if (!primary) {
     return {
       id: 'antigravity',
-      label: '暹罗猫 (Antigravity)',
+      label: 'Gemini (AGY)',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
       status: 'pending',
-      note: '暹罗猫额度待获取。',
+      note: 'Gemini/AGY 额度待获取。',
       lastChecked: antigravityCache.lastChecked,
     };
   }
   const utilization = toUtilizationPercent(primary);
   return {
     id: 'antigravity',
-    label: '暹罗猫 (Antigravity)',
+    label: 'Gemini (AGY)',
     displayPercent: normalizePercent(primary.usedPercent),
     displayKind: primary.percentKind ?? 'used',
     utilizationPercent: utilization,
@@ -739,7 +739,7 @@ function buildKimiSummaryPlatform(): QuotaSummaryPlatform {
   if (kimiCache.error) {
     return {
       id: 'kimi',
-      label: '梵花猫 (Kimi)',
+      label: 'Kimi',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -751,7 +751,7 @@ function buildKimiSummaryPlatform(): QuotaSummaryPlatform {
   if (kimiCache.status === 'unavailable') {
     return {
       id: 'kimi',
-      label: '梵花猫 (Kimi)',
+      label: 'Kimi',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -768,7 +768,7 @@ function buildKimiSummaryPlatform(): QuotaSummaryPlatform {
   if (!primary) {
     return {
       id: 'kimi',
-      label: '梵花猫 (Kimi)',
+      label: 'Kimi',
       displayPercent: null,
       displayKind: null,
       utilizationPercent: null,
@@ -780,7 +780,7 @@ function buildKimiSummaryPlatform(): QuotaSummaryPlatform {
   const utilization = toUtilizationPercent(primary);
   return {
     id: 'kimi',
-    label: '梵花猫 (Kimi)',
+    label: 'Kimi',
     displayPercent: normalizePercent(primary.usedPercent),
     displayKind: primary.percentKind ?? 'used',
     utilizationPercent: utilization,
@@ -821,17 +821,17 @@ export function buildQuotaSummary(env: NodeJS.ProcessEnv = process.env): QuotaSu
   }
 
   if (codex.status === 'error') {
-    reasons.push(`缅因猫额度异常：${codex.note}`);
+    reasons.push(`GPT 额度异常：${codex.note}`);
     level = 'high';
   }
 
   if (claude.status === 'error') {
-    reasons.push(`布偶猫额度异常：${claude.note}`);
+    reasons.push(`Claude 额度异常：${claude.note}`);
     level = 'high';
   }
 
   if (kimi.status === 'error') {
-    reasons.push(`梵花猫额度异常：${kimi.note}`);
+    reasons.push(`Kimi 额度异常：${kimi.note}`);
     level = 'high';
   }
 

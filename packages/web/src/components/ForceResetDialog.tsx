@@ -101,7 +101,7 @@ export function ForceResetDialog({ open, busy = false, onCancel, onConfirm }: Fo
               <IconBan />
             </span>
             <span>
-              <b className="font-semibold">会做什么：</b>取消这个对话里所有正在运行的猫，清掉卡住的“正在回复中”。
+              <b className="font-semibold">会做什么：</b>取消这个对话里所有正在运行的成员，清掉卡住的“正在回复中”。
             </span>
           </div>
           <div className="flex gap-2.5 items-start text-sm">
@@ -117,7 +117,7 @@ export function ForceResetDialog({ open, busy = false, onCancel, onConfirm }: Fo
               <IconInfo />
             </span>
             <span>
-              <b className="font-semibold">何时用：</b>仅在猫卡死、点「停止」也没反应时的最后手段。
+              <b className="font-semibold">何时用：</b>仅在成员卡死、点「停止」也没反应时的最后手段。
             </span>
           </div>
         </div>

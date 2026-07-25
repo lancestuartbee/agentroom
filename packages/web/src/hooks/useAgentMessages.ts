@@ -1288,7 +1288,7 @@ export function consumeBackgroundSystemInfo(
         sysContent = `${parsed.catId} 的会话 #${parsed.sessionSeq} 已封存（上下文 ${pct}%），下次调用将自动创建新会话`;
       }
     } else if (parsed?.type === 'mode_switch_proposal') {
-      const by = parsed.proposedBy ?? '猫猫';
+      const by = parsed.proposedBy ?? '成员';
       sysContent = `${by} 提议切换到 ${parsed.proposedMode} 模式。`;
     } else if (parsed?.type === 'silent_completion') {
       // Bugfix: silent-exit — cat ran tools but produced no text response

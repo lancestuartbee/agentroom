@@ -501,7 +501,7 @@ export function createIssueCommentTaskSpec(opts: IssueCommentTaskSpecOptions): T
     display: {
       label: 'Issue 评论',
       category: 'issue',
-      description: '监控 GitHub Issue 评论通知猫猫',
+      description: '监控 GitHub Issue 评论通知成员',
       subjectKind: 'issue',
     },
   };

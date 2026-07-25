@@ -17,7 +17,7 @@ interface FirstRunQuestWizardProps {
 }
 
 const STEP_TITLES: Record<WizardStep, string> = {
-  template: '第 1 步 — 选择角色模板',
+  template: '第 1 步 — 选择模型模板',
   client: '第 2 步 — 选择客户端',
   config: '第 3 步 — 配置认证和模型',
   creating: '创建中...',
@@ -79,7 +79,7 @@ export function FirstRunQuestWizard({ open, onClose, onCreated }: FirstRunQuestW
               defaultModel: config.model,
             }),
           });
-          if (!patchRes.ok) throw new Error('猫猫配置更新失败');
+          if (!patchRes.ok) throw new Error('成员配置更新失败');
         } else {
           const suffix = Date.now().toString(36).slice(-4);
           const catId = `${selectedTemplate.id}-${suffix}`;
@@ -101,6 +101,10 @@ export function FirstRunQuestWizard({ open, onClose, onCreated }: FirstRunQuestW
               ],
               roleDescription: selectedTemplate.roleDescription,
               personality: selectedTemplate.personality,
+              modelFamily: selectedTemplate.modelFamily,
+              modelLine: selectedTemplate.modelLine,
+              capabilityLevel: selectedTemplate.capabilityLevel,
+              runtimeClient: selectedTemplate.runtimeClient,
               teamStrengths: selectedTemplate.teamStrengths,
               clientId: selectedClient.provider,
               accountRef: config.accountRef,
@@ -126,7 +130,7 @@ export function FirstRunQuestWizard({ open, onClose, onCreated }: FirstRunQuestW
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: '🎓 猫猫训练营',
+            title: '🎓 成员训练营',
             bootcampState: {
               v: 1,
               phase: 'phase-1-intro',
@@ -210,13 +214,13 @@ export function FirstRunQuestWizard({ open, onClose, onCreated }: FirstRunQuestW
           {step === 'creating' && (
             <div className="flex flex-col items-center py-12">
               <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-conn-amber-ring border-t-amber-600" />
-              <p className="text-sm text-cafe-muted">正在创建你的第一只猫猫...</p>
+              <p className="text-sm text-cafe-muted">正在创建你的第一个模型成员...</p>
             </div>
           )}
           {step === 'done' && (
             <div className="flex flex-col items-center py-12">
               <div className="mb-3 text-4xl">🎉</div>
-              <p className="text-base font-semibold text-cafe">猫猫已就位！</p>
+              <p className="text-base font-semibold text-cafe">模型成员已就位！</p>
               <p className="mt-1 text-sm text-cafe-muted">正在跳转到教程线程...</p>
             </div>
           )}

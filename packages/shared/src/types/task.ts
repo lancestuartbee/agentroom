@@ -1,6 +1,6 @@
 /**
  * Task Types (毛线球)
- * 猫猫任务系统 — 让每只猫追踪自己负责的事项
+ * 多成员任务系统 — 让每个成员追踪自己负责的事项
  *
  * #320: Unified model — PR tracking merged into Task system.
  * kind=work: human/cat collaboration tasks (original)

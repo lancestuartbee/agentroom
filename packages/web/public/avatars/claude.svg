@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Claude comic avatar">
+  <defs>
+    <linearGradient id="claude-bg" x1="38" x2="218" y1="28" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff4e6"/>
+      <stop offset="1" stop-color="#e58b61"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="54" fill="url(#claude-bg)"/>
+  <path fill="#ffffff" stroke="#2c211b" stroke-width="7" stroke-linejoin="round" d="M61 72h134c16 0 29 13 29 29v53c0 16-13 29-29 29h-45l-29 28-4-28H61c-16 0-29-13-29-29v-53c0-16 13-29 29-29z"/>
+  <circle cx="89" cy="127" r="13" fill="#2c211b"/>
+  <circle cx="166" cy="127" r="13" fill="#2c211b"/>
+  <path fill="none" stroke="#2c211b" stroke-width="8" stroke-linecap="round" d="M103 153c14 13 36 13 50 0"/>
+  <path fill="#c9613e" stroke="#2c211b" stroke-width="6" stroke-linejoin="round" d="M128 38l13 28 30 4-22 20 6 30-27-15-27 15 6-30-22-20 30-4z"/>
+  <text x="128" y="235" fill="#2c211b" font-family="Arial, sans-serif" font-size="24" font-weight="900" text-anchor="middle">CLAUDE</text>
+</svg>

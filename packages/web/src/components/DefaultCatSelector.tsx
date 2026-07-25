@@ -35,7 +35,7 @@ export function DefaultCatSelector({
     <div className="rounded-xl bg-[var(--console-card-bg)] p-4 shadow-[var(--shadow-elevation-2)]">
       {fetchError && (
         <div className="flex items-center gap-2 mb-3 text-xs text-semantic-warning bg-semantic-warning-surface rounded-lg px-3 py-2">
-          <span>加载失败，当前默认猫未知</span>
+          <span>加载失败，当前默认成员未知</span>
           {onRetry && (
             <button
               type="button"
@@ -55,8 +55,8 @@ export function DefaultCatSelector({
       )}
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold text-cafe-black">全局默认猫</h3>
-          <p className="text-xs text-cafe-muted mt-0.5">新 thread 没有历史时，默认由这只猫回复</p>
+          <h3 className="text-sm font-bold text-cafe-black">全局默认成员</h3>
+          <p className="text-xs text-cafe-muted mt-0.5">新 thread 没有历史时，默认由这位成员回复</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {currentCat && (
@@ -77,7 +77,7 @@ export function DefaultCatSelector({
           >
             {!valueInList && (
               <option value="" disabled>
-                {currentDefaultCatId ? '当前默认猫不可用' : '请选择默认猫'}
+                {currentDefaultCatId ? '当前默认成员不可用' : '请选择默认成员'}
               </option>
             )}
             {cats.map((cat) => (

@@ -89,17 +89,17 @@ export function DailyUsageSection() {
   const days = report?.daily ?? [];
   const grandTotal = report?.grandTotal;
 
-  // Issue #845: clarify "次调用" vs sum of per-cat participations.
-  // Multi-cat invocations count once toward day.total.invocations, but each
-  // cat participation increments its own count — so per-cat counts can sum
+  // Issue #845: clarify "次调用" vs sum of per-member participations.
+  // Multi-member invocations count once toward day.total.invocations, but each
+  // member participation increments its own count — so per-member counts can sum
   // to more than the day total. Show the math in a tooltip rather than hiding it.
   const invocationCountTitle =
-    '次调用 = 当日 invocation 记录数；下方每只猫的次数是各自参与次数。多猫调用让各猫之和 ≥ 总次数。';
+    '次调用 = 当日 invocation 记录数；下方每位成员的次数是各自参与次数。多成员调用让各成员之和 ≥ 总次数。';
 
   return (
     <section className="console-list-card rounded-xl shadow-[0_8px_22px_rgba(43,33,26,0.04)] p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-cafe">近 7 日猫粮消耗</h3>
+        <h3 className="text-sm font-semibold text-cafe">近 7 日配额消耗</h3>
         <button
           type="button"
           onClick={() => fetchUsage(true)}

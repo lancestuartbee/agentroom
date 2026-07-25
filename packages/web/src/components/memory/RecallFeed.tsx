@@ -90,7 +90,7 @@ export function RecallFeed() {
     return (
       <div data-testid="recall-feed" className="p-3">
         <p className="text-xs text-cafe-secondary">
-          猫猫还没有使用记忆搜索。当猫调用 search_evidence 时，这里会实时显示。
+          成员还没有使用记忆搜索。当成员调用 search_evidence 时，这里会实时显示。
         </p>
       </div>
     );

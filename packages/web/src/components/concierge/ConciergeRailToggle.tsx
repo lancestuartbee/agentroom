@@ -35,8 +35,8 @@ export function ConciergeRailToggle() {
           ? 'bg-[var(--console-rail-active)] shadow-[var(--console-rail-shadow)]'
           : 'hover:bg-[var(--console-rail-item)] hover:shadow-[var(--console-rail-shadow)]'
       }`}
-      title={isOpen ? '收起猫猫球' : muted ? '唤起猫猫球（已静音）' : '唤起猫猫球'}
-      aria-label={isOpen ? '收起猫猫球' : '唤起猫猫球'}
+      title={isOpen ? '收起前台助手' : muted ? '唤起前台助手（已静音）' : '唤起前台助手'}
+      aria-label={isOpen ? '收起前台助手' : '唤起前台助手'}
       data-testid="concierge-rail-toggle"
     >
       <CafeIcon name="cat" className="w-5 h-5" />

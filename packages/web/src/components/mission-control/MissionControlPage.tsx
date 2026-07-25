@@ -49,10 +49,10 @@ function detectSelfClaimPolicyBlocker(rawError: string): SelfClaimPolicyBlocker 
 function formatMissionHubError(rawError: string): string {
   const blocker = detectSelfClaimPolicyBlocker(rawError);
   if (blocker === 'once') {
-    return 'Self-claim 被 once 策略阻断：该猫的自领额度已用完。';
+    return 'Self-claim 被 once 策略阻断：该成员的自领额度已用完。';
   }
   if (blocker === 'thread') {
-    return 'Self-claim 被 thread 策略阻断：该猫已有 active lease 线程，请先释放或回收。';
+    return 'Self-claim 被 thread 策略阻断：该成员已有 active lease 线程，请先释放或回收。';
   }
   return rawError;
 }

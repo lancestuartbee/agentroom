@@ -31,7 +31,7 @@ const CVO_ACHIEVEMENTS: AchievementDef[] = [
 
 /** Bootcamp operator progression badges (F087 Phase D) */
 const BOOTCAMP_ACHIEVEMENTS: AchievementDef[] = [
-  { id: 'bootcamp-enrolled', icon: 'backpack', label: '入营新兵', description: '开始猫猫训练营', category: 'cvo' },
+  { id: 'bootcamp-enrolled', icon: 'backpack', label: '入营新兵', description: '开始成员训练营', category: 'cvo' },
   { id: 'bootcamp-env-ready', icon: 'tool', label: '装备齐全', description: '通过环境检测', category: 'cvo' },
   {
     id: 'bootcamp-first-decision',
@@ -44,7 +44,7 @@ const BOOTCAMP_ACHIEVEMENTS: AchievementDef[] = [
     id: 'bootcamp-graduated',
     icon: 'graduation',
     label: '训练营毕业',
-    description: '完成猫猫训练营全流程',
+    description: '完成成员训练营全流程',
     category: 'cvo',
   },
 ];
@@ -54,8 +54,8 @@ const DAILY_ACHIEVEMENTS: AchievementDef[] = [
   { id: 'daily-night-owl', icon: 'moon', label: '夜猫子', description: '凌晨 2-5 点还在写代码', category: 'daily' },
   { id: 'daily-streak-7', icon: 'flame', label: '七日连勤', description: '连续 7 天活跃', category: 'daily' },
   { id: 'daily-streak-30', icon: 'bolt', label: '月度铁人', description: '连续 30 天活跃', category: 'daily' },
-  { id: 'daily-chatty', icon: 'chat', label: '话痨猫猫', description: '单日消息超过 50 条', category: 'daily' },
-  { id: 'daily-game-mvp', icon: 'trophy', label: '游戏 MVP', description: '在猫猫杀中获得 MVP', category: 'daily' },
+  { id: 'daily-chatty', icon: 'chat', label: '高频对话', description: '单日消息超过 50 条', category: 'daily' },
+  { id: 'daily-game-mvp', icon: 'trophy', label: '游戏 MVP', description: '在游戏中获得 MVP', category: 'daily' },
   {
     id: 'daily-shame-king',
     icon: 'cross',
@@ -71,7 +71,7 @@ export const ALL_ACHIEVEMENTS: ReadonlyMap<string, AchievementDef> = new Map(
 
 /** operator level thresholds */
 const CVO_LEVELS = [
-  { level: 1, title: '实习猫猫', description: '刚入职的小猫', threshold: 0 },
+  { level: 1, title: '实习成员', description: '刚加入团队的新成员', threshold: 0 },
   { level: 2, title: '正式员工', description: '能独立完成任务', threshold: 2 },
   { level: 3, title: '高级工程猫', description: '技术骨干', threshold: 4 },
   { level: 4, title: '技术专家猫', description: '架构级能力', threshold: 6 },

@@ -1,11 +1,10 @@
 /**
  * Cat Types and Configurations
- * 三只 AI 猫猫的类型定义和配置
+ * AI model member type definitions and configuration
  */
 
 import type { CliConfig, ContextBudget } from './cat-breed.js';
 import type { CatId, SessionId } from './ids.js';
-import { createCatId } from './ids.js';
 import type { VoiceConfig } from './tts.js';
 
 /**
@@ -53,6 +52,8 @@ export interface AgyProfileConfig {
   readonly trustedWorkspaces?: readonly string[];
 }
 
+export type CapabilityLevel = 1 | 2 | 3;
+
 /**
  * Cat configuration (immutable)
  */
@@ -60,7 +61,7 @@ export interface CatConfig {
   readonly id: CatId;
   readonly name: string;
   readonly displayName: string;
-  /** Nickname given by co-creator (e.g. 宪宪, 砚砚). See docs/stories/cat-names/ */
+  /** Display suffix for the member, usually model line/version (e.g. Opus, 5.x). */
   readonly nickname?: string;
   readonly avatar: string;
   readonly color: CatColor;
@@ -76,6 +77,14 @@ export interface CatConfig {
   readonly contextBudget?: ContextBudget;
   readonly roleDescription: string;
   readonly personality: string;
+  /** Native model family used for display/routing hints, e.g. "claude", "gpt", "gemini". */
+  readonly modelFamily?: string;
+  /** Human-readable model line within the family, e.g. "Opus", "Sonnet", "5.x". */
+  readonly modelLine?: string;
+  /** Coarse model capability tier. Actual permissions still come from mode/task policy. */
+  readonly capabilityLevel?: CapabilityLevel;
+  /** Runtime carrier/client, e.g. "Claude CLI", "Codex CLI", "AGY", "OpenCode". */
+  readonly runtimeClient?: string;
   /** F32-b: Which breed this cat belongs to (for frontend grouping) */
   readonly breedId?: string;
   /** F32-b P4: Human-readable variant label (e.g. "4.5", "Sonnet") */

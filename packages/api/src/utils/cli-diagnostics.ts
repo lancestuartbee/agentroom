@@ -39,7 +39,7 @@ export function classifyCliError(text: string): CliErrorReasonCode | undefined {
 const REASON_TEXT: Record<CliErrorReasonCode, { summary: string; hint: string }> = {
   invalid_thinking_signature: {
     summary: 'Thinking 签名校验失败',
-    hint: '换一只猫，或刷新对话后再试。',
+    hint: '换一位成员，或刷新对话后再试。',
   },
   missing_rollout: {
     summary: 'CLI session 找不到',
@@ -75,7 +75,7 @@ const REASON_TEXT: Record<CliErrorReasonCode, { summary: string; hint: string }>
   },
   tool_call_parse_failed: {
     summary: '模型工具调用解析失败',
-    hint: 'Claude Code 报告：模型输出的 tool call 无法解析（已重试仍失败）——这是模型 / CC 侧问题，非猫咖配置。换一只猫或刷新对话重试；频繁出现可换 model。',
+    hint: 'Claude Code 报告：模型输出的 tool call 无法解析（已重试仍失败）——这是模型 / CLI 侧问题，非 Clowder AI 配置。换一位成员或刷新对话重试；频繁出现可换 model。',
   },
   server_overloaded: {
     // F212 Phase E — cloud codex R2 P2 fix (2026-05-30 on adf26db37): summary/hint MUST be
@@ -88,7 +88,7 @@ const REASON_TEXT: Record<CliErrorReasonCode, { summary: string; hint: string }>
     // Plain text only — CliDiagnosticsPanel renders publicHint inside a <span> verbatim
     // (no markdown parser). @gpt52 R1 BLOCKED + cloud codex R1 P2 both caught the earlier
     // Markdown version. Provider-neutral phrasing per cloud codex R2 P2.
-    hint: '不是你的额度问题——是 CLI 上游 provider 服务器侧临时限流（provider 错误里通常会明示如 "not your usage limit" / "529 Overloaded"）。等 30-60 秒重试或换一只猫（不同 provider）；反复出现去你用的 provider 状态页（Anthropic / OpenAI / Google / DeepSeek 各有 status 页）。',
+    hint: '不是你的额度问题——是 CLI 上游 provider 服务器侧临时限流（provider 错误里通常会明示如 "not your usage limit" / "529 Overloaded"）。等 30-60 秒重试或换一位成员（不同 provider）；反复出现去你用的 provider 状态页（Anthropic / OpenAI / Google / DeepSeek 各有 status 页）。',
   },
   // F212 Phase G (AC-G1): silent_completion — CLI 正常完成但事件流里没有 text event
   // (e.g. OpenCode + DeepSeek 用户撞的 step_start-only NDJSON, clowder-ai#875)。NOT 真错误
@@ -101,7 +101,7 @@ const REASON_TEXT: Record<CliErrorReasonCode, { summary: string; hint: string }>
     // sessionIdPrefix / stderrPresent) lives in `safeExcerpt` (JSON), surfaced by the
     // panel's expandable disclosure. debugRef only carries command / exit / signal /
     // invocationId. Previous hint sent users to debugRef — wrong place, killed UX value.
-    hint: 'CLI 进程正常退出，但没有可显示的文字输出（事件流没有 text event，或 plain-text stdout 为空）。建议：换一只猫试同样 prompt；换 model；或直接在终端跑 CLI 看 raw output 判断是 upstream / auth / profile 还是 prompt 问题。展开下方"详细诊断"查看 event 类型/数量、model、session 前缀等结构化证据；debugRef.invocationId 可用于后端日志检索。',
+    hint: 'CLI 进程正常退出，但没有可显示的文字输出（事件流没有 text event，或 plain-text stdout 为空）。建议：换一位成员试同样 prompt；换 model；或直接在终端跑 CLI 看 raw output 判断是 upstream / auth / profile 还是 prompt 问题。展开下方"详细诊断"查看 event 类型/数量、model、session 前缀等结构化证据；debugRef.invocationId 可用于后端日志检索。',
   },
 };
 
@@ -337,7 +337,7 @@ export function buildCliDiagnostics(args: {
           ?.slice(0, 200) ?? '';
       return {
         publicSummary: panicHeadline ? `CLI panic — ${panicHeadline}` : `Claude Code 报告：${headline}`,
-        publicHint: '这是 Claude Code / 模型侧报告的错误，不是猫咖问题。展开看完整原因；可换一只猫或刷新对话重试。',
+        publicHint: '这是 Claude Code / 模型侧报告的错误，不是 Clowder AI 配置问题。展开看完整原因；可换一位成员或刷新对话重试。',
         debugRef: args.debugRef,
         safeExcerpt: sanitized.slice(0, MAX_CHARS),
         excerptSource: 'cc_structured',

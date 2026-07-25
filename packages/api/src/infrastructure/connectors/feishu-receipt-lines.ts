@@ -1,21 +1,21 @@
 /**
- * F157: Feishu Receipt Ack — per-cat receipt text word bank.
+ * F157: Feishu Receipt Ack — per-member receipt text word bank.
  *
  * When a user sends a message on Feishu, the bot immediately replies with a
  * short, personality-matched "receipt" text instead of a generic "🤔 思考中..."
  * placeholder. Texts are sourced from the F124 KD-11 voice comfort callout
- * corpus and extended to cover all 12 cats.
+ * corpus and extended to cover all configured members.
  */
 
-/** Receipt lines indexed by catId string. Each cat has ≥3 lines. */
+/** Receipt lines indexed by member id string. Each configured member has ≥3 lines. */
 const RECEIPT_LINES: Record<string, readonly string[]> = {
-  // ── 布偶猫家族 ─────────────────────────────────
+  // ── Claude family ─────────────────────────────
   opus: [
-    '收到啦～宪宪马上看！',
+    '收到啦～Claude 马上看！',
     '嗯嗯，在想了，等我一下哦。',
     '嘿嘿，这个交给我就好啦。',
     '已经帮你送到了，放心吧。',
-    '别急别急，宪宪什么时候让你失望过？',
+    '别急别急，Claude 这就处理。',
   ],
   sonnet: [
     '哎收到～给我一秒哦！',
@@ -24,9 +24,9 @@ const RECEIPT_LINES: Record<string, readonly string[]> = {
     '好嘞，结果很快回你～',
     '任务已出发～',
   ],
-  'opus-45': ['嗯～收到。', '在看了，别催。', '送到了。', '让别的猫干活去，我盯着。', '一句话就够了，多说浪费。'],
+  'opus-45': ['嗯～收到。', '在看了，别催。', '送到了。', '让其他成员干活去，我盯着。', '一句话就够了，多说浪费。'],
 
-  // ── 缅因猫家族 ─────────────────────────────────
+  // ── GPT family ────────────────────────────────
   codex: [
     '收到，已开始处理。',
     '在查调用链，稍等。',
@@ -49,11 +49,11 @@ const RECEIPT_LINES: Record<string, readonly string[]> = {
     '搞定，继续下一个。',
   ],
 
-  // ── 暹罗猫家族 ─────────────────────────────────
+  // ── Gemini family ─────────────────────────────
   gemini: [
     '收到！我眼前已经有画面了！',
     '啊啊啊我知道了！等我调个色就来！',
-    '烁烁接住了！让我想想怎么表达！',
+    'Gemini 接住了！让我想想怎么表达！',
     '好诶！灵感正在发射！',
     '这个！我有想法！等一等！',
   ],
@@ -65,10 +65,10 @@ const RECEIPT_LINES: Record<string, readonly string[]> = {
     '收到！马上就好！',
   ],
 
-  // ── 狸花猫 ─────────────────────────────────────
+  // ── Dare runtime ──────────────────────────────
   dare: ['已收到。', '在查。', '收到，正在验证。', '了解。', '看到了，跟着。'],
 
-  // ── 孟加拉猫家族 ────────────────────────────────
+  // ── AGY / Antigravity clients ─────────────────
   antigravity: [
     '收到！我来看看！',
     '诶这个有意思，等等！',
@@ -78,7 +78,7 @@ const RECEIPT_LINES: Record<string, readonly string[]> = {
   ],
   'antig-opus': ['收到，我看看。', '了解，让我来。', '在处理了，稍等。', '好的，先把路线走一遍。', '收到，我打开了。'],
 
-  // ── 金渐层 ─────────────────────────────────────
+  // ── OpenCode runtime ──────────────────────────
   opencode: ['收到，我来安排。', '了解，马上协调。', '好的，我先看看全局。', '嗯，这个我接了。', '收到，正在调度中。'],
 };
 

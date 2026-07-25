@@ -5,7 +5,7 @@
  * Features:
  * - 有 @ 提及时路由到指定猫 + 更新对话参与者
  * - 无 @ 提及时路由到最近回复的猫 (F078)
- * - 群组 mention: @all/@全体, @全体{breed}, @thread/@本帖 (F078)
+ * - 群组 mention: @all/@全体, @全体{breed}, @参与者/@thread/@本帖 (F078)
  * - 无参与者的新对话默认路由到布偶猫 (opus)
  * - 支持中英文提及模式
  * - ideate intent + 多猫 → 并行独立思考 (routeParallel)
@@ -811,6 +811,10 @@ export class AgentRouter {
     this.conciergeTriagePlanStore = options.conciergeTriagePlanStore;
   }
 
+  getSessionManagerForMaintenance(): Pick<SessionManager, 'delete'> {
+    return this.sessionManager;
+  }
+
   refreshFromRegistry(agentRegistry: AgentRegistry): void {
     this.rebuildRuntimeCaches(agentRegistry);
   }
@@ -1221,7 +1225,7 @@ export class AgentRouter {
   }
 
   /**
-   * F078: Parse group mentions (@all, @全体, @全体{breed}, @all-{breed}, @thread, @本帖, @全体参与者).
+   * F078: Parse group mentions (@all, @全体, @全体{breed}, @all-{breed}, @参与者, @thread, @本帖, @本帖参与者, @全体参与者).
    * Returns matched CatIds or null if no group mention found.
    * Called BEFORE individual parseMentions — group patterns are longer and take priority.
    *
@@ -1261,7 +1265,7 @@ export class AgentRouter {
     const patterns: GroupPattern[] = [];
 
     // Thread-scoped patterns
-    for (const pattern of ['@全体参与者', '@thread', '@本帖']) {
+    for (const pattern of ['@参与者', '@本帖参与者', '@全体参与者', '@thread', '@本帖']) {
       patterns.push({
         pattern,
         resolve: async () => {
@@ -1337,12 +1341,12 @@ export class AgentRouter {
    * F182: returns routing_warnings from individual parseMentions.
    *
    * Bug fix: previously group mentions short-circuited individual parsing,
-   * so "@thread @gemini" would only dispatch to thread participants and drop
+   * so "@参与者 @gemini" would only dispatch to thread participants and drop
    * the explicit @gemini. Now we union both: group-expanded cats + any
    * explicit individual mentions not already in the group set.
    *
-   * Order: respects mention position in original message. "@gemini @thread"
-   * routes gemini first, then thread participants. "@thread @gemini" routes
+   * Order: respects mention position in original message. "@gemini @参与者"
+   * routes gemini first, then thread participants. "@参与者 @gemini" routes
    * thread participants first, then gemini.
    */
   private async parseAllMentions(
@@ -1371,7 +1375,15 @@ export class AgentRouter {
       // matched by parseGroupMentions and are not individual cat mentions.
       // Only suppress breed handles with ≥1 routable cat (service + available);
       // breeds where all cats are unavailable still warn so the user gets feedback.
-      const groupHandles = new Set(['all', 'thread']);
+      const groupHandles = new Set([
+        'all',
+        '全体',
+        'thread',
+        '本帖',
+        '参与者',
+        '全体参与者',
+        '本帖参与者',
+      ]);
       for (const [catId, config] of Object.entries(catRegistry.getAllConfigs())) {
         if (config.breedId && this.isRoutableCat(catId)) {
           groupHandles.add(`all-${config.breedId}`);

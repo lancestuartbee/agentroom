@@ -130,7 +130,7 @@ export function ProjectSetupCard({
                 {state === 'processing' && (
                   <span className="text-sm text-semantic-warning animate-pulse">正在初始化治理...</span>
                 )}
-                {state === 'done' && <span className="text-sm text-semantic-success">治理初始化完成，猫猫已就绪</span>}
+                {state === 'done' && <span className="text-sm text-semantic-success">治理初始化完成，成员已就绪</span>}
               </div>
             </div>
           </div>
@@ -155,7 +155,7 @@ export function ProjectSetupCard({
             <p className="text-sm font-medium text-cafe-black">发现了一片新大陆！</p>
             <p className="text-xs text-cafe-muted mt-0.5">
               项目 <code className="px-1 py-0.5 bg-cafe-surface rounded text-micro">{dirName}</code>{' '}
-              {isEmptyDir ? '是空目录，' : ''}需要初始化后猫猫才能工作。
+              {isEmptyDir ? '是空目录，' : ''}需要初始化后成员才能工作。
             </p>
           </div>
         </div>
@@ -236,7 +236,7 @@ export function ProjectSetupCard({
                   <HubIcon name="terminal" className="h-5 w-5 text-cafe-accent" />
                   <div className="flex-1">
                     <span className="text-sm font-semibold text-cafe-black">初始化全新项目</span>
-                    <p className="text-xs text-cafe-muted mt-0.5">从零开始，为你铺设标准的协作规则和猫砂盆。</p>
+                    <p className="text-xs text-cafe-muted mt-0.5">从零开始，为你铺设标准的协作规则和项目目录。</p>
                   </div>
                   <button
                     type="button"

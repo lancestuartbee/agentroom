@@ -80,7 +80,7 @@ function toneFor(status: AgentHookHealthStatus | 'syncing' | 'synced' | 'error')
     return {
       icon: 'check',
       title: 'Agent 运行 Hook 已同步',
-      body: 'Claude/Codex/Gemini 的开工与收尾 Hook 已就绪，猫猫可以按纪律开工。',
+      body: 'Claude/Codex/Gemini 的开工与收尾 Hook 已就绪，成员可以按纪律开工。',
       classes: 'border-conn-green-ring bg-conn-green-bg text-conn-green-text',
     };
   }
@@ -111,7 +111,7 @@ function toneFor(status: AgentHookHealthStatus | 'syncing' | 'synced' | 'error')
   return {
     icon: 'alert-triangle',
     title: 'Agent 运行 Hook 需要同步',
-    body: 'Hook 缺失或过期时，猫猫开工前的 recall 与收尾检查可能不会自动执行。',
+    body: 'Hook 缺失或过期时，成员开工前的 recall 与收尾检查可能不会自动执行。',
     classes: 'border-conn-amber-ring bg-conn-amber-bg text-conn-amber-text',
   };
 }

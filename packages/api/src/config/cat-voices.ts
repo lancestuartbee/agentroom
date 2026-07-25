@@ -90,6 +90,15 @@ export function resolveRefAudioPath(refAudio: string, characterBaseDir: string):
  */
 function buildDefaultVoices(): Record<string, VoiceConfig> {
   const base = genshinVoiceDir();
+  const geminiVoice: VoiceConfig = {
+    voice: 'zm_yunjian',
+    langCode: 'zh',
+    speed: 1.0,
+    refAudio: join(base, '班尼特/vo_bennett_dialog_greetingNight.wav'),
+    refText: '晚上好！今天的冒险怎么样？',
+    instruct: '用一个超级阳光开心的小男孩语气说话，充满热情和兴奋',
+    temperature: 0.3,
+  };
   return {
     ragdoll: {
       voice: 'zm_yunjian',
@@ -109,15 +118,8 @@ function buildDefaultVoices(): Record<string, VoiceConfig> {
       instruct: '用一个傲娇冰山少年的语气说话，表面严厉实际关心',
       temperature: 0.3,
     },
-    siamese: {
-      voice: 'zm_yunjian',
-      langCode: 'zh',
-      speed: 1.0,
-      refAudio: join(base, '班尼特/vo_bennett_dialog_greetingNight.wav'),
-      refText: '晚上好！今天的冒险怎么样？',
-      instruct: '用一个超级阳光开心的小男孩语气说话，充满热情和兴奋',
-      temperature: 0.3,
-    },
+    gemini: geminiVoice,
+    siamese: geminiVoice,
   };
 }
 

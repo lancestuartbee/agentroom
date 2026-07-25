@@ -70,6 +70,8 @@ const mentionPatternSchema = z.string().min(2).regex(/^@/, 'mentionPattern must 
 
 const colorSchema = z.object({ primary: z.string(), secondary: z.string() });
 
+const capabilityLevelSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+
 const timeZoneSchema = z
   .string()
   .trim()
@@ -81,6 +83,7 @@ const catVariantSchema = z.object({
   catId: z.string().min(1).optional(), // F32-b: variant-level catId
   displayName: z.string().min(1).optional(), // F32-b: variant-level displayName
   variantLabel: z.string().min(1).optional(), // F32-b P4: disambiguation label
+  nickname: z.string().min(1).optional(),
   mentionPatterns: z.array(mentionPatternSchema).optional(), // F32-b: variant-level mentions
   source: z.string().optional(), // #441: legacy field, ignored — kept in schema for old catalog read compat
   accountRef: z.string().min(1).optional(), // F127: concrete account binding
@@ -100,6 +103,10 @@ const catVariantSchema = z.object({
     .refine((v) => !v.includes('/'), 'provider must not contain "/"')
     .optional(),
   roleDescription: z.string().min(1).optional(), // F127 review fix: allow variant-scoped roleDescription override
+  modelFamily: z.string().trim().min(1).optional(),
+  modelLine: z.string().trim().min(1).optional(),
+  capabilityLevel: capabilityLevelSchema.optional(),
+  runtimeClient: z.string().trim().min(1).optional(),
   sessionChain: z.boolean().optional(), // F127 review fix: allow variant-scoped sessionChain override
   personality: z.string().optional(),
   strengths: z.array(z.string()).optional(),
@@ -178,6 +185,10 @@ const catBreedSchema = z.object({
   color: colorSchema,
   mentionPatterns: z.array(mentionPatternSchema).min(1),
   roleDescription: z.string().min(1),
+  modelFamily: z.string().trim().min(1).optional(),
+  modelLine: z.string().trim().min(1).optional(),
+  capabilityLevel: capabilityLevelSchema.optional(),
+  runtimeClient: z.string().trim().min(1).optional(),
   defaultVariantId: z.string().min(1),
   variants: z.array(catVariantSchema).min(1),
   features: catFeaturesSchema,
@@ -502,7 +513,7 @@ export function toAllCatConfigs(config: CatCafeConfig): Record<string, CatConfig
         id: createCatId(catId),
         name: variant.displayName ?? breed.name,
         displayName: variant.displayName ?? breed.displayName,
-        ...(breed.nickname != null ? { nickname: breed.nickname } : {}),
+        ...((variant.nickname ?? breed.nickname) != null ? { nickname: variant.nickname ?? breed.nickname } : {}),
         avatar: variant.avatar ?? breed.avatar, // F32-b P4c: variant can override
         color: variant.color ?? breed.color, // F32-b P4c: variant can override
         mentionPatterns,
@@ -521,6 +532,16 @@ export function toAllCatConfigs(config: CatCafeConfig): Record<string, CatConfig
         ...(variant.voiceConfig != null ? { voiceConfig: variant.voiceConfig } : {}),
         roleDescription: variant.roleDescription ?? breed.roleDescription,
         personality: variant.personality ?? defaultVariant?.personality ?? '',
+        ...((variant.modelFamily ?? breed.modelFamily)
+          ? { modelFamily: variant.modelFamily ?? breed.modelFamily }
+          : {}),
+        ...((variant.modelLine ?? breed.modelLine) ? { modelLine: variant.modelLine ?? breed.modelLine } : {}),
+        ...((variant.capabilityLevel ?? breed.capabilityLevel)
+          ? { capabilityLevel: variant.capabilityLevel ?? breed.capabilityLevel }
+          : {}),
+        ...((variant.runtimeClient ?? breed.runtimeClient)
+          ? { runtimeClient: variant.runtimeClient ?? breed.runtimeClient }
+          : {}),
         breedId: breed.id,
         breedDisplayName: breed.displayName,
         ...(variant.variantLabel != null ? { variantLabel: variant.variantLabel } : {}),

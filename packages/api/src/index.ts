@@ -1732,6 +1732,9 @@ async function main(): Promise<void> {
     ...(ballCustodyIngest ? { ballCustody: ballCustodyIngest } : {}),
     taskProgressStore, // F194 AC-B7: cleared on zombie reconcile
     invocationRegistry: registry, // F194 Phase Z (KD-22): namespace bridge for parent↔child invocation
+    sessionManager: router.getSessionManagerForMaintenance(),
+    sessionChainStore,
+    sessionSealer,
   });
   await app.register(invocationsRoutes, {
     invocationRecordStore,

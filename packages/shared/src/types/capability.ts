@@ -175,13 +175,13 @@ export interface McpToolInfo {
   description?: string;
 }
 
-/** Cat family grouping for the capability board UI */
+/** Model/member family grouping for the capability board UI */
 export interface CatFamily {
-  /** Breed ID (e.g. 'ragdoll') */
+  /** Family ID (e.g. 'claude') */
   id: string;
-  /** Display name (e.g. '布偶猫') */
+  /** Display name (e.g. 'Claude') */
   name: string;
-  /** All catIds belonging to this family */
+  /** All member ids belonging to this family */
   catIds: string[];
 }
 

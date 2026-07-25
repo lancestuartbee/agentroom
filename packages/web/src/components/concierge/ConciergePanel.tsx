@@ -350,8 +350,7 @@ export function ConciergePanel() {
           className="flex items-center gap-2 px-4 py-3 border-b"
         >
           <span style={{ color: 'var(--cafe-text)' }} className="text-sm font-semibold flex-1">
-            {/* FIX-4 KD-16 R2: show duty cat's display name (not raw catId) so user
-                sees "猫猫球 · 值班：烁烁" instead of "猫猫球 · 值班：gemini25" */}
+            {/* FIX-4 KD-16 R2: show duty member's display name instead of raw catId. */}
             {dutyCatProfileId ? `${displayName} · 值班：${dutyCatDisplayName ?? dutyCatProfileId}` : displayName}
           </span>
           {invocationStatus === 'error' && (
@@ -364,7 +363,7 @@ export function ConciergePanel() {
             type="button"
             aria-label={muted ? '取消静音' : '静音'}
             onClick={handleMuteToggle}
-            title={muted ? '取消静音，召回猫猫球' : '静音，隐藏猫猫球'}
+            title={muted ? '取消静音，召回前台助手' : '静音，隐藏前台助手'}
             style={{
               color: muted ? 'var(--semantic-warning)' : 'var(--cafe-text-muted)',
             }}
@@ -410,7 +409,7 @@ export function ConciergePanel() {
             </p>
           ) : messages.length === 0 ? (
             <p style={{ color: 'var(--cafe-text-secondary)' }} className="text-sm text-center mt-4">
-              你好！我是猫猫球，有什么可以帮你？
+              你好！我是前台助手，有什么可以帮你？
             </p>
           ) : (
             <div className="flex flex-col gap-2">
@@ -490,7 +489,7 @@ export function ConciergePanel() {
           {invocationStatus === 'in_progress' && (
             <div className="flex items-center justify-center gap-2 mt-2" role="status">
               <span style={{ color: 'var(--cafe-text-secondary)' }} className="text-xs animate-pulse">
-                {queueStatus.isRunning ? '猫猫球处理中…' : '确认回复中…'}
+                {queueStatus.isRunning ? '前台助手处理中…' : '确认回复中…'}
               </span>
               <button
                 type="button"
@@ -537,7 +536,7 @@ export function ConciergePanel() {
             onKeyDown={handleKeyDown}
             onCompositionStart={ime.onCompositionStart}
             onCompositionEnd={ime.onCompositionEnd}
-            placeholder="发消息给猫猫球…"
+            placeholder="发消息给前台助手…"
             aria-label="消息输入框"
             style={{
               backgroundColor: 'var(--cafe-surface-elevated)',

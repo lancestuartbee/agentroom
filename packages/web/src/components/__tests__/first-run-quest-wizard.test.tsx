@@ -85,7 +85,7 @@ describe('FirstRunQuestWizard', () => {
     await flushEffects();
 
     // FirstRunQuestWizard uses createPortal to document.body
-    expect(document.body.textContent).toContain('选择角色模板');
+    expect(document.body.textContent).toContain('选择模型模板');
     expect(document.body.textContent).toContain('布偶猫');
     expect(document.body.textContent).toContain('宪宪');
   });
@@ -100,7 +100,7 @@ describe('FirstRunQuestWizard', () => {
 
     // FirstRunQuestWizard uses createPortal to document.body
     expect(document.body.textContent).toContain('第 1 步');
-    expect(document.body.textContent).toContain('选择角色模板');
+    expect(document.body.textContent).toContain('选择模型模板');
   });
 
   it('shows empty state when no templates available', async () => {
@@ -112,7 +112,7 @@ describe('FirstRunQuestWizard', () => {
     await flushEffects();
 
     // FirstRunQuestWizard uses createPortal to document.body
-    expect(document.body.textContent).toContain('暂无可用角色模板');
+    expect(document.body.textContent).toContain('暂无可用模型模板');
   });
 
   it('handles template API errors gracefully', async () => {
@@ -125,7 +125,7 @@ describe('FirstRunQuestWizard', () => {
 
     // Should degrade gracefully, not crash
     // FirstRunQuestWizard uses createPortal to document.body
-    expect(document.body.textContent).toContain('暂无可用角色模板');
+    expect(document.body.textContent).toContain('暂无可用模型模板');
   });
 
   it('sends clientId (not client) in POST /api/cats payload', async () => {
@@ -231,7 +231,7 @@ describe('FirstRunQuestWizard', () => {
 
     // Click create button
     const createButton = Array.from(document.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('创建猫猫'),
+      b.textContent?.includes('创建成员'),
     );
     if (createButton && !createButton.disabled) {
       await act(async () => {

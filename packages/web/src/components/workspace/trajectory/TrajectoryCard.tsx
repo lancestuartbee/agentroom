@@ -121,7 +121,7 @@ export function TrajectoryCard({
         {/* 提包球警示 banner */}
         {isStale && (
           <div className="mb-2 px-2 py-1.5 rounded-lg bg-conn-amber-bg/15 border border-conn-amber-ring/30 text-xs text-conn-amber-text flex items-center gap-2">
-            <span>⚠️ 猫咪已提包离线{staleBucket ? ` [stale: ${staleBucket}]` : ''}</span>
+            <span>⚠️ 成员已离线{staleBucket ? ` [stale: ${staleBucket}]` : ''}</span>
             {threadId && onJumpToThread && (
               <button
                 type="button"

@@ -549,34 +549,34 @@ export class ConnectorCommandLayer {
     const thread = await this.deps.threadStore.get(binding.threadId);
     const trimmed = args.trim();
 
-    // /focus (no args) — query current preferred cat
+    // /focus (no args) — query current preferred member
     if (!trimmed) {
       const preferred = thread?.preferredCats;
       if (preferred && preferred.length > 0) {
-        return { kind: 'focus', response: `🐱 当前首选猫：${preferred.join(', ')}` };
+        return { kind: 'focus', response: `🎯 当前首选成员：${preferred.join(', ')}` };
       }
-      return { kind: 'focus', response: '🐾 当前未设置首选猫，使用全局默认。' };
+      return { kind: 'focus', response: '🎯 当前未设置首选成员，使用全局默认。' };
     }
 
-    // /focus clear — clear preferred cats
+    // /focus clear — clear preferred members
     if (trimmed === 'clear') {
       await this.deps.threadStore.updatePreferredCats?.(binding.threadId, []);
-      return { kind: 'focus', response: '✅ 已清除首选猫设置，回到全局默认。' };
+      return { kind: 'focus', response: '✅ 已清除首选成员设置，回到全局默认。' };
     }
 
-    // /focus <catName> — set preferred cat (single, KD-5)
+    // /focus <catName> — set preferred member (single, KD-5)
     const resolved = normalizeCatId(trimmed);
     if (!resolved.ok) {
       if (resolved.reason === 'ambiguous') {
         return {
           kind: 'focus',
-          response: `🤔 找到多只匹配的猫：${resolved.candidates.join(', ')}，请输入更精确的名字。`,
+          response: `🤔 找到多位匹配成员：${resolved.candidates.join(', ')}，请输入更精确的名字。`,
         };
       }
-      return { kind: 'focus', response: `❌ 找不到猫「${resolved.input}」。` };
+      return { kind: 'focus', response: `❌ 找不到成员「${resolved.input}」。` };
     }
     await this.deps.threadStore.updatePreferredCats?.(binding.threadId, [String(resolved.catId)]);
-    return { kind: 'focus', response: `🐱 已将首选猫设为 ${resolved.catId}` };
+    return { kind: 'focus', response: `🎯 已将首选成员设为 ${resolved.catId}` };
   }
 
   // ── F154: /ask — one-shot directed routing (KD-4: normal pipeline) ────
@@ -595,7 +595,7 @@ export class ConnectorCommandLayer {
 
     const parts = args.trim().split(/\s+/);
     if (parts.length < 2 || !parts[0]) {
-      return { kind: 'ask', response: '用法：/ask <猫名> <消息>' };
+      return { kind: 'ask', response: '用法：/ask <成员名> <消息>' };
     }
     const [catInput, ...msgParts] = parts;
     const message = msgParts.join(' ');

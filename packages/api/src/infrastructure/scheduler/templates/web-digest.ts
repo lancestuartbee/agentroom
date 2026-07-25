@@ -13,7 +13,7 @@ export const webDigestTemplate: TaskTemplate = {
   paramSchema: {
     url: { type: 'string', required: true, description: '目标网页 URL' },
     topic: { type: 'string', required: false, description: '关注的主题关键词' },
-    targetCatId: { type: 'string', required: false, description: '唤醒哪只猫处理浏览器抓取（默认当前注册的猫）' },
+    targetCatId: { type: 'string', required: false, description: '唤醒哪位成员处理浏览器抓取（默认当前注册成员）' },
   },
   createSpec(instanceId: string, p: DynamicTaskParams): TaskSpec_P1 {
     const url = (p.params.url as string) || '';

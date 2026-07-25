@@ -1003,7 +1003,7 @@ function buildRelayContent(originalText: string, conciergeThreadId: string, targ
     `${targetHandles}`,
     '',
     '---',
-    '**前台猫转达的消息：**',
+    '**前台助手转达的消息：**',
     '',
     quotedText,
     '',

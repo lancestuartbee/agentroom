@@ -43,6 +43,8 @@ const colorSchema = z.object({
   secondary: z.string().min(1),
 });
 
+const capabilityLevelSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+
 const contextBudgetSchema = z.object({
   maxPromptTokens: z.number().int().positive(),
   maxContextTokens: z.number().int().positive(),
@@ -50,22 +52,24 @@ const contextBudgetSchema = z.object({
   maxContentLengthPerMsg: z.number().int().positive(),
 });
 
-const agyProfileSchema = z.object({
-  enabled: z.boolean().optional(),
-  profileId: z.string().min(1).optional(),
-  homeRoot: z.string().min(1).optional(),
-  model: z.string().min(1).optional(),
-  autoApprove: z.boolean().optional(),
-  trustedWorkspaces: z.array(z.string().min(1)).optional(),
-}).superRefine((value, ctx) => {
-  if (value.enabled === false) return;
-  if (value.model && value.model.trim().length > 0) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    path: ['model'],
-    message: 'agyProfile.model is required unless agyProfile.enabled=false',
-  });
-}) satisfies z.ZodType<AgyProfileConfig>;
+const agyProfileSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    profileId: z.string().min(1).optional(),
+    homeRoot: z.string().min(1).optional(),
+    model: z.string().min(1).optional(),
+    autoApprove: z.boolean().optional(),
+    trustedWorkspaces: z.array(z.string().min(1)).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.enabled === false) return;
+    if (value.model && value.model.trim().length > 0) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['model'],
+      message: 'agyProfile.model is required unless agyProfile.enabled=false',
+    });
+  }) satisfies z.ZodType<AgyProfileConfig>;
 
 const cliEffortSchema = z.enum(CLI_EFFORT_VALUES);
 const cliSchema = z.object({
@@ -172,6 +176,10 @@ const baseCatSchema = z.object({
   contextBudget: contextBudgetSchema.optional(),
   agyProfile: agyProfileSchema.optional(),
   roleDescription: z.string().min(1),
+  modelFamily: z.string().trim().min(1).optional(),
+  modelLine: z.string().trim().min(1).optional(),
+  capabilityLevel: capabilityLevelSchema.optional(),
+  runtimeClient: z.string().trim().min(1).optional(),
   personality: z.string().optional(),
   teamStrengths: z.string().optional(),
   caution: z.string().nullable().optional(),
@@ -232,6 +240,10 @@ const updateCatSchema = z.object({
   contextBudget: contextBudgetSchema.nullable().optional(),
   agyProfile: agyProfileSchema.nullable().optional(),
   roleDescription: z.string().min(1).optional(),
+  modelFamily: z.string().trim().min(1).optional(),
+  modelLine: z.string().trim().min(1).optional(),
+  capabilityLevel: capabilityLevelSchema.optional(),
+  runtimeClient: z.string().trim().min(1).optional(),
   personality: z.string().optional(),
   teamStrengths: z.string().optional(),
   caution: z.string().nullable().optional(),
@@ -470,6 +482,10 @@ async function toCatResponse(
     avatar: cat.avatar,
     roleDescription: cat.roleDescription,
     personality: cat.personality,
+    modelFamily: cat.modelFamily,
+    modelLine: cat.modelLine,
+    capabilityLevel: cat.capabilityLevel,
+    runtimeClient: cat.runtimeClient,
     teamStrengths: cat.teamStrengths,
     caution: cat.caution,
     strengths: cat.strengths,
@@ -524,7 +540,7 @@ interface CatsRoutesOptions {
 }
 
 export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opts) => {
-  // GET /api/cat-templates - 获取角色模板（纯灵魂层，不含 client/model 绑定）
+  // GET /api/cat-templates - 获取模型成员模板
   app.get('/api/cat-templates', async () => {
     try {
       const projectRoot = resolveProjectRoot();
@@ -538,6 +554,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           color: { primary: string; secondary: string };
           roleDescription: string;
           personality: string;
+          modelFamily?: string;
+          modelLine?: string;
+          capabilityLevel?: 1 | 2 | 3;
+          runtimeClient?: string;
           teamStrengths?: string;
         }[];
         clientDefaults?: Record<string, { defaultModel: string; models: string[] }>;
@@ -558,6 +578,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           color: cat.color,
           roleDescription: cat.roleDescription,
           personality: cat.personality,
+          modelFamily: cat.modelFamily,
+          modelLine: cat.modelLine,
+          capabilityLevel: cat.capabilityLevel,
+          runtimeClient: cat.runtimeClient,
           teamStrengths: cat.teamStrengths,
         })),
         clientDefaults: {},
@@ -647,6 +671,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           contextBudget: body.contextBudget,
           roleDescription: body.roleDescription,
           personality: body.personality,
+          modelFamily: body.modelFamily,
+          modelLine: body.modelLine,
+          capabilityLevel: body.capabilityLevel,
+          runtimeClient: body.runtimeClient,
           teamStrengths: body.teamStrengths,
           caution: body.caution,
           strengths: body.strengths,
@@ -676,6 +704,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           contextBudget: body.contextBudget,
           roleDescription: body.roleDescription,
           personality: body.personality,
+          modelFamily: body.modelFamily,
+          modelLine: body.modelLine,
+          capabilityLevel: body.capabilityLevel,
+          runtimeClient: body.runtimeClient,
           teamStrengths: body.teamStrengths,
           caution: body.caution,
           strengths: body.strengths,
@@ -703,6 +735,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           contextBudget: body.contextBudget,
           roleDescription: body.roleDescription,
           personality: body.personality,
+          modelFamily: body.modelFamily,
+          modelLine: body.modelLine,
+          capabilityLevel: body.capabilityLevel,
+          runtimeClient: body.runtimeClient,
           teamStrengths: body.teamStrengths,
           caution: body.caution,
           strengths: body.strengths,
@@ -889,6 +925,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         ...(body.contextBudget !== undefined ? { contextBudget: body.contextBudget } : {}),
         ...(body.roleDescription !== undefined ? { roleDescription: body.roleDescription } : {}),
         ...(body.personality !== undefined ? { personality: body.personality } : {}),
+        ...(body.modelFamily !== undefined ? { modelFamily: body.modelFamily } : {}),
+        ...(body.modelLine !== undefined ? { modelLine: body.modelLine } : {}),
+        ...(body.capabilityLevel !== undefined ? { capabilityLevel: body.capabilityLevel } : {}),
+        ...(body.runtimeClient !== undefined ? { runtimeClient: body.runtimeClient } : {}),
         ...(body.teamStrengths !== undefined ? { teamStrengths: body.teamStrengths } : {}),
         ...(body.caution !== undefined ? { caution: body.caution } : {}),
         ...(body.strengths !== undefined ? { strengths: body.strengths } : {}),

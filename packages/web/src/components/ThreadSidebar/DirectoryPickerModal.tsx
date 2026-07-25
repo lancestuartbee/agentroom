@@ -192,7 +192,7 @@ export function DirectoryPickerModal({
   }, [onCancel]);
 
   const [catsExpanded, setCatsExpanded] = useState(false);
-  const catSummary = selectedCats.length > 0 ? `已选 ${selectedCats.length} 只猫` : '';
+  const catSummary = selectedCats.length > 0 ? `已选 ${selectedCats.length} 位成员` : '';
   const isLightweightMode = threadMode === 'casual' || threadMode === 'roundtable';
   const createButtonLabel =
     submitLabel ?? (threadMode === 'casual' ? '创建闲聊' : threadMode === 'roundtable' ? '创建圆桌' : '创建对话');
@@ -374,7 +374,7 @@ export function DirectoryPickerModal({
               onClick={() => setCatsExpanded((v) => !v)}
               className="flex items-center gap-1 text-xs text-cafe-secondary hover:text-cafe-secondary transition-colors ml-auto"
             >
-              <span>{catsExpanded ? '收起猫猫' : '选猫猫'}</span>
+              <span>{catsExpanded ? '收起成员' : '选择成员'}</span>
               {catSummary && <span className="text-cafe-accent">({catSummary})</span>}
               <svg
                 aria-hidden="true"

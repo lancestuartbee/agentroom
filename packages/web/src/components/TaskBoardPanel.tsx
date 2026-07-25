@@ -73,7 +73,7 @@ function EmptyState({ onCreateFirst }: { onCreateFirst: () => void }) {
       <div className="text-3xl mb-3">&#x1F9F6;</div>
       <h3 className="text-sm font-semibold text-cafe-secondary mb-1">把长期事项挂在线上，不埋回聊天里</h3>
       <p className="text-xs text-cafe-muted mb-4 leading-relaxed">
-        需要跨多轮对话跟踪的事项，co-creator和猫猫都可以创建毛线球。 临时步骤继续留给猫猫祟祟。
+        需要跨多轮对话跟踪的事项，co-creator 和成员都可以创建工作项。临时步骤继续留给计划面板。
       </p>
       <button
         type="button"
@@ -87,7 +87,7 @@ function EmptyState({ onCreateFirst }: { onCreateFirst: () => void }) {
         <ul className="text-micro text-cafe-muted space-y-1 list-disc pl-4">
           <li>跨对话的持续任务（调研、重构、功能开发）</li>
           <li>需要阻塞跟踪的外部依赖</li>
-          <li>想让猫猫记住的长期目标</li>
+          <li>想让成员记住的长期目标</li>
         </ul>
       </div>
     </div>

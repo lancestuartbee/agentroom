@@ -154,7 +154,7 @@ export function ChatInputActionButton({
             disabled={isSendDisabled}
             className="p-3 rounded-xl bg-[var(--color-cocreator-primary)] text-[var(--cafe-surface)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             aria-label="排队发送"
-            title="排队发送 — 猫猫忙完后处理"
+            title="排队发送 — 成员忙完后处理"
           >
             <QueueSendIcon className="w-5 h-5" />
           </button>
@@ -164,7 +164,7 @@ export function ChatInputActionButton({
               disabled={isSendDisabled}
               className="p-2 rounded-lg text-xs text-conn-red-text hover:bg-conn-red-bg disabled:opacity-40 transition-colors"
               aria-label="强制发送"
-              title="强制发送 — 中断当前猫猫"
+              title="强制发送 — 中断当前成员"
             >
               <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                 <path

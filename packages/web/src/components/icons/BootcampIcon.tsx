@@ -2,7 +2,7 @@
 export function BootcampIcon({ className = 'w-5 h-5' }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-      <title>猫猫训练营</title>
+      <title>成员训练营</title>
       {/* Graduation cap */}
       <polygon points="12,2 3,7 12,12 21,7" />
       <path d="M6 8.5v4c0 1.5 2.7 3 6 3s6-1.5 6-3v-4l-6 3.5L6 8.5z" />

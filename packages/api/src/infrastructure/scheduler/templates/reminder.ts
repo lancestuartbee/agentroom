@@ -8,12 +8,12 @@ export const reminderTemplate: TaskTemplate = {
   templateId: 'reminder',
   label: '定时提醒',
   category: 'system',
-  description: '按设定时间唤醒猫猫处理提醒（猫猫会根据内容自主行动）',
+  description: '按设定时间唤醒成员处理提醒（成员会根据内容自主行动）',
   subjectKind: 'none',
   defaultTrigger: { type: 'cron', expression: '0 9 * * *' },
   paramSchema: {
     message: { type: 'string', required: true, description: '提醒内容' },
-    targetCatId: { type: 'string', required: false, description: '唤醒哪只猫处理（默认当前注册的猫）' },
+    targetCatId: { type: 'string', required: false, description: '唤醒哪位成员处理（默认当前注册成员）' },
   },
   createSpec(instanceId: string, p: DynamicTaskParams): TaskSpec_P1 {
     const message = (p.params.message as string) || '定时提醒';

@@ -195,7 +195,7 @@ describe('ChatInput mention menu guards', () => {
   });
 
   it('ArrowDown past last item wraps to 0 and Enter still works', () => {
-    // 4 options: 布偶猫, 缅因猫 (individuals), @thread, @all (groups).
+    // 4 options: 布偶猫, 缅因猫 (individuals), @参与者, @all (groups).
     // Default selectedIdx = 0 (first individual, groups are at bottom).
     render();
 
@@ -230,7 +230,7 @@ describe('ChatInput mention menu guards', () => {
     expect(container.textContent).toContain('@缅因猫');
     expect(container.textContent).toContain('@all');
     expect(container.textContent).not.toContain('@布偶猫');
-    expect(container.textContent).not.toContain('@thread');
+    expect(container.textContent).not.toContain('@参与者');
   });
 
   it('does not fall back to full mention candidates while thread metadata is missing', () => {
@@ -238,10 +238,10 @@ describe('ChatInput mention menu guards', () => {
 
     typeInTextarea('@');
 
-    expect(container.textContent).toContain('无匹配猫猫');
+    expect(container.textContent).toContain('无匹配成员');
     expect(container.textContent).not.toContain('@布偶猫');
     expect(container.textContent).not.toContain('@缅因猫');
-    expect(container.textContent).not.toContain('@thread');
+    expect(container.textContent).not.toContain('@参与者');
   });
 
   it('hydrates stale thread metadata before showing scoped casual mention candidates', async () => {
@@ -262,7 +262,7 @@ describe('ChatInput mention menu guards', () => {
     render({ threadId: 'thread-stale' });
     typeInTextarea('@');
 
-    expect(container.textContent).toContain('无匹配猫猫');
+    expect(container.textContent).toContain('无匹配成员');
     expect(container.textContent).not.toContain('@布偶猫');
     expect(container.textContent).not.toContain('@缅因猫');
 
@@ -276,6 +276,6 @@ describe('ChatInput mention menu guards', () => {
     expect(container.textContent).toContain('@缅因猫');
     expect(container.textContent).toContain('@all');
     expect(container.textContent).not.toContain('@布偶猫');
-    expect(container.textContent).not.toContain('@thread');
+    expect(container.textContent).not.toContain('@参与者');
   });
 });

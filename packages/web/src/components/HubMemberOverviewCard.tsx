@@ -61,6 +61,12 @@ function accountSummary(cat: CatData) {
 }
 
 function getMetaSummary(cat: CatData, configCat?: CatConfig) {
+  const family = cat.modelFamily?.trim();
+  const line = cat.modelLine?.trim();
+  const level = cat.capabilityLevel ? `Level ${cat.capabilityLevel}` : '';
+  const runtime = cat.runtimeClient?.trim() || clientRuntimeLabel(cat, configCat);
+  const profile = [family, line, level].filter(Boolean).join(' · ');
+  if (profile) return `${profile} · ${runtime} · ${configCat?.model ?? cat.defaultModel}`;
   if (cat.clientId === 'antigravity') {
     return `Antigravity · ${configCat?.model ?? cat.defaultModel} · CLI Bridge`;
   }

@@ -62,7 +62,7 @@ function TipContent({
         type="button"
         data-testid="capability-tip-learn-more"
         onClick={openDraft}
-        title="了解更多：打开猫猫球并预填输入框，不会自动发送"
+        title="了解更多：打开前台助手并预填输入框，不会自动发送"
         className="shrink-0 rounded-md border border-cafe px-2 py-1 text-xs font-medium text-cafe-secondary transition-colors hover:border-cafe-accent hover:text-cafe-accent"
       >
         了解更多
@@ -161,7 +161,7 @@ export function CapabilityTipStrip({
         <TipContent tip={tip} matchedContext={matchedContext} surface={surface} setSurfaceState={setSurfaceState} />
       ) : (
         <>
-          <span className="sr-only">猫猫思考中</span>
+          <span className="sr-only">成员思考中</span>
           <div className="flex w-full items-center gap-2 animate-pulse" aria-hidden="true">
             <span className="h-3 w-6 rounded bg-cafe-muted/20" />
             <span className="h-3 flex-1 rounded bg-cafe-muted/15" />

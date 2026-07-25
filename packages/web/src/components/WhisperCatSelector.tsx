@@ -44,12 +44,12 @@ export function WhisperCatSelector({ cats, selected, activeCatIds, onToggle }: W
       </div>
       {canScrollDown && (
         <div className="px-4 py-1 text-micro text-cafe-muted text-center border-t border-cafe-subtle bg-gradient-to-t from-[var(--cafe-surface)] shrink-0">
-          ↓ 还有更多猫猫
+          ↓ 还有更多成员
         </div>
       )}
       {selected.size === 0 && (
         <div className="px-4 py-1.5 text-xs text-semantic-critical border-t border-cafe-subtle shrink-0">
-          请至少选一只猫猫
+          请至少选一位成员
         </div>
       )}
     </div>

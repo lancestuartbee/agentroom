@@ -125,11 +125,11 @@ describe('buildCatOptions vs buildWhisperOptions split', () => {
     expect(options.map((option) => option.id)).not.toContain('spark');
   });
 
-  it('buildCatOptions places group mentions (@thread, @all) after individual cats', () => {
+  it('buildCatOptions places group mentions (@参与者, @all) after individual cats', () => {
     const options = buildCatOptions(FAKE_CATS);
     const groups = options.filter((opt) => opt.isGroup);
     expect(groups.length).toBeGreaterThanOrEqual(2);
-    expect(groups.find((g) => g.insert === '@thread ')).toBeDefined();
+    expect(groups.find((g) => g.insert === '@参与者 ')).toBeDefined();
     expect(groups.find((g) => g.insert === '@all ')).toBeDefined();
     // Individual cats come before group mentions (groups are low-frequency)
     const lastIndividualIdx = options.reduce((max, opt, i) => (!opt.isGroup ? i : max), -1);
@@ -170,7 +170,7 @@ describe('casual mention options', () => {
 
   it('keeps legacy group mentions outside casual mode', () => {
     const options = buildCatOptions(RAGDOLL_CATS);
-    expect(options.map((option) => option.insert)).toContain('@thread ');
+    expect(options.map((option) => option.insert)).toContain('@参与者 ');
     expect(options.map((option) => option.insert)).toContain('@全体布偶猫 ');
   });
 
@@ -185,7 +185,7 @@ describe('casual mention options', () => {
 
     expect(optionIds).toEqual(['sonnet', 'all']);
     expect(inserts).toContain('@all ');
-    expect(inserts).not.toContain('@thread ');
+    expect(inserts).not.toContain('@参与者 ');
     expect(inserts).not.toContain('@opus ');
     expect(inserts).not.toContain('@fable ');
     expect(inserts).not.toContain('@全体布偶猫 ');
@@ -202,7 +202,7 @@ describe('casual mention options', () => {
 
     expect(optionIds).toEqual(['opus', 'all']);
     expect(inserts).toContain('@all ');
-    expect(inserts).not.toContain('@thread ');
+    expect(inserts).not.toContain('@参与者 ');
     expect(inserts).not.toContain('@sonnet ');
     expect(inserts).not.toContain('@fable ');
     expect(inserts).not.toContain('@全体布偶猫 ');

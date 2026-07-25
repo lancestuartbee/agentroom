@@ -240,7 +240,7 @@ export const DEVELOPMENT_SOP_DEFINITION = {
         {
           id: 'completion-vision-guardian',
           kind: 'hard_rule',
-          text: 'feat close 前必须跨猫愿景守护',
+          text: 'feat close 前必须跨成员愿景守护',
           severity: 'blocker',
           owner: { type: 'stage_suggested_skill', skill: 'feat-lifecycle' },
           predicate: {
@@ -262,7 +262,7 @@ export const DEVELOPMENT_SOP_DEFINITION = {
         {
           id: 'completion-missing-guardian-handoff',
           kind: 'pitfall',
-          text: '没有 @ 其他猫做愿景守护就直接 close',
+          text: '没有 @ 其他成员做愿景守护就直接 close',
           severity: 'blocker',
           owner: { type: 'stage_suggested_skill', skill: 'feat-lifecycle' },
           predicate: { type: 'handle_check', constraint: 'guardian_handoff_present' },

@@ -171,6 +171,7 @@ export type {
 // Cat types
 export type {
   AgyProfileConfig,
+  CapabilityLevel,
   CatColor,
   CatConfig,
   /** @deprecated clowder-ai#340: Use ClientId instead. */

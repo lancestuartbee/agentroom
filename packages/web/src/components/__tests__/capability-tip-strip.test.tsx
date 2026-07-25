@@ -61,7 +61,7 @@ describe('F244 CapabilityTipStrip', () => {
     // NOT inside the aria-hidden skeleton — otherwise screen readers see nothing.
     const srOnly = strip?.querySelector('.sr-only');
     expect(srOnly).not.toBeNull();
-    expect(srOnly?.textContent).toBe('猫猫思考中');
+    expect(srOnly?.textContent).toBe('成员思考中');
     // Must NOT be inside an aria-hidden ancestor
     expect(srOnly?.closest('[aria-hidden="true"]')).toBeNull();
   });

@@ -45,7 +45,7 @@ export const META_THEME_COLOR = '#E29578';
 /** Default new-label color for ThreadLabelPicker initial state. */
 export const DEFAULT_LABEL_COLOR = '#5B8C5A';
 
-/** Group mention accent (used by @thread / @all input options). */
+/** Group mention accent (used by @参与者 / @all input options). */
 export const GROUP_MENTION_COLOR = '#6B7280';
 
 /* ── Helpers ── */

@@ -37,7 +37,7 @@ export interface L0PromptsBlock {
 }
 
 export const FILE_LABELS: Record<string, string> = {
-  'cat-cafe-skills/refs/shared-rules.md': '家规（三猫共用协作规则）',
+  'cat-cafe-skills/refs/shared-rules.md': '家规（多成员共用协作规则）',
   'docs/SOP.md': '运维 SOP',
 };
 
@@ -213,7 +213,7 @@ export function L0PromptsSection({
         L0 系统提示词模板
       </SettingsText>
       <SettingsText as="p" variant="xs" tone="muted">
-        下方注入段的真相源模板。编译器按猫替换占位变量（身份、队友名册、工作流触发点）后生成最终系统提示词。
+        下方注入段的真相源模板。编译器按成员替换占位变量（身份、队友名册、工作流触发点）后生成最终系统提示词。
       </SettingsText>
       {/* Template row — 层3 抬升, shadow emphasis since 层3/层4 visually close */}
       <button

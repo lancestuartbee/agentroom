@@ -165,7 +165,7 @@ export function ThreadCatPill({ threadId }: ThreadCatPillProps) {
             <span className="text-cafe-secondary font-medium">{formatCatName(cat)}</span>
           </>
         ) : (
-          <span className="text-cafe-muted">首选猫</span>
+          <span className="text-cafe-muted">首选成员</span>
         )}
         <span className="text-cafe-muted">▾</span>
       </button>

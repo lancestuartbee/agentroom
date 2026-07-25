@@ -1342,6 +1342,39 @@ describe('routeParallel cursor ack on error', () => {
 });
 
 describe('routeParallel resilience', () => {
+  it('surfaces a per-cat error and done when one parallel stream throws before completion', async () => {
+    const { routeParallel } = await import('../dist/domains/cats/services/agents/routing/route-parallel.js');
+
+    const appendCalls = [];
+    const deps = createMockDeps(
+      {
+        opus: createMockService('opus', 'opus says'),
+        codex: {
+          async *invoke() {
+            throw new Error('codex stream crashed');
+          },
+        },
+      },
+      appendCalls,
+    );
+
+    const messages = [];
+    for await (const msg of routeParallel(deps, ['opus', 'codex'], 'test', 'user1', 'thread1')) {
+      messages.push(msg);
+    }
+
+    assert.ok(
+      messages.some((m) => m.type === 'error' && m.catId === 'codex' && /stream crashed/.test(m.error)),
+      'failed stream should emit a visible per-cat error',
+    );
+    const doneCats = messages.filter((m) => m.type === 'done').map((m) => m.catId);
+    assert.deepEqual(doneCats.sort(), ['codex', 'opus']);
+    assert.ok(
+      appendCalls.some((m) => m.userId === 'system' && /codex stream crashed/.test(m.content)),
+      'failed stream should persist a system error instead of silently disappearing',
+    );
+  });
+
   it('yields done even when messageStore.append throws (Redis failure)', async () => {
     const { routeParallel } = await import('../dist/domains/cats/services/agents/routing/route-parallel.js');
 

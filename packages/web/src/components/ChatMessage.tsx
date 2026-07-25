@@ -586,7 +586,7 @@ export function ChatMessage({
           {message.content}
           {isFollowup && (
             <span className="block mt-1 text-xs text-[var(--color-cocreator-primary)]">
-              输入 @猫名 跟进 来发起 follow-up
+              输入 @成员名 跟进 来发起 follow-up
             </span>
           )}
         </div>

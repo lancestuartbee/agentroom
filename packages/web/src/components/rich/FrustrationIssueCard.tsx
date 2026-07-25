@@ -303,7 +303,7 @@ export function FrustrationIssueCard({ block }: FrustrationIssueCardProps) {
               type="button"
               onClick={handleConfirm}
               disabled={isActionInProgress}
-              title="记录到本地反馈池，供猫猫优先处理"
+              title="记录到本地反馈池，供成员优先处理"
               className="rounded bg-cafe-accent px-3 py-1.5 text-xs font-medium text-white transition hover:bg-cafe-accent/80 disabled:opacity-50"
             >
               {status === 'confirming' ? '记录中...' : '确认记录'}

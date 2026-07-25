@@ -231,7 +231,7 @@ function IssueRow({
             }}
             className="text-xs text-cafe-crosspost bg-cafe-crosspost/10 px-1.5 py-0.5 rounded hover:bg-cafe-crosspost/20 transition-colors"
           >
-            发送给系统猫
+            发送给系统成员
           </button>
         )}
         {item.replyState === 'unreplied' && item.state !== 'unreplied' && (

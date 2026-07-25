@@ -28,6 +28,7 @@ type RoundtableAction =
   | 'vote_and_summary'
   | 'followup'
   | 'single_response'
+  | 'status_response'
   | 'artifact_request';
 
 interface RoundtablePhaseDefinition {
@@ -796,6 +797,13 @@ function hasCollectiveCue(message: string): boolean {
   return hasAllMention(message) || hasVoteCue(message) || hasSummaryCue(message) || hasContinueCue(message);
 }
 
+function hasRoundtableRuntimeStatusCue(message: string): boolean {
+  const text = message.replace(/@(?:all|全体|参与者|本帖参与者|thread|本帖)\b/gi, '').trim();
+  return /((其他人|其它人|大家|成员|参会者).*(怎么|为什么|咋).*(不|没|没有).*(回答|回复|发言|完成)|(?:怎么|为什么|咋).*(只有|就).*(一个|一位|Claude|claude).*(回答|回复|发言)|没人(回答|回复|发言)|还没(回答|回复|发言|完成)|没有(回答|回复|发言|完成)|谁.*(没|没有).*(回答|回复|发言|完成)|是不是.*(卡住|失败|还在工作|还在跑)|工作中.*(没|没有).*(回答|回复|完成)|卡住了?|挂了|超时)/i.test(
+    text,
+  );
+}
+
 function hasArtifactRequestCue(message: string): boolean {
   return /(保存|存成|写成|导出|生成|整理|归档|落盘|下载|产物|报告|文档|markdown|md文件|文件)/i.test(message);
 }
@@ -813,6 +821,7 @@ function isClearlyLightweightMessage(message: string): boolean {
 export function isLikelyNewRoundtableTopic(message: string, currentIssue?: RoundtableIssueStateV1 | null): boolean {
   const text = message.trim();
   if (!text) return false;
+  if (hasRoundtableRuntimeStatusCue(text)) return false;
   if (/(新议题|下一个议题|另一个议题|换个议题|开启.*圆桌|开始.*圆桌|开.*圆桌|圆桌讨论|大家讨论|大家怎么看|各自观点)/.test(text)) {
     return true;
   }
@@ -835,6 +844,9 @@ export function planRoundtableAction(
 ): RoundtableActionPlan {
   const mentioned = findMentionedParticipants(message, participants);
   const strictFocusOnly = mentioned.length > 0 && hasStrictFocusCue(message) && !hasCollectiveCue(message);
+  if (hasRoundtableRuntimeStatusCue(message)) {
+    return { action: 'status_response', focusCats: [], strictFocusOnly: false };
+  }
   if (currentIssue?.status === 'summarized' && hasArtifactRequestCue(message)) {
     return {
       action: 'artifact_request',
@@ -1111,6 +1123,39 @@ async function* runSingleResponse(
   });
 }
 
+async function* runStatusResponse(
+  deps: RouteStrategyDeps,
+  primaryCat: CatId,
+  message: string,
+  threadId: string,
+  state: RoundtableIssueStateV1 | null,
+): AsyncGenerator<AgentMessage, void, void> {
+  const now = Date.now();
+  const content = [
+    '圆桌会议运行提示：这看起来是在询问成员响应状态，不会作为新的会议议题处理。',
+    state?.topic ? `当前议题仍是：${oneLine(state.topic, 180)}` : '当前没有已登记的圆桌议题状态。',
+    '如果上一轮只有部分成员回复，通常表示该轮调用没有完整落入圆桌流程、成员调用失败或响应流异常；请重新发送原议题，或明确说“继续圆桌/重新开启这个议题”。',
+    `用户原话：${oneLine(message, 220)}`,
+  ].join('\n');
+  const stored = await Promise.resolve(
+    deps.messageStore.append({
+      userId: 'system',
+      catId: null,
+      content,
+      mentions: [],
+      timestamp: now,
+      threadId,
+    }),
+  );
+  yield {
+    type: 'system_info',
+    catId: primaryCat,
+    content: stored.content,
+    timestamp: stored.timestamp,
+    messageId: stored.id,
+  };
+}
+
 async function* runArtifactRequest(
   deps: RouteStrategyDeps,
   message: string,
@@ -1163,6 +1208,11 @@ export async function* routeRoundtable(
 
   if (actionPlan.action === 'single_response') {
     yield* runSingleResponse(deps, primaryCat, message, userId, threadId, options, currentIssue);
+    return;
+  }
+
+  if (actionPlan.action === 'status_response') {
+    yield* runStatusResponse(deps, primaryCat, message, threadId, currentIssue);
     return;
   }
 

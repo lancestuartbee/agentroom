@@ -9,7 +9,7 @@ interface DelayedMistakeTipProps {
 
 export function DelayedMistakeTip({ catName, onVisible }: DelayedMistakeTipProps) {
   const [visible, setVisible] = useState(false);
-  const cat = catName ?? '猫猫';
+  const cat = catName ?? '成员';
   // Ref-based callback: avoids resetting the 1.5s timer when parent re-renders
   // with a new callback reference.
   const onVisibleRef = useRef(onVisible);
@@ -34,7 +34,7 @@ export function DelayedMistakeTip({ catName, onVisible }: DelayedMistakeTipProps
         <div className="flex items-center gap-2">
           <span className="text-lg">🤔</span>
           <span className="text-sm font-medium text-conn-amber-text">
-            似乎{cat}执行的不是那么合适…… 让我们再来一只猫猫监督 TA 干活吧！
+            似乎{cat}执行的不是那么合适…… 让我们再来一位成员监督 TA 干活吧！
           </span>
         </div>
       </div>

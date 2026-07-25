@@ -82,7 +82,7 @@ export function parseActiveFeaturesFromBacklog(markdown: string): BacklogFeature
       id,
       name: cells[nameCol]?.trim() ?? '',
       status: cells[statusCol]?.trim() ?? 'idea',
-      owner: cells[ownerCol]?.trim() ?? '三猫',
+      owner: cells[ownerCol]?.trim() ?? '多成员',
       ...(link ? { link } : {}),
     });
   }
@@ -174,10 +174,10 @@ export function parseFeatureDocName(markdown: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
-/** Extract owner from `> **Owner**: 三猫` */
+/** Extract owner from `> **Owner**: 多成员` */
 export function parseFeatureDocOwner(markdown: string): string {
   const match = markdown.match(/>\s*\*\*Owner\*\*:\s*(.+)/i);
-  return match?.[1]?.trim() ?? '三猫';
+  return match?.[1]?.trim() ?? '多成员';
 }
 
 function extractFeatureIds(text: string): string[] {

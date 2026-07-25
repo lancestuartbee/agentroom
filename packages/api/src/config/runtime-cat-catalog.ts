@@ -2,6 +2,7 @@ import { mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type {
   AgyProfileConfig,
+  CapabilityLevel,
   CatBreed,
   CatCafeConfig,
   CatColor,
@@ -33,6 +34,10 @@ export interface RuntimeCatInput {
   accountRef?: string;
   roleDescription: string;
   personality?: string;
+  modelFamily?: string;
+  modelLine?: string;
+  capabilityLevel?: CapabilityLevel;
+  runtimeClient?: string;
   teamStrengths?: string;
   caution?: string | null;
   strengths?: string[];
@@ -64,6 +69,10 @@ export interface RuntimeCatUpdate {
   accountRef?: string | null;
   roleDescription?: string;
   personality?: string;
+  modelFamily?: string;
+  modelLine?: string;
+  capabilityLevel?: CapabilityLevel;
+  runtimeClient?: string;
   teamStrengths?: string;
   caution?: string | null;
   strengths?: string[];
@@ -217,6 +226,14 @@ function createBreedFromInput(input: RuntimeCatInput): CatBreed {
     color: input.color,
     mentionPatterns: normalizeMentionPatterns(input.catId, input.mentionPatterns),
     roleDescription: input.roleDescription,
+    ...(input.modelFamily != null && input.modelFamily.trim().length > 0
+      ? { modelFamily: input.modelFamily.trim() }
+      : {}),
+    ...(input.modelLine != null && input.modelLine.trim().length > 0 ? { modelLine: input.modelLine.trim() } : {}),
+    ...(input.capabilityLevel != null ? { capabilityLevel: input.capabilityLevel } : {}),
+    ...(input.runtimeClient != null && input.runtimeClient.trim().length > 0
+      ? { runtimeClient: input.runtimeClient.trim() }
+      : {}),
     defaultVariantId: variantId,
     ...(input.sessionChain !== undefined ? { features: { sessionChain: input.sessionChain } } : {}),
     variants: [
@@ -226,6 +243,7 @@ function createBreedFromInput(input: RuntimeCatInput): CatBreed {
         ...(input.variantLabel != null && input.variantLabel.trim().length > 0
           ? { variantLabel: input.variantLabel.trim() }
           : {}),
+        ...(input.nickname != null && input.nickname.trim().length > 0 ? { nickname: input.nickname.trim() } : {}),
         defaultModel: input.defaultModel,
         mcpSupport: input.mcpSupport,
         cli: input.cli,
@@ -239,6 +257,14 @@ function createBreedFromInput(input: RuntimeCatInput): CatBreed {
         ...(input.voiceConfig !== undefined ? { voiceConfig: input.voiceConfig } : {}),
         ...(input.agyProfile !== undefined ? { agyProfile: input.agyProfile } : {}),
         ...(input.personality != null && input.personality.trim().length > 0 ? { personality: input.personality } : {}),
+        ...(input.modelFamily != null && input.modelFamily.trim().length > 0
+          ? { modelFamily: input.modelFamily.trim() }
+          : {}),
+        ...(input.modelLine != null && input.modelLine.trim().length > 0 ? { modelLine: input.modelLine.trim() } : {}),
+        ...(input.capabilityLevel != null ? { capabilityLevel: input.capabilityLevel } : {}),
+        ...(input.runtimeClient != null && input.runtimeClient.trim().length > 0
+          ? { runtimeClient: input.runtimeClient.trim() }
+          : {}),
         ...(input.teamStrengths != null && input.teamStrengths.trim().length > 0
           ? { teamStrengths: input.teamStrengths.trim() }
           : {}),
@@ -309,9 +335,11 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
   if (patch.name !== undefined) breed.name = patch.name;
   if (patch.nickname !== undefined) {
     if (patch.nickname && patch.nickname.trim().length > 0) {
-      breed.nickname = patch.nickname.trim();
+      variant.nickname = patch.nickname.trim();
+      if (located.isDefaultVariant) breed.nickname = patch.nickname.trim();
     } else {
-      delete breed.nickname;
+      delete variant.nickname;
+      if (located.isDefaultVariant) delete breed.nickname;
     }
   }
   if (patch.roleDescription !== undefined) {
@@ -379,6 +407,37 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
       variant.personality = patch.personality;
     } else {
       delete variant.personality;
+    }
+  }
+  if (patch.modelFamily !== undefined) {
+    if (patch.modelFamily && patch.modelFamily.trim().length > 0) {
+      variant.modelFamily = patch.modelFamily.trim();
+      if (located.isDefaultVariant) breed.modelFamily = patch.modelFamily.trim();
+    } else {
+      delete variant.modelFamily;
+      if (located.isDefaultVariant) delete breed.modelFamily;
+    }
+  }
+  if (patch.modelLine !== undefined) {
+    if (patch.modelLine && patch.modelLine.trim().length > 0) {
+      variant.modelLine = patch.modelLine.trim();
+      if (located.isDefaultVariant) breed.modelLine = patch.modelLine.trim();
+    } else {
+      delete variant.modelLine;
+      if (located.isDefaultVariant) delete breed.modelLine;
+    }
+  }
+  if (patch.capabilityLevel !== undefined) {
+    variant.capabilityLevel = patch.capabilityLevel;
+    if (located.isDefaultVariant) breed.capabilityLevel = patch.capabilityLevel;
+  }
+  if (patch.runtimeClient !== undefined) {
+    if (patch.runtimeClient && patch.runtimeClient.trim().length > 0) {
+      variant.runtimeClient = patch.runtimeClient.trim();
+      if (located.isDefaultVariant) breed.runtimeClient = patch.runtimeClient.trim();
+    } else {
+      delete variant.runtimeClient;
+      if (located.isDefaultVariant) delete breed.runtimeClient;
     }
   }
   if (patch.teamStrengths !== undefined) {

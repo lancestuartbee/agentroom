@@ -11,6 +11,10 @@ export interface TemplateCard {
   color: { primary: string; secondary: string };
   roleDescription: string;
   personality: string;
+  modelFamily?: string;
+  modelLine?: string;
+  capabilityLevel?: 1 | 2 | 3;
+  runtimeClient?: string;
   teamStrengths?: string;
 }
 
@@ -45,17 +49,17 @@ export function TemplateStep({ onSelect }: TemplateStepProps) {
   }, []);
 
   if (loading) {
-    return <p className="py-8 text-center text-sm text-cafe-muted">加载角色模板中...</p>;
+    return <p className="py-8 text-center text-sm text-cafe-muted">加载模型模板中...</p>;
   }
 
   if (templates.length === 0) {
-    return <p className="py-8 text-center text-sm text-cafe-muted">暂无可用角色模板</p>;
+    return <p className="py-8 text-center text-sm text-cafe-muted">暂无可用模型模板</p>;
   }
 
   return (
     <div>
-      <h4 className="mb-1 text-sm font-semibold text-cafe-secondary">选择一个角色模板</h4>
-      <p className="mb-4 text-xs text-cafe-muted">每只猫猫都有自己的性格和特长，选一只你喜欢的！</p>
+      <h4 className="mb-1 text-sm font-semibold text-cafe-secondary">选择一个模型模板</h4>
+      <p className="mb-4 text-xs text-cafe-muted">从模型家族和运行客户端开始，后续可按需补充人物设定。</p>
       <div className="grid max-h-[50vh] gap-3 overflow-y-auto pr-1">
         {templates.map((t) => (
           <button
@@ -82,8 +86,10 @@ export function TemplateStep({ onSelect }: TemplateStepProps) {
                 <span className="font-semibold text-cafe">{t.name}</span>
                 {t.nickname && <span className="text-xs text-cafe-muted">{t.nickname}</span>}
               </div>
-              <p className="mt-0.5 line-clamp-1 text-xs text-cafe-muted">{t.roleDescription}</p>
-              <p className="mt-0.5 line-clamp-1 text-xs text-cafe-muted">{t.personality}</p>
+              <p className="mt-0.5 line-clamp-1 text-xs text-cafe-muted">
+                {[t.modelFamily, t.modelLine, t.runtimeClient].filter(Boolean).join(' · ') || t.roleDescription}
+              </p>
+              <p className="mt-0.5 line-clamp-1 text-xs text-cafe-muted">{t.teamStrengths}</p>
             </div>
           </button>
         ))}

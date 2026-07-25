@@ -6,7 +6,7 @@ export function BootstrapAutoNotice() {
           <span className="text-xl flex-shrink-0">⏳</span>
           <div>
             <p className="text-sm font-medium text-conn-amber-text">正在自动建立记忆索引…</p>
-            <p className="text-xs text-conn-amber-text mt-0.5">治理初始化完成，猫猫正在扫描项目文档以构建知识库</p>
+            <p className="text-xs text-conn-amber-text mt-0.5">治理初始化完成，成员正在扫描项目文档以构建知识库</p>
           </div>
         </div>
         <p className="text-micro text-conn-amber-text mt-2 ml-9">

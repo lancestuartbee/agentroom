@@ -58,6 +58,10 @@ export interface CatData {
   avatar: string;
   roleDescription: string;
   personality: string;
+  modelFamily?: string;
+  modelLine?: string;
+  capabilityLevel?: 1 | 2 | 3;
+  runtimeClient?: string;
   teamStrengths?: string;
   caution?: string | null;
   strengths?: string[];
@@ -66,7 +70,7 @@ export interface CatData {
   variantLabel?: string;
   /** F32-b P4: Whether this is the default variant for its breed */
   isDefaultVariant?: boolean;
-  /** F32-b P4: Breed-level display name (e.g. "布偶猫"), for group headings */
+  /** F32-b P4: Group-level display name for section headings */
   breedDisplayName?: string;
   voiceConfig?: {
     voice: string;
@@ -149,6 +153,10 @@ function normalizeCats(rawCats: unknown[]): CatData[] {
       avatar: cat.avatar ?? '',
       roleDescription: cat.roleDescription ?? '',
       personality: cat.personality ?? '',
+      modelFamily: cat.modelFamily,
+      modelLine: cat.modelLine,
+      capabilityLevel: cat.capabilityLevel,
+      runtimeClient: cat.runtimeClient,
       teamStrengths: cat.teamStrengths,
       caution: cat.caution,
       strengths: Array.isArray(cat.strengths) ? cat.strengths : undefined,

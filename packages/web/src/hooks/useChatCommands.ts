@@ -82,7 +82,7 @@ function formatConfigForDisplay(config: ConfigSnapshot): string {
   }
 
   if (config.cats) {
-    lines.push('猫猫配置');
+    lines.push('成员配置');
     for (const [id, cat] of Object.entries(config.cats)) {
       const c = cat as { displayName: string; clientId: string; model: string; mcpSupport: boolean };
       lines.push(`  ${c.displayName} (${id}): ${c.clientId}/${c.model} ${c.mcpSupport ? '[MCP]' : ''}`);
@@ -91,7 +91,7 @@ function formatConfigForDisplay(config: ConfigSnapshot): string {
   }
 
   if (config.a2a) {
-    lines.push('A2A 猫猫互调');
+    lines.push('A2A 成员互调');
     lines.push(`  启用: ${config.a2a.enabled ? '是' : '否'}`);
     lines.push(`  最大深度: ${config.a2a.maxDepth}`);
     lines.push('');

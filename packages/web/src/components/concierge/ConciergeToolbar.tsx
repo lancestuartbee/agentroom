@@ -77,7 +77,7 @@ export function ConciergeToolbar() {
       data-testid="concierge-toolbar"
       className="absolute bottom-[calc(100%+8px)] right-0 flex flex-col items-end gap-2 pointer-events-auto"
       role="toolbar"
-      aria-label="猫猫能力工具栏"
+      aria-label="前台助手能力工具栏"
     >
       {TOOLS.map((tool, i) => (
         <button

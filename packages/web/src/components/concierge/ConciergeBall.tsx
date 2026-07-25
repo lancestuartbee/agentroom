@@ -160,7 +160,7 @@ export function ConciergeBall({ ballState }: ConciergeBallProps) {
     <div aria-live="polite" aria-atomic="false" className="pointer-events-none">
       <button
         type="button"
-        aria-label={`猫猫球 — ${stateLabel}`}
+        aria-label={`前台助手 — ${stateLabel}`}
         aria-expanded={isExpanded}
         aria-haspopup="dialog"
         style={{

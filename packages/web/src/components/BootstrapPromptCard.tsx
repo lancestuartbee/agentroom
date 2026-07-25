@@ -58,7 +58,7 @@ export function BootstrapPromptCard({
                 ? `项目 ${dirName} 上次扫描出错：${indexState.error_message ?? '未知错误'}`
                 : isStale
                   ? `项目 ${dirName} 代码已更新，需要重新扫描以保持记忆新鲜。`
-                  : '建立索引后，猫猫可以搜索项目历史知识（specs、ADRs、教训等），不再从零开始'}
+                  : '建立索引后，成员可以搜索项目历史知识（specs、ADRs、教训等），不再从零开始'}
             </p>
           </div>
         </div>

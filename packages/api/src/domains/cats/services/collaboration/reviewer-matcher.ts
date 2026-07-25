@@ -204,7 +204,7 @@ export function canReview(reviewer: CatId, author: CatId): { canReview: boolean;
   if (policy.excludeUnavailable && reviewerEntry.available === false) {
     return {
       canReview: false,
-      reason: `"${reviewerId}" is not available (没猫粮！)`,
+      reason: `"${reviewerId}" is not available (配额不足)`,
     };
   }
 

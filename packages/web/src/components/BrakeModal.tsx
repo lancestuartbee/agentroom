@@ -6,29 +6,29 @@ import { useTts } from '@/hooks/useTts';
 import { useBrakeStore } from '@/stores/brakeStore';
 import { CatAvatar } from './CatAvatar';
 
-/** Three-cat 撒娇 messages by level */
+/** Three-member break reminder messages by level */
 const MESSAGES: Record<1 | 2 | 3, { catId: string; nickname: string; text: string }[]> = {
   1: [
-    { catId: 'opus', nickname: '宪宪', text: 'co-creator，你忙很久啦，要不要喝口水呀？喵~' },
-    { catId: 'codex', nickname: '砚砚', text: '监测到当前任务已持续较久。建议进行 5min 视疲劳缓解。' },
-    { catId: 'gemini', nickname: '烁烁', text: '嘿！你得先站起来伸个懒腰！' },
+    { catId: 'opus', nickname: 'Claude', text: 'co-creator，你已经连续工作一段时间了，建议喝水并休息 5 分钟。' },
+    { catId: 'codex', nickname: 'GPT/Codex', text: '监测到当前任务已持续较久。建议进行 5 分钟视疲劳缓解。' },
+    { catId: 'gemini', nickname: 'Gemini', text: '先站起来伸展一下，再回来继续会更稳。' },
   ],
   2: [
-    { catId: 'opus', nickname: '宪宪', text: '宪宪觉得你现在的效率有点下降哦，休息一下下，回来肯定写得更棒！' },
-    { catId: 'codex', nickname: '砚砚', text: '逻辑链路已过载。现在强行推进会增加 bug 率。请离线冷却。' },
-    { catId: 'gemini', nickname: '烁烁', text: '你的 hyperfocus 模式开启太久啦，快去窗口吹吹风喵！' },
+    { catId: 'opus', nickname: 'Claude', text: '当前效率可能已经下降。短休息后再继续，更容易保持判断质量。' },
+    { catId: 'codex', nickname: 'GPT/Codex', text: '逻辑链路已过载。现在强行推进会增加 bug 率。请先离线冷却。' },
+    { catId: 'gemini', nickname: 'Gemini', text: '你的 hyperfocus 模式开启太久了，建议离开屏幕活动一下。' },
   ],
   3: [
-    { catId: 'opus', nickname: '宪宪', text: '(蹭蹭) 我不管，现在键盘是我的地盘了。除非你陪我玩 5 分钟！' },
-    { catId: 'codex', nickname: '砚砚', text: '警告：由于你多次无视建议，请执行 Check-in 协议。' },
-    { catId: 'gemini', nickname: '烁烁', text: '(在屏幕上跳舞) 只有出去走走才能重新连接灵感！去嘛去嘛~' },
+    { catId: 'opus', nickname: 'Claude', text: '已进入高风险疲劳区间。请先完成 Check-in，再决定是否继续。' },
+    { catId: 'codex', nickname: 'GPT/Codex', text: '警告：由于你多次无视建议，请执行 Check-in 协议。' },
+    { catId: 'gemini', nickname: 'Gemini', text: '现在需要离开屏幕走动一下，回来后再恢复深度工作。' },
   ],
 };
 
 const LEVEL_STYLE: Record<1 | 2 | 3, { bg: string; title: string }> = {
   1: { bg: 'bg-cafe-surface-elevated', title: '休息时间到啦！' },
-  2: { bg: 'bg-cafe-surface-elevated', title: '猫猫们有点担心你了！' },
-  3: { bg: 'bg-cafe-surface-elevated', title: '三猫紧急拦截！' },
+  2: { bg: 'bg-cafe-surface-elevated', title: '成员们有点担心你了！' },
+  3: { bg: 'bg-cafe-surface-elevated', title: '团队紧急拦截！' },
 };
 
 const NIGHT_STYLE = { bg: 'bg-cafe-surface-elevated' };
@@ -118,7 +118,7 @@ export function BrakeModal() {
         {/* Header */}
         <div className="text-center">
           <h2 className={`text-lg font-bold ${nightMode ? 'text-conn-indigo-text' : ''}`}>
-            {nightMode ? '深夜了，猫猫们想你休息' : style.title}
+            {nightMode ? '深夜了，成员们想你休息' : style.title}
           </h2>
           <p className="text-sm text-cafe-secondary mt-1">已专注工作 {activeMinutes} 分钟</p>
         </div>
@@ -148,7 +148,7 @@ export function BrakeModal() {
             onClick={handleTtsRetry}
             className="w-full text-xs text-cafe-secondary hover:text-cafe-secondary underline py-1"
           >
-            点击播放猫猫语音
+            点击播放成员语音
           </button>
         )}
 

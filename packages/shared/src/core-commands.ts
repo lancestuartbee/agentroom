@@ -209,7 +209,7 @@ export const CORE_COMMANDS: readonly SlashCommandDefinition[] = [
   {
     name: '/cats',
     usage: '/cats',
-    description: '查看当前 thread 的猫猫',
+    description: '查看当前 thread 的成员',
     category: 'connector',
     surface: 'connector',
     source: 'core',
@@ -217,7 +217,7 @@ export const CORE_COMMANDS: readonly SlashCommandDefinition[] = [
   {
     name: '/status',
     usage: '/status',
-    description: 'Thread 概览（标题、时间、参与猫）',
+    description: 'Thread 概览（标题、时间、参与成员）',
     category: 'connector',
     surface: 'connector',
     source: 'core',
@@ -257,8 +257,8 @@ export const CORE_COMMANDS: readonly SlashCommandDefinition[] = [
   // --- routing (F154: Cat Routing Personalization) ---
   {
     name: '/focus',
-    usage: '/focus [猫名|clear]',
-    description: '查看/设置当前 thread 的首选猫',
+    usage: '/focus [成员名|clear]',
+    description: '查看/设置当前 thread 的首选成员',
     category: 'connector',
     surface: 'connector',
     source: 'core',
@@ -266,8 +266,8 @@ export const CORE_COMMANDS: readonly SlashCommandDefinition[] = [
   },
   {
     name: '/ask',
-    usage: '/ask <猫名> <消息>',
-    description: '单次定向：把这条消息发给指定猫，不改变首选猫设置',
+    usage: '/ask <成员名> <消息>',
+    description: '单次定向：把这条消息发给指定成员，不改变首选成员设置',
     category: 'connector',
     surface: 'connector',
     source: 'core',

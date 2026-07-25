@@ -15,7 +15,7 @@ export function IdeateHeader() {
           <PawIcon className="text-base" />
         </span>
         <span className="text-sm font-medium text-cafe-secondary">独立观点采样中</span>
-        <span className="text-xs text-cafe-muted">猫猫们各自独立思考中...</span>
+        <span className="text-xs text-cafe-muted">成员各自独立思考中...</span>
       </div>
     </div>
   );

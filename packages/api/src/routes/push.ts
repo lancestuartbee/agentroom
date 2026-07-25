@@ -278,7 +278,7 @@ export const pushRoutes: FastifyPluginAsync<PushRoutesOptions> = async (app, opt
     }
 
     const delivery = await currentPushService.notifyUser(userId, {
-      title: '🐱 猫猫测试推送',
+      title: '成员测试推送',
       body: '如果你看到这条通知，说明推送配置成功了！',
       tag: 'push-test',
       data: { url: '/', forceSystemNotification: true },

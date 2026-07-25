@@ -58,7 +58,7 @@ export function SteerQueuedEntryModal({
             }
           >
             <div className="text-sm font-medium text-cafe">提到队首（不取消）</div>
-            <div className="text-xs text-cafe-secondary mt-1">只调整顺序；当前猫跑完后优先执行这条消息。</div>
+            <div className="text-xs text-cafe-secondary mt-1">只调整顺序；当前成员跑完后优先执行这条消息。</div>
           </button>
 
           {/* 高风险选项置底，选中时用警告色强调破坏性 */}
@@ -75,14 +75,14 @@ export function SteerQueuedEntryModal({
               className="text-sm font-medium"
               style={{ color: mode === 'immediate' ? 'var(--conn-amber-text)' : undefined }}
             >
-              ⚠️ 立即执行（必要时中断目标猫）
+              ⚠️ 立即执行（必要时中断目标成员）
             </div>
             <div className="text-xs text-cafe-secondary mt-1">
-              若目标猫正在执行，会先 cancel 该猫当前 invocation；若目标猫空闲，则直接执行这条排队消息。
+              若目标成员正在执行，会先 cancel 该成员当前 invocation；若目标成员空闲，则直接执行这条排队消息。
             </div>
             {mode === 'immediate' && (
               <div className="text-xs mt-2" style={{ color: 'var(--conn-amber-text)' }}>
-                ⚠️ 警告：此操作会强行掐断当前正在运行的猫，可能导致进行中的工作丢失。
+                ⚠️ 警告：此操作会强行中断当前正在运行的成员，可能导致进行中的工作丢失。
               </div>
             )}
           </button>

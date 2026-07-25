@@ -217,7 +217,7 @@ export function ConfigStep({ client, clientId, onComplete }: ConfigStepProps) {
             : 'cursor-not-allowed bg-cafe-surface text-cafe-muted'
         }`}
       >
-        {canProceed ? '创建猫猫' : '请先完成连接测试'}
+        {canProceed ? '创建成员' : '请先完成连接测试'}
       </button>
 
       <UnifiedAuthModal

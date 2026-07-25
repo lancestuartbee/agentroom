@@ -38,7 +38,7 @@ export function GameArena({ stats }: { stats: GameStats }) {
           {stats.catKill.wins}
         </span>
         <span className="text-label" style={{ color: 'var(--cafe-text-muted)' }}>
-          猫猫杀 胜场
+          游戏胜场
         </span>
         {stats.catKill.topCat && (
           <span className="text-label font-semibold" style={{ color: 'var(--cafe-accent)' }}>

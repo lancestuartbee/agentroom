@@ -139,7 +139,7 @@ export function ParallelStatusBar({ onStop, threadId }: { onStop?: () => void; t
           <button
             onClick={() => onStop()}
             className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full bg-conn-red-bg text-conn-red-text hover:opacity-90 transition-colors text-xs font-medium"
-            title="停止所有猫猫"
+            title="停止所有成员"
             aria-label="Stop all cats"
             data-testid="parallel-stop-button"
           >

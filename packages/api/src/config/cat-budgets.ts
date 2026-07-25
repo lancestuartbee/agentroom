@@ -3,9 +3,9 @@
  * 优先级: 环境变量 > 解析后的运行时猫配置 > 硬编码默认值
  *
  * 环境变量 (最高优先级, 覆盖单个字段):
- *   CAT_OPUS_MAX_PROMPT_TOKENS   → 布偶猫 prompt token 上限
- *   CAT_CODEX_MAX_PROMPT_TOKENS  → 缅因猫 prompt token 上限
- *   CAT_GEMINI_MAX_PROMPT_TOKENS → 暹罗猫 prompt token 上限
+ *   CAT_OPUS_MAX_PROMPT_TOKENS   → Claude/Opus prompt token 上限
+ *   CAT_CODEX_MAX_PROMPT_TOKENS  → GPT/Codex prompt token 上限
+ *   CAT_GEMINI_MAX_PROMPT_TOKENS → Gemini prompt token 上限
  *   MAX_PROMPT_TOKENS            → 全局默认 token (fallback)
  *
  * 或修改 repo 根 `cat-template.json` / 运行时 `.cat-cafe/cat-catalog.json`
@@ -35,6 +35,7 @@ const DEFAULT_BUDGETS: Record<string, ContextBudget> = {
   // missing/invalid config doesn't silently regress budgets.
   ragdoll: { maxPromptTokens: 180000, maxContextTokens: 160000, maxMessages: 200, maxContentLengthPerMsg: 100000 },
   'maine-coon': { maxPromptTokens: 240000, maxContextTokens: 216000, maxMessages: 200, maxContentLengthPerMsg: 100000 },
+  gemini: { maxPromptTokens: 350000, maxContextTokens: 300000, maxMessages: 300, maxContentLengthPerMsg: 100000 },
   siamese: { maxPromptTokens: 350000, maxContextTokens: 300000, maxMessages: 300, maxContentLengthPerMsg: 100000 },
   // Spark is a known built-in variant with a smaller context window than the
   // maine-coon breed default; keep it stable even if runtime config loading fails.

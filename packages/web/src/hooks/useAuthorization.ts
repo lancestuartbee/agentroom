@@ -28,7 +28,7 @@ function notifyAuthRequest(data: AuthPendingRequest, catLabel: string) {
 
   // Desktop notification (even when tab is in background)
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-    const n = new Notification('🔐 猫猫需要权限', {
+    const n = new Notification('🔐 成员需要权限', {
       body: `${cat} 请求: ${data.action}\n${data.reason}`,
       tag: `auth-${data.requestId}`,
       requireInteraction: true,

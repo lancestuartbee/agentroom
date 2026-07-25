@@ -16,7 +16,7 @@ const PHASE_LABELS: Record<string, string> = {
   'phase-6-design': '设计',
   'phase-7-dev': '开发',
   'phase-7.5-add-teammate': '添加队友',
-  'phase-8-collab': '多猫协作',
+  'phase-8-collab': '多成员协作',
   'phase-9-complete': '完成',
   'phase-10-retro': '回顾',
   'phase-11-farewell': '毕业',
@@ -100,7 +100,7 @@ export function BootcampListModal({ open, onClose, currentThreadId }: BootcampLi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: '猫猫训练营',
+          title: '成员训练营',
           bootcampState: { v: 1, phase: 'phase-1-intro', startedAt: Date.now() },
         }),
       });
@@ -174,7 +174,7 @@ export function BootcampListModal({ open, onClose, currentThreadId }: BootcampLi
                   {/* Top row: title + badge */}
                   <div className="flex items-center justify-between mb-2">
                     <span className={`text-base font-semibold ${isCompleted ? 'text-cafe-secondary' : 'text-cafe'}`}>
-                      {t.title ?? '猫猫训练营'}
+                      {t.title ?? '成员训练营'}
                     </span>
                     <span
                       className={`text-xs font-medium px-2.5 py-1 rounded-full ${

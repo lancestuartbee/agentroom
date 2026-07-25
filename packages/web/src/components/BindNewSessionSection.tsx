@@ -89,7 +89,7 @@ export function BindNewSessionSection({ threadId, activeCatIds, onBound, disable
           onChange={(e) => setSelectedCat(e.target.value)}
           className="w-full text-xs px-2 py-1 rounded-[10px] border-transparent bg-[var(--console-field-bg,var(--console-card-bg))] focus:outline-none focus:ring-1 focus:ring-cafe-accent"
         >
-          <option value="">选择猫猫...</option>
+          <option value="">选择成员...</option>
           {availableCats.map((cat) => (
             <option key={cat.id} value={cat.id}>
               {formatCatName(cat)}

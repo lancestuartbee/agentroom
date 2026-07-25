@@ -52,6 +52,13 @@ const emptyAcpFields = {
   acpIdleTtlMinutes: '',
 };
 
+const defaultModelProfileFields = {
+  modelFamily: 'gpt',
+  modelLine: '5.x',
+  capabilityLevel: '3' as const,
+  runtimeClient: 'Codex CLI',
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -91,6 +98,16 @@ function queryField<T extends HTMLElement>(_container: HTMLElement, selector: st
     throw new Error(`Missing element: ${selector}`);
   }
   return element as T;
+}
+
+async function openPersonaSection() {
+  const button = Array.from(document.body.querySelectorAll('button')).find((item) =>
+    /添加人物设定|查看人物设定/.test(item.textContent ?? ''),
+  );
+  if (!button) return;
+  await act(async () => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
 }
 
 describe('HubCatEditor', () => {
@@ -134,6 +151,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: `@runtime-${clientId}`,
       roleDescription: 'runtime config',
       personality: '',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -199,6 +217,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@runtime-codex',
       roleDescription: '审查',
       personality: '严谨',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -247,6 +266,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@runtime-codex',
       roleDescription: '审查',
       personality: '严谨',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -294,6 +314,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@runtime-bridge',
       roleDescription: 'bridge',
       personality: 'steady',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -335,6 +356,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@runtime-codex',
       roleDescription: '审查',
       personality: '严谨',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -388,6 +410,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@opencode-acp',
       roleDescription: 'OpenCode over ACP',
       personality: '',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -433,6 +456,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@opencode-acp',
       roleDescription: 'OpenCode over ACP',
       personality: '',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -524,6 +548,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@acp-deepseek',
       roleDescription: 'ACP agent',
       personality: '',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -577,6 +602,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@acp-opencode',
       roleDescription: 'OpenCode over generic ACP',
       personality: '',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -637,6 +663,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@acp-kimi',
       roleDescription: 'Kimi over generic ACP',
       personality: '',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -695,6 +722,7 @@ describe('HubCatEditor', () => {
       mentionPatterns: '@acp-clean',
       roleDescription: 'Clean generic ACP',
       personality: '',
+      ...defaultModelProfileFields,
       teamStrengths: '',
       caution: '',
       strengths: '',
@@ -794,7 +822,6 @@ describe('HubCatEditor', () => {
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '火花猫');
     await changeField(queryField(container, 'input[aria-label="Avatar"]'), '/avatars/spark.png');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), '快速执行');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@runtime-spark, @火花猫');
     await changeField(queryField(container, 'select[aria-label="Client"]'), 'openai', 'change');
     await flushEffects();
@@ -868,7 +895,6 @@ describe('HubCatEditor', () => {
     await flushEffects();
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '火花猫');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), '快速执行');
 
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
       (button) => button.textContent === '保存',
@@ -940,7 +966,6 @@ describe('HubCatEditor', () => {
     await flushEffects();
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '火花猫');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), '快速执行');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@runtime-spark');
 
     const voiceToggle = Array.from(document.body.querySelectorAll('button')).find((button) =>
@@ -1029,7 +1054,6 @@ describe('HubCatEditor', () => {
     await flushEffects();
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '火花猫');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), '快速执行');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@runtime-spark, @火花猫');
 
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
@@ -1096,7 +1120,6 @@ describe('HubCatEditor', () => {
     await flushEffects();
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '火花猫');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), '快速执行');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@runtime-spark, @火花猫');
 
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
@@ -1177,7 +1200,6 @@ describe('HubCatEditor', () => {
     await flushEffects();
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '运行时金渐层');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), '审查');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@runtime-jinjianceng');
 
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
@@ -1245,7 +1267,6 @@ describe('HubCatEditor', () => {
     expect(document.body.textContent).toContain('ACP Command');
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), 'OpenCode ACP');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), 'OpenCode over ACP');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@opencode-acp');
     await changeField(queryField(container, 'input[aria-label="OC Provider Name"]'), 'anthropic');
 
@@ -2723,7 +2744,6 @@ describe('HubCatEditor', () => {
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '火花猫');
     await changeField(queryField(container, 'input[aria-label="Avatar"]'), '/avatars/spark.png');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), '快速执行');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@runtime-spark, @火花猫');
     await changeField(queryField(container, 'select[aria-label="Client"]'), 'openai', 'change');
     await flushEffects();
@@ -2872,6 +2892,8 @@ describe('HubCatEditor', () => {
       avatar: '/avatars/codex.png',
       roleDescription: 'review',
       personality: 'rigorous',
+      ...defaultModelProfileFields,
+      capabilityLevel: 3,
       teamStrengths: '代码审查、找 bug',
       caution: null,
       strengths: ['security', 'testing'],
@@ -3002,11 +3024,9 @@ describe('HubCatEditor', () => {
     });
     await flushEffects();
 
-    expect(document.body.textContent).toContain('昵称');
-    expect(document.body.textContent).toContain('显示后缀');
-    expect(document.body.textContent).toContain('擅长领域');
-    expect(document.body.textContent).toContain('注意事项');
-    expect(document.body.textContent).toContain('Strengths');
+    expect(document.body.textContent).toContain('模型后缀');
+    expect(document.body.textContent).not.toContain('显示后缀');
+    expect(document.body.textContent).toContain('查看人物设定');
     expect(document.body.textContent).toContain('▸ Voice Config');
     expect(document.body.textContent).toContain('展开后可配置 TTS clone 参考音频和文本。');
     expect(document.body.textContent).toContain('别名与 @ 路由');
@@ -3027,10 +3047,14 @@ describe('HubCatEditor', () => {
     expect(document.body.textContent).not.toContain('Primary');
     expect(document.body.textContent).not.toContain('Secondary');
     expect(document.body.textContent).not.toContain('Display Name');
+    expect(document.body.querySelector('input[aria-label="Nickname"]')).toBeNull();
 
     await changeField(queryField(container, 'input[aria-label="Max Prompt Tokens"]'), '48000');
     await changeField(queryField(container, 'input[aria-label="Variant Label"]'), 'GPT-5.5');
-    await changeField(queryField(container, 'input[aria-label="Nickname"]'), '砚砚升级版');
+    await openPersonaSection();
+    expect(document.body.textContent).toContain('补充能力');
+    expect(document.body.textContent).toContain('注意事项');
+    expect(document.body.textContent).toContain('补充标签');
     await changeField(queryField(container, 'input[aria-label="Team Strengths"]'), '代码审查、找 bug、深度思考');
     await changeField(queryField(container, 'input[aria-label="Strengths"]'), 'security, testing, debugging');
     await changeField(queryField(container, 'select[aria-label="Session Strategy"]'), 'handoff', 'change');
@@ -3054,7 +3078,7 @@ describe('HubCatEditor', () => {
     const catPayload = JSON.parse(String(catPatch?.[1]?.body));
     expect(catPayload.contextBudget.maxPromptTokens).toBe(48000);
     expect(catPayload.variantLabel).toBe('GPT-5.5');
-    expect(catPayload.nickname).toBe('砚砚升级版');
+    expect(catPayload.nickname).toBe('GPT-5.5');
     expect(catPayload.teamStrengths).toBe('代码审查、找 bug、深度思考');
     expect(catPayload.strengths).toEqual(['security', 'testing', 'debugging']);
     expect(catPayload.sessionChain).toBe(true);
@@ -3177,7 +3201,7 @@ describe('HubCatEditor', () => {
     });
     await flushEffects();
 
-    await changeField(queryField(container, 'input[aria-label="Nickname"]'), '砚砚');
+    await changeField(queryField(container, 'input[aria-label="Variant Label"]'), 'GPT-5.5');
 
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
       (button) => button.textContent === '保存',
@@ -3343,7 +3367,6 @@ describe('HubCatEditor', () => {
     await flushEffects();
 
     await changeField(queryField(container, 'input[aria-label="Name"]'), '运行时审查猫');
-    await changeField(queryField(container, 'input[aria-label="Description"]'), 'review');
     await changeField(queryField(container, 'textarea[aria-label="Aliases"]'), '@runtime-reviewer, @第二别名');
     await changeField(queryField(container, 'select[aria-label="Client"]'), 'openai', 'change');
     await flushEffects();
@@ -3547,7 +3570,7 @@ describe('HubCatEditor', () => {
     expect(queryField<HTMLSelectElement>(container, 'select[aria-label^="Codex Approval"]').disabled).toBe(true);
     expect(queryField<HTMLSelectElement>(container, 'select[aria-label^="Codex Auth Mode"]').disabled).toBe(true);
 
-    await changeField(queryField(container, 'input[aria-label="Nickname"]'), '新昵称');
+    await changeField(queryField(container, 'input[aria-label="Variant Label"]'), '新后缀');
 
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
       (button) => button.textContent === '保存',
@@ -3644,7 +3667,7 @@ describe('HubCatEditor', () => {
     });
     await flushEffects();
 
-    await changeField(queryField(container, 'input[aria-label="Nickname"]'), '新昵称');
+    await changeField(queryField(container, 'input[aria-label="Variant Label"]'), '新后缀');
     await changeField(queryField(container, 'select[aria-label^="Codex Sandbox"]'), 'danger-full-access', 'change');
 
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
@@ -3661,7 +3684,8 @@ describe('HubCatEditor', () => {
     expect(catPatches).toHaveLength(2);
 
     const firstPayload = JSON.parse(String(catPatches[0]?.[1]?.body));
-    expect(firstPayload.nickname).toBe('新昵称');
+    expect(firstPayload.nickname).toBe('新后缀');
+    expect(firstPayload.variantLabel).toBe('新后缀');
 
     const rollbackPayload = JSON.parse(String(catPatches[1]?.[1]?.body));
     expect(rollbackPayload.nickname).toBe('旧昵称');
@@ -3776,7 +3800,7 @@ describe('HubCatEditor', () => {
     });
     await flushEffects();
 
-    await changeField(queryField(container, 'input[aria-label="Nickname"]'), '新昵称');
+    await changeField(queryField(container, 'input[aria-label="Variant Label"]'), '新后缀');
     await changeField(queryField(container, 'select[aria-label="Session Strategy"]'), 'handoff', 'change');
     await changeField(queryField(container, 'input[aria-label="Session Warn Threshold"]'), '0.55');
     await changeField(queryField(container, 'select[aria-label^="Codex Sandbox"]'), 'danger-full-access', 'change');
@@ -3978,7 +4002,9 @@ describe('HubCatEditor', () => {
       );
     });
     await flushEffects();
-    expect(document.body.textContent).toContain('擅长领域由画像驱动');
+    expect(document.body.textContent).not.toContain('路由优先参考画像');
+    await openPersonaSection();
+    expect(document.body.textContent).toContain('路由优先参考画像');
 
     // Re-render WITHOUT hasDossier — badge must NOT appear
     await act(async () => {
@@ -3993,6 +4019,7 @@ describe('HubCatEditor', () => {
       );
     });
     await flushEffects();
-    expect(document.body.textContent).not.toContain('擅长领域由画像驱动');
+    await openPersonaSection();
+    expect(document.body.textContent).not.toContain('路由优先参考画像');
   });
 });

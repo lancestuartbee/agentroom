@@ -63,13 +63,13 @@ export interface EnvDefinition {
 export const ENV_CATEGORIES: Record<EnvCategory, string> = {
   server: '服务器',
   storage: '存储',
-  budget: '猫猫预算',
+  budget: '模型预算',
   cli: 'CLI',
   proxy: 'Anthropic 代理网关',
   connector: '平台接入 (Telegram/飞书)',
-  codex: '缅因猫 (Codex)',
-  dare: '狸花猫 (Dare)',
-  gemini: '暹罗猫 (Gemini)',
+  codex: 'GPT (Codex CLI)',
+  dare: 'Dare',
+  gemini: 'Gemini',
   kimi: 'Kimi',
   tts: '语音合成 (TTS)',
   stt: '语音识别 (STT)',
@@ -80,7 +80,7 @@ export const ENV_CATEGORIES: Record<EnvCategory, string> = {
   evidence: 'F102 记忆系统',
   quota: '额度监控',
   telemetry: '可观测性 (OTel)',
-  antigravity: '孟加拉猫 (Antigravity)',
+  antigravity: 'Gemini (AGY)',
   audio: '会中实时智囊 (F195)',
 };
 
@@ -596,7 +596,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'CAT_OPUS_MAX_PROMPT_CHARS',
     defaultValue: '150000',
-    description: '布偶猫 prompt 上限',
+    description: 'Claude prompt 上限',
     category: 'budget',
     sensitive: false,
     hubVisible: false,
@@ -604,7 +604,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'CAT_CODEX_MAX_PROMPT_CHARS',
     defaultValue: '80000',
-    description: '缅因猫 prompt 上限',
+    description: 'GPT/Codex prompt 上限',
     category: 'budget',
     sensitive: false,
     hubVisible: false,
@@ -612,7 +612,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'CAT_GEMINI_MAX_PROMPT_CHARS',
     defaultValue: '150000',
-    description: '暹罗猫 prompt 上限',
+    description: 'Gemini prompt 上限',
     category: 'budget',
     sensitive: false,
     hubVisible: false,
@@ -628,7 +628,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'MAX_A2A_DEPTH',
     defaultValue: '15',
-    description: 'A2A 猫猫互调最大深度',
+    description: 'A2A 成员互调最大深度',
     category: 'budget',
     sensitive: false,
   },
@@ -686,7 +686,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'CAT_TEMPLATE_PATH',
     defaultValue: '(repo 根 cat-template.json)',
-    description: '猫猫模板文件路径',
+    description: '成员模板文件路径',
     category: 'cli',
     sensitive: false,
     runtimeEditable: false,
@@ -694,7 +694,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'DEFAULT_CAT_ID',
     defaultValue: '(cat-config 第一个 breed)',
-    description: '默认猫猫 ID（覆盖 cat-config 里的顺序）',
+    description: '默认成员 ID（覆盖 cat-config 里的顺序）',
     category: 'cli',
     sensitive: false,
     runtimeEditable: false,
@@ -859,7 +859,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'CAT_CAFE_CAT_ID',
     defaultValue: '(运行时注入)',
-    description: '当前猫 ID（由 API 进程注入 MCP Server 子进程 env）',
+    description: '当前成员 ID（由 API 进程注入 MCP Server 子进程 env）',
     category: 'cli',
     sensitive: false,
     hubVisible: false,
@@ -1047,21 +1047,21 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'CAT_CODEX_SANDBOX_MODE',
     defaultValue: 'danger-full-access',
-    description: '缅因猫沙箱模式',
+    description: 'Codex CLI 沙箱模式',
     category: 'codex',
     sensitive: false,
   },
   {
     name: 'CAT_CODEX_APPROVAL_POLICY',
     defaultValue: 'on-request',
-    description: '缅因猫审批策略',
+    description: 'Codex CLI 审批策略',
     category: 'codex',
     sensitive: false,
   },
   {
     name: 'CODEX_AUTH_MODE',
     defaultValue: 'oauth',
-    description: '缅因猫认证方式 (oauth/api_key)',
+    description: 'Codex CLI 认证方式 (oauth/api_key)',
     category: 'codex',
     sensitive: false,
   },
@@ -1074,7 +1074,7 @@ export const ENV_VARS: EnvDefinition[] = [
   },
 
   // --- dare ---
-  { name: 'DARE_ADAPTER', defaultValue: 'openrouter', description: '狸花猫适配器', category: 'dare', sensitive: false },
+  { name: 'DARE_ADAPTER', defaultValue: 'openrouter', description: 'Dare 适配器', category: 'dare', sensitive: false },
   { name: 'DARE_PATH', defaultValue: '(未设置)', description: 'Dare CLI 路径', category: 'dare', sensitive: false },
 
   // --- gemini ---
@@ -1089,7 +1089,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'GEMINI_ADAPTER',
     defaultValue: 'antigravity-cli',
-    description: '暹罗猫适配器 (antigravity-cli/gemini-cli/antigravity)',
+    description: 'Gemini 适配器 (antigravity-cli/gemini-cli/antigravity)',
     category: 'gemini',
     sensitive: false,
   },
@@ -1496,7 +1496,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'F102_API_BASE',
     defaultValue: '(未设置 → 摘要调度器不启用)',
-    description: 'Phase G 摘要调度用的反代 API 地址（不是猫猫自己的 provider profile）',
+    description: 'Phase G 摘要调度用的反代 API 地址（不是成员自己的 provider profile）',
     category: 'evidence',
     sensitive: false,
   },

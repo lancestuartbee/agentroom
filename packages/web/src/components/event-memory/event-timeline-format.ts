@@ -49,8 +49,8 @@ export const CONF: Record<string, { badge: string; node: string; size: string; l
 
 export const TRIGGER_LABEL: Record<string, string> = {
   human_brake: '人工拉闸',
-  cat_brake: '猫自拉闸',
-  cat_shout: '猫呼叫',
+  cat_brake: '成员自拉闸',
+  cat_shout: '成员呼叫',
   flywheel_selffix: '飞轮自修',
   lesson_settle: '教训沉淀',
 };

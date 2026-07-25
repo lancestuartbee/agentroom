@@ -231,7 +231,7 @@ export function HubQuotaBoardTab() {
       <section className="rounded-xl bg-[var(--console-field-bg)] px-4 py-3">
         <p className="text-compact font-bold text-[var(--cafe-accent)]">F127 变化说明</p>
         <p className="mt-1 text-compact leading-6 text-cafe-muted">
-          1. 从猫粮看板改名为配额看板
+          1. 从旧额度看板改名为配额看板
           <br />
           2. 按账号配置维度（非 Provider）分组
           <br />

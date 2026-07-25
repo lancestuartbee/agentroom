@@ -1076,7 +1076,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
                 <PawIcon className="w-12 h-12 text-cafe-muted mx-auto mb-4" />
                 <p className="text-lg text-cafe-secondary mb-1">欢迎来到 Clowder AI!</p>
                 <p className="text-sm text-cafe-muted" suppressHydrationWarning>
-                  {cats.length > 0 ? '输入 @布偶 召唤布偶猫开始聊天' : '还没有可用成员，先开始新手教程创建第一只猫猫'}
+                  {cats.length > 0 ? '输入 @claude 或 @gpt 召唤成员开始聊天' : '还没有可用成员，先开始新手教程创建第一位成员'}
                 </p>
                 {showSetupCard && govStatus && (
                   <div className="mt-6 text-left">
@@ -1146,7 +1146,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
                       data-testid="empty-state-bootcamp"
                     >
                       <BootcampIcon className="w-4 h-4" />
-                      第一次来？开始猫猫训练营
+                      第一次来？开始成员训练营
                     </button>
                   );
                 })()}
@@ -1211,7 +1211,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
 
           {isResearchMode && (
             <div className="mx-4 mb-2 rounded-lg border border-[var(--semantic-success)] bg-[var(--semantic-success-surface)] px-3 py-2 text-xs text-conn-emerald-text">
-              多猫研究模式 — 文章上下文已注入。请输入研究问题，猫猫会自动调用 multi_mention 邀请其他猫参与分析。
+              多成员研究模式 — 文章上下文已注入。请输入研究问题，成员会自动调用 multi_mention 邀请其他成员参与分析。
             </div>
           )}
           <div
@@ -1381,9 +1381,9 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
               className="w-full max-w-md rounded-2xl border border-conn-amber-ring bg-[var(--console-card-bg)] p-6 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
-              <h3 className="text-lg font-semibold text-cafe">开始猫猫新手教程？</h3>
+              <h3 className="text-lg font-semibold text-cafe">开始成员新手教程？</h3>
               <p className="mt-2 text-sm text-cafe-secondary">
-                当前还没有可用成员。我们可以先带你创建第一只猫猫，再开始首个协作任务。
+                当前还没有可用成员。我们可以先带你创建第一位成员，再开始首个协作任务。
               </p>
               <div className="mt-5 flex justify-end gap-3">
                 <button

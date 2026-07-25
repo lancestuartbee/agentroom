@@ -56,7 +56,7 @@ export function SuggestionOpenForm({
       }}
     >
       <label className="block text-xs font-medium text-cafe-secondary">
-        建议领取猫猫
+        建议领取成员
         <select
           value={catId}
           onChange={(event) => onCatIdChange(event.target.value)}

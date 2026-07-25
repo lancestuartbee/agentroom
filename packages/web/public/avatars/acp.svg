@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="ACP comic avatar">
+  <defs>
+    <linearGradient id="acp-bg" x1="34" x2="222" y1="30" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2e1065"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="54" fill="url(#acp-bg)"/>
+  <circle cx="128" cy="121" r="70" fill="#f5f3ff" stroke="#160b33" stroke-width="7"/>
+  <path fill="none" stroke="#7c3aed" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" d="M81 128h30l17-30 17 60 17-30h13"/>
+  <circle cx="86" cy="128" r="11" fill="#22c55e" stroke="#160b33" stroke-width="5"/>
+  <circle cx="174" cy="128" r="11" fill="#22c55e" stroke="#160b33" stroke-width="5"/>
+  <path fill="none" stroke="#160b33" stroke-width="7" stroke-linecap="round" d="M103 158c14 10 36 10 50 0"/>
+  <text x="128" y="226" fill="#ffffff" font-family="Arial, sans-serif" font-size="33" font-weight="900" text-anchor="middle">ACP</text>
+</svg>

@@ -169,7 +169,7 @@ export function VoteConfigModal({
 
           {/* Voter cats */}
           <div>
-            <span className="block text-sm font-medium text-cafe-secondary mb-1">投票猫猫</span>
+            <span className="block text-sm font-medium text-cafe-secondary mb-1">投票成员</span>
             <CatSelector selectedCats={voters} onSelectionChange={setVoters} />
           </div>
 

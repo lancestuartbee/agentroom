@@ -9,7 +9,7 @@ export interface CatOption {
   insert: string;
   color: string; // CSS color (var or hex) for inline style
   avatar: string;
-  /** Group mention (e.g. @all, @thread) — renders group icon instead of cat avatar */
+  /** Group mention (e.g. @all, @参与者) — renders group icon instead of member avatar */
   isGroup?: boolean;
 }
 
@@ -28,9 +28,9 @@ export interface BuildCatOptionsOptions {
  *  Aligned with backend AgentRouter.parseGroupMentions patterns. */
 const THREAD_GROUP_MENTION: CatOption = {
   id: 'thread',
-  label: '@thread',
-  desc: '本帖全体参与猫猫',
-  insert: '@thread ',
+  label: '@参与者',
+  desc: '本帖全体参与成员',
+  insert: '@参与者 ',
   color: GROUP_MENTION_COLOR,
   avatar: '',
   isGroup: true,
@@ -39,7 +39,7 @@ const THREAD_GROUP_MENTION: CatOption = {
 const ALL_GROUP_MENTION: CatOption = {
   id: 'all',
   label: '@all',
-  desc: '全体猫猫',
+  desc: '全体成员',
   insert: '@all ',
   color: GROUP_MENTION_COLOR,
   avatar: '',
@@ -49,7 +49,7 @@ const ALL_GROUP_MENTION: CatOption = {
 const CASUAL_ALL_GROUP_MENTION: CatOption = {
   id: 'all',
   label: '@all',
-  desc: '本会话全部猫猫',
+  desc: '本会话全部成员',
   insert: '@all ',
   color: GROUP_MENTION_COLOR,
   avatar: '',
@@ -58,8 +58,8 @@ const CASUAL_ALL_GROUP_MENTION: CatOption = {
 
 const DEFAULT_GROUP_MENTIONS: CatOption[] = [THREAD_GROUP_MENTION, ALL_GROUP_MENTION];
 
-/** Build breed-scoped group mention options (e.g. @全体布偶猫) from cat data.
- *  Only generates options for breeds with 2+ available cats. */
+/** Build family-scoped group mention options from member data.
+ *  Only generates options for families with 2+ available members. */
 function buildBreedGroupOptions(cats: CatData[]): CatOption[] {
   const breedMap = new Map<string, { displayName: string; color: string; count: number }>();
   for (const cat of cats) {
@@ -80,7 +80,7 @@ function buildBreedGroupOptions(cats: CatData[]): CatOption[] {
     .map(([breedId, info]) => ({
       id: `breed:${breedId}`,
       label: `@全体${info.displayName}`,
-      desc: `${info.displayName}全体 (${info.count}只)`,
+      desc: `${info.displayName}全体 (${info.count}位)`,
       insert: `@全体${info.displayName} `,
       color: info.color,
       avatar: '',
@@ -122,8 +122,8 @@ export function buildCatOptions(cats: CatData[], options: BuildCatOptionsOptions
       avatar: cat.avatar,
     }));
   const groupMentions = lightweight ? [CASUAL_ALL_GROUP_MENTION] : DEFAULT_GROUP_MENTIONS;
-  // Group mentions (@thread, @all, @全体xx猫) are low-frequency — put them
-  // at the bottom so individual cats occupy the prime visible slots.
+  // Group mentions (@参与者, @all, @全体xx) are low-frequency — put them
+  // at the bottom so individual members occupy the prime visible slots.
   // Users can still reach groups via arrow-up or by typing the filter text.
   return [...individuals, ...groupMentions, ...breedGroups];
 }
@@ -154,7 +154,7 @@ export const GAME_LIST = [
 export const WEREWOLF_MODES = [
   { id: 'player', label: '玩家模式', desc: '当一名玩家参与', command: '/game werewolf player' },
   { id: 'god-view', label: '上帝视角', desc: '观战所有角色动态', command: '/game werewolf god-view' },
-  { id: 'detective', label: '推理模式', desc: '绑定一只猫的视角推理', command: '/game werewolf detective' },
+  { id: 'detective', label: '推理模式', desc: '绑定一位成员的视角推理', command: '/game werewolf detective' },
   { id: 'player-voice', label: '玩家模式（语音）', desc: '语音发言+互动', command: '/game werewolf player voice' },
   { id: 'god-view-voice', label: '上帝视角（语音）', desc: '语音观战体验', command: '/game werewolf god-view voice' },
 ] as const;

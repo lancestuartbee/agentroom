@@ -583,7 +583,7 @@ export function ThreadSidebar({ onClose, className }: ThreadSidebarProps) {
     } catch {
       useToastStore
         .getState()
-        .addToast({ type: 'error', title: '分析失败', message: '猫猫无法分析，请重试', duration: 5000 });
+        .addToast({ type: 'error', title: '分析失败', message: '成员无法分析，请重试', duration: 5000 });
     } finally {
       setSuggestLoading(false);
     }
@@ -730,7 +730,7 @@ export function ThreadSidebar({ onClose, className }: ThreadSidebarProps) {
               type="button"
               onClick={() => setShowBootcampList(true)}
               className="p-1.5 rounded-lg text-cafe-accent hover:bg-accent-50 transition-colors"
-              title="猫猫训练营"
+              title="成员训练营"
               data-testid="sidebar-bootcamp"
               data-guide-id="sidebar.bootcamp"
             >

@@ -55,7 +55,7 @@ export function ClientStep({ onSelect }: ClientStepProps) {
   return (
     <div>
       <h4 className="mb-1 text-sm font-semibold text-cafe-secondary">选择客户端</h4>
-      <p className="mb-4 text-xs text-cafe-muted">猫猫需要一个 CLI 客户端来工作。我们检测到以下已安装的客户端：</p>
+      <p className="mb-4 text-xs text-cafe-muted">成员需要一个 CLI 客户端来工作。我们检测到以下已安装的客户端：</p>
 
       {installed.length === 0 ? (
         <div className="rounded-xl border border-conn-amber-ring bg-conn-amber-bg p-4 text-sm text-conn-amber-text">

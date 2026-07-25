@@ -100,7 +100,7 @@ export function EventTimeline() {
           </svg>
           <div>
             <div className="text-base font-bold text-cafe-black leading-tight">拉闸记录</div>
-            <div className="text-micro text-cafe-muted tracking-wide">猫的认知地图 · 每一次转折都有坐标</div>
+            <div className="text-micro text-cafe-muted tracking-wide">事件认知地图 · 每一次转折都有坐标</div>
           </div>
         </div>
       </div>
@@ -139,7 +139,7 @@ export function EventTimeline() {
             />
           ))}
           {!triggers.includes('cat_brake') && (
-            <span className="text-micro text-cafe-muted px-1.5 py-1 opacity-60">猫自拉闸 · Phase B</span>
+            <span className="text-micro text-cafe-muted px-1.5 py-1 opacity-60">成员自拉闸 · Phase B</span>
           )}
         </div>
       )}

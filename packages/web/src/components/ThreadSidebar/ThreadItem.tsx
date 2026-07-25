@@ -4,6 +4,7 @@ import { useIMEGuard } from '@/hooks/useIMEGuard';
 import { catColorVar } from '@/lib/cat-slug';
 import type { ThreadState } from '@/stores/chat-types';
 import { useLabelStore } from '@/stores/label-store';
+import { useToastStore } from '@/stores/toastStore';
 import { API_URL, apiFetch } from '@/utils/api-client';
 // F174 D2b-2 (rev): per-cat callback-auth dot was rejected (co-creator alpha 反馈
 // "莫名其妙的颜色" — 16px participant avatars lacked any affordance). Status now
@@ -69,6 +70,7 @@ export function ThreadItem({
   const canFavorite = id !== 'default' && onToggleFavorite;
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isContextRestarting, setIsContextRestarting] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -166,6 +168,47 @@ export function ThreadItem({
       .catch(() => {
         // Fallback: window.open if fetch fails
         window.open(`${API_URL}/api/export/thread/${id}?format=md`);
+      });
+  }, [id]);
+
+  const restartContext = useCallback(() => {
+    setIsMoreOpen(false);
+    const confirmed = window.confirm(
+      '重启这个对话框的上下文？\n\n这个对话框会保留；当前对话记录会从此会话视图和后续模型上下文中隐藏，并断开成员 CLI/provider 的续接上下文。底层存储记录、长期记忆、沉淀知识和产物文件不会物理删除。',
+    );
+    if (!confirmed) return;
+
+    setIsContextRestarting(true);
+    void apiFetch(`/api/threads/${id}/history-reset`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'all' }),
+    })
+      .then(async (res) => {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) {
+          throw new Error(text || `history reset failed: ${res.status}`);
+        }
+        const body = text ? (JSON.parse(text) as { deletedMessages?: number }) : {};
+        useToastStore.getState().addToast({
+          type: 'success',
+          title: '上下文已重启',
+          message: `这个对话框已保留，已隐藏 ${body.deletedMessages ?? 0} 条当前对话记录；下一轮会使用新的成员运行上下文`,
+          threadId: id,
+          duration: 4000,
+        });
+      })
+      .catch(() => {
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: '上下文重启失败',
+          message: '没有完成当前对话记录隐藏和上下文重启，请稍后重试',
+          threadId: id,
+          duration: 5000,
+        });
+      })
+      .finally(() => {
+        setIsContextRestarting(false);
       });
   }, [id]);
 
@@ -283,7 +326,7 @@ export function ThreadItem({
                       currentCats={preferredCats ?? []}
                       onSave={onUpdatePreferredCats}
                       triggerIcon={<DefaultCatIcon />}
-                      triggerLabel="设置默认猫猫"
+                      triggerLabel="设置默认成员"
                       triggerClassName={menuTriggerClassName}
                       triggerRole="menuitem"
                     />
@@ -295,6 +338,13 @@ export function ThreadItem({
                   )}
                   <ThreadActionMenuItem icon={<ExportIcon />} onClick={exportThread}>
                     导出对话
+                  </ThreadActionMenuItem>
+                  <ThreadActionMenuItem
+                    icon={<ResetSessionIcon />}
+                    onClick={restartContext}
+                    disabled={isContextRestarting}
+                  >
+                    {isContextRestarting ? '正在重启上下文' : '重启上下文'}
                   </ThreadActionMenuItem>
                   {onUpdateLabels && (
                     <ThreadLabelPicker
@@ -326,7 +376,7 @@ export function ThreadItem({
           ) : id !== 'default' ? (
             <>
               <PawIcon className="text-xs" />
-              <span className="text-micro text-cafe-muted">还没有猫猫加入</span>
+              <span className="text-micro text-cafe-muted">还没有成员加入</span>
             </>
           ) : null}
           {preferredCats && preferredCats.length > 0 && (
@@ -428,6 +478,15 @@ function ExportIcon() {
   );
 }
 
+function ResetSessionIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M13 8a5 5 0 1 1-1.46-3.54" />
+      <path d="M13 2.75v3.5h-3.5" />
+    </svg>
+  );
+}
+
 function LabelIcon() {
   return (
     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -458,10 +517,12 @@ function StarIcon({ filled }: { filled?: boolean }) {
 function ThreadActionMenuItem({
   icon,
   onClick,
+  disabled,
   children,
 }: {
   icon: ReactNode;
   onClick: () => void;
+  disabled?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -469,7 +530,8 @@ function ThreadActionMenuItem({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-cafe-secondary transition-colors hover:bg-cafe-surface-elevated"
+      disabled={disabled}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-cafe-secondary transition-colors hover:bg-cafe-surface-elevated disabled:cursor-wait disabled:opacity-60"
     >
       <span className="inline-flex h-3 w-3 flex-shrink-0 items-center justify-center text-cafe-muted">{icon}</span>
       <span>{children}</span>

@@ -40,7 +40,7 @@ export function BrakeSettingsPanel() {
         <h3 className="text-base font-semibold text-cafe flex items-center gap-1.5">
           <HubIcon name="heart-pulse" className="h-4 w-4" /> 健康守护
         </h3>
-        <p className="text-sm text-cafe-secondary mt-1">三猫会在你连续工作一段时间后提醒你休息</p>
+        <p className="text-sm text-cafe-secondary mt-1">成员会在你连续工作一段时间后提醒你休息</p>
       </div>
 
       <div className="console-list-card rounded-xl bg-[var(--console-card-bg)] p-4 space-y-4 shadow-[var(--shadow-elevation-2)]">

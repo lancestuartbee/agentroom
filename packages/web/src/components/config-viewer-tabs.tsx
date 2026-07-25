@@ -224,7 +224,7 @@ export function SystemTab({ config, onConfigChange }: { config: ConfigData; onCo
           />
         </div>
       </SettingsSection>
-      <SettingsSection title="A2A 猫猫互调">
+      <SettingsSection title="A2A 成员互调">
         <div className="space-y-1.5">
           <KV label="启用" value={config.a2a.enabled} />
           <KV label="最大深度" value={config.a2a.maxDepth} />

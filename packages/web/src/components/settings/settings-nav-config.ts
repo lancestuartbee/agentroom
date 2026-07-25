@@ -16,7 +16,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   },
   {
     id: 'profiles',
-    label: '猫猫画像',
+    label: '能力画像',
     icon: 'file-text',
     color: 'var(--color-opus-primary)',
     description: '按模型分组的能力画像、路由信号与来源追溯。',
@@ -65,10 +65,10 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   },
   {
     id: 'concierge',
-    label: '猫猫球',
+    label: '前台助手',
     icon: 'cat',
     color: 'var(--cafe-accent)',
-    description: '猫猫球的形象、人设、值班猫和主动性策略。',
+    description: '前台助手的形象、人设、值班成员和主动性策略。',
   },
   {
     id: 'voice',

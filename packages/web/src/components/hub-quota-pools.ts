@@ -22,7 +22,7 @@ export interface AccountQuotaPoolGroup {
 
 const BUILTIN_CLIENT_LABELS: Record<BuiltinAccountClient, string> = {
   anthropic: 'Claude',
-  openai: 'Codex',
+  openai: 'GPT / Codex CLI',
   google: 'Gemini',
   kimi: 'Kimi',
   dare: 'Dare',

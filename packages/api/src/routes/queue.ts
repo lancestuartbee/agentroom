@@ -11,7 +11,7 @@
  * POST   /api/threads/:threadId/cancel/:catId       → F122B AC-B9: Per-cat cancel
  */
 
-import type { CatId } from '@cat-cafe/shared';
+import { catRegistry, type CatId, type SessionPromptProfile } from '@cat-cafe/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { IBallCustodyIngest } from '../domains/ball-custody/BallCustodyIngest.js';
@@ -23,10 +23,13 @@ import {
 import type { QueueProcessor } from '../domains/cats/services/agents/invocation/QueueProcessor.js';
 import { reconcileZombies } from '../domains/cats/services/agents/invocation/reconcileZombies.js';
 import type { TaskProgressStore } from '../domains/cats/services/agents/invocation/TaskProgressStore.js';
+import type { SessionManager } from '../domains/cats/services/session/SessionManager.js';
+import type { ISessionSealer } from '../domains/cats/services/session/SessionSealer.js';
 import type { IDraftStore } from '../domains/cats/services/stores/ports/DraftStore.js';
 import type { IInvocationRecordStore } from '../domains/cats/services/stores/ports/InvocationRecordStore.js';
 import type { IMessageStore } from '../domains/cats/services/stores/ports/MessageStore.js';
-import type { IThreadStore } from '../domains/cats/services/stores/ports/ThreadStore.js';
+import type { ISessionChainStore } from '../domains/cats/services/stores/ports/SessionChainStore.js';
+import type { IThreadStore, Thread } from '../domains/cats/services/stores/ports/ThreadStore.js';
 import { buildCancelMessages, type SocketManager } from '../infrastructure/websocket/index.js';
 import { emitQueueUpdated, enrichQueueEntries } from '../utils/queue-enrichment.js';
 import { resolveUserId } from '../utils/request-identity.js';
@@ -81,6 +84,10 @@ export interface QueueRoutesOptions {
     } | null>;
     getLatestId(threadId: string, catId: string): Promise<string | undefined>;
   };
+  /** Manual context/session reset support. These are optional for route unit tests and embedded modes. */
+  sessionManager?: Pick<SessionManager, 'delete'>;
+  sessionChainStore?: Pick<ISessionChainStore, 'getActive' | 'update'>;
+  sessionSealer?: Pick<ISessionSealer, 'requestSeal' | 'finalize'>;
 }
 
 const moveBodySchema = z.object({
@@ -91,6 +98,34 @@ const steerBodySchema = z.object({
   mode: z.enum(['promote', 'immediate']),
 });
 
+const sessionResetBodySchema = z.object({
+  catIds: z.array(z.string().min(1).max(100)).max(50).optional(),
+  promptProfile: z.enum(['development', 'casual', 'roundtable', 'all']).optional(),
+  cancelRunning: z.boolean().optional(),
+  resetRoundtableIssue: z.boolean().optional(),
+});
+type SessionResetBody = z.infer<typeof sessionResetBodySchema>;
+
+const historyResetBodySchema = z
+  .object({
+    mode: z.enum(['all', 'after']).default('all'),
+    afterMessageId: z.string().min(1).max(200).optional(),
+    restartSession: z.boolean().optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.mode === 'after' && !body.afterMessageId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['afterMessageId'],
+        message: 'after mode requires afterMessageId',
+      });
+    }
+  });
+type HistoryResetBody = z.infer<typeof historyResetBodySchema>;
+
+const ALL_SESSION_PROMPT_PROFILES: readonly SessionPromptProfile[] = ['development', 'casual', 'roundtable'] as const;
+const MANUAL_CONTEXT_RESET_SEAL_REASON = 'manual_context_reset';
+
 /**
  * Auth + ownership guard.
  * Returns { userId, thread } or sends error reply and returns null.
@@ -100,7 +135,7 @@ async function guardThreadOwnership(
   reply: FastifyReply,
   threadStore: IThreadStore,
   threadId: string,
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; thread: Thread } | null> {
   const userId = resolveUserId(request, {});
   if (!userId) {
     reply.status(401);
@@ -122,7 +157,303 @@ async function guardThreadOwnership(
     return null;
   }
 
-  return { userId };
+  return { userId, thread };
+}
+
+function sessionPromptProfileArg(profile: SessionPromptProfile): SessionPromptProfile | undefined {
+  return profile === 'development' ? undefined : profile;
+}
+
+function resolveDefaultPromptProfiles(thread: Thread): SessionPromptProfile[] {
+  switch (thread.mode) {
+    case 'casual':
+      return ['casual'];
+    case 'roundtable':
+      return ['roundtable'];
+    case 'development':
+    default:
+      return ['development'];
+  }
+}
+
+function resolvePromptProfiles(
+  requested: SessionResetBody['promptProfile'],
+  thread: Thread,
+): SessionPromptProfile[] {
+  if (requested === 'all') return [...ALL_SESSION_PROMPT_PROFILES];
+  if (requested) return [requested];
+  return resolveDefaultPromptProfiles(thread);
+}
+
+function uniqueNonEmptyStrings(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function resolveSessionResetCatIds(
+  requestedCatIds: readonly string[] | undefined,
+  thread: Thread,
+): { catIds: string[]; invalidCatIds: string[] } {
+  const registryIds = catRegistry.getAllIds().map(String);
+  const knownIds = new Set(registryIds);
+  const explicitRequest = requestedCatIds !== undefined;
+  const raw =
+    requestedCatIds ??
+    (thread.preferredCats && thread.preferredCats.length > 0
+      ? thread.preferredCats.map(String)
+      : thread.roundtableIssueState?.participants && thread.roundtableIssueState.participants.length > 0
+        ? thread.roundtableIssueState.participants
+        : thread.participants.length > 0
+          ? thread.participants.map(String)
+          : registryIds);
+  const catIds = uniqueNonEmptyStrings(raw);
+  if (knownIds.size === 0) {
+    return { catIds, invalidCatIds: [] };
+  }
+  return {
+    catIds: catIds.filter((catId) => knownIds.has(catId)),
+    invalidCatIds: explicitRequest ? catIds.filter((catId) => !knownIds.has(catId)) : [],
+  };
+}
+
+function providerSessionStorageThreadId(
+  provider: string | undefined,
+  threadId: string,
+  promptProfile: SessionPromptProfile,
+): string {
+  if (provider === 'openai' && promptProfile !== 'development') {
+    return `${threadId}::provider-session:codex-${promptProfile}-writable-v1`;
+  }
+  return threadId;
+}
+
+async function sealActiveSessionForReset(
+  catId: string,
+  threadId: string,
+  promptProfile: SessionPromptProfile,
+  opts: Pick<QueueRoutesOptions, 'sessionChainStore' | 'sessionSealer'>,
+  log: { warn: (obj: unknown, msg?: string) => void },
+): Promise<{ sealed: boolean; failed: boolean }> {
+  const sessionChainStore = opts.sessionChainStore;
+  if (!sessionChainStore) return { sealed: false, failed: false };
+
+  try {
+    const active = await sessionChainStore.getActive(catId as CatId, threadId, sessionPromptProfileArg(promptProfile));
+    if (!active) return { sealed: false, failed: false };
+
+    if (opts.sessionSealer) {
+      const result = await opts.sessionSealer.requestSeal({
+        sessionId: active.id,
+        reason: MANUAL_CONTEXT_RESET_SEAL_REASON,
+      });
+      if (result.accepted && result.sessionId) {
+        await opts.sessionSealer.finalize({ sessionId: result.sessionId });
+      }
+      return { sealed: result.accepted, failed: false };
+    }
+
+    const now = Date.now();
+    const updated = await sessionChainStore.update(active.id, {
+      status: 'sealed',
+      sealReason: MANUAL_CONTEXT_RESET_SEAL_REASON,
+      sealedAt: now,
+      updatedAt: now,
+    });
+    return { sealed: updated?.status === 'sealed', failed: false };
+  } catch (err) {
+    log.warn({ err, catId, threadId, promptProfile }, 'context reset failed to seal active session');
+    return { sealed: false, failed: true };
+  }
+}
+
+async function deleteProviderSessionBindingForReset(
+  userId: string,
+  catId: string,
+  threadId: string,
+  promptProfile: SessionPromptProfile,
+  sessionManager: Pick<SessionManager, 'delete'> | undefined,
+  log: { warn: (obj: unknown, msg?: string) => void },
+): Promise<{ attempts: number; failures: number }> {
+  if (!sessionManager) return { attempts: 0, failures: 0 };
+
+  const sessionProfile = sessionPromptProfileArg(promptProfile);
+  const provider = catRegistry.tryGet(catId)?.config.clientId;
+  const sessionThreadId = providerSessionStorageThreadId(provider, threadId, promptProfile);
+  const threadIds = sessionThreadId === threadId ? [threadId] : [sessionThreadId, threadId];
+  let attempts = 0;
+  let failures = 0;
+  for (const targetThreadId of threadIds) {
+    attempts++;
+    try {
+      await sessionManager.delete(userId, catId as CatId, targetThreadId, sessionProfile);
+    } catch (err) {
+      failures++;
+      log.warn(
+        { err, catId, threadId, targetThreadId, promptProfile },
+        'context reset failed to delete provider session binding',
+      );
+    }
+  }
+  return { attempts, failures };
+}
+
+type ThreadSessionResetResult =
+  | {
+      ok: true;
+      catIds: string[];
+      promptProfiles: SessionPromptProfile[];
+      canceledRecords: number;
+      releasedSlots: string[];
+      sealedSessions: number;
+      sealFailures: number;
+      providerSessionBindingsCleared: number;
+      providerSessionBindingFailures: number;
+      roundtableIssueReset: boolean;
+    }
+  | {
+      ok: false;
+      statusCode: number;
+      body: {
+        error: string;
+        code: string;
+        invalidCatIds?: string[];
+      };
+    };
+
+async function performThreadSessionReset({
+  threadId,
+  userId,
+  thread,
+  body,
+  threadStore,
+  invocationTracker,
+  queueProcessor,
+  socketManager,
+  opts,
+  log,
+}: {
+  threadId: string;
+  userId: string;
+  thread: Thread;
+  body: SessionResetBody;
+  threadStore: IThreadStore;
+  invocationTracker: InvocationTrackerLike;
+  queueProcessor: QueueProcessor;
+  socketManager: SocketManager;
+  opts: QueueRoutesOptions;
+  log: { warn: (obj: unknown, msg?: string) => void };
+}): Promise<ThreadSessionResetResult> {
+  const promptProfiles = resolvePromptProfiles(body.promptProfile, thread);
+  const { catIds, invalidCatIds } = resolveSessionResetCatIds(body.catIds, thread);
+  if (invalidCatIds.length > 0) {
+    return {
+      ok: false,
+      statusCode: 400,
+      body: {
+        error: '存在未知成员，未执行会话重启',
+        code: 'UNKNOWN_CAT_IDS',
+        invalidCatIds,
+      },
+    };
+  }
+
+  const targetCatSet = new Set(catIds);
+  const resetAllCats = body.catIds === undefined;
+  const cancelRunning = body.cancelRunning ?? true;
+  const resetRoundtableIssue =
+    body.resetRoundtableIssue ?? (thread.mode === 'roundtable' || promptProfiles.includes('roundtable'));
+
+  const slotsToRelease = new Set<string>();
+  let canceledRecords = 0;
+  if (cancelRunning) {
+    if (resetAllCats) {
+      for (const catId of invocationTracker.cancelAll?.(threadId, userId, 'cancel_all') ?? []) {
+        slotsToRelease.add(catId);
+      }
+    } else {
+      for (const catId of catIds) {
+        const cancelResult = invocationTracker.cancel(threadId, catId, userId, 'cancel_all');
+        if (cancelResult.cancelled) {
+          for (const cancelledCatId of cancelResult.catIds) slotsToRelease.add(cancelledCatId);
+        }
+      }
+    }
+
+    if (opts.invocationRecordStore) {
+      const runningRecords = await opts.invocationRecordStore.listRunningByThread(threadId, userId);
+      for (const record of runningRecords) {
+        const recordCatIds = (record.targetCats as string[] | undefined) ?? [];
+        const touchesResetScope = resetAllCats || recordCatIds.some((catId) => targetCatSet.has(catId));
+        if (!touchesResetScope) continue;
+        for (const catId of recordCatIds) slotsToRelease.add(catId);
+        await opts.invocationRecordStore.update(record.id, { status: 'canceled' });
+        canceledRecords++;
+      }
+    }
+
+    if (slotsToRelease.size > 0) {
+      for (const m of buildCancelMessages({ cancelled: true, catIds: [...slotsToRelease] })) {
+        socketManager.broadcastAgentMessage(m, threadId);
+      }
+    }
+    for (const catId of slotsToRelease) {
+      queueProcessor.clearPause(threadId, catId);
+      queueProcessor.releaseSlot(threadId, catId);
+    }
+  }
+
+  let sealedSessions = 0;
+  let sealFailures = 0;
+  let providerSessionBindingsCleared = 0;
+  let providerSessionBindingFailures = 0;
+  for (const catId of catIds) {
+    for (const promptProfile of promptProfiles) {
+      const sealResult = await sealActiveSessionForReset(catId, threadId, promptProfile, opts, log);
+      if (sealResult.sealed) sealedSessions++;
+      if (sealResult.failed) sealFailures++;
+
+      const deleteResult = await deleteProviderSessionBindingForReset(
+        userId,
+        catId,
+        threadId,
+        promptProfile,
+        opts.sessionManager,
+        log,
+      );
+      providerSessionBindingsCleared += deleteResult.attempts - deleteResult.failures;
+      providerSessionBindingFailures += deleteResult.failures;
+    }
+  }
+
+  let roundtableIssueReset = false;
+  if (resetRoundtableIssue && threadStore.updateRoundtableIssueState) {
+    await threadStore.updateRoundtableIssueState(threadId, null);
+    roundtableIssueReset = true;
+    socketManager.broadcastToRoom(`thread:${threadId}`, 'thread_updated', {
+      threadId,
+      roundtableIssueState: null,
+    });
+  }
+
+  return {
+    ok: true,
+    catIds,
+    promptProfiles,
+    canceledRecords,
+    releasedSlots: [...slotsToRelease],
+    sealedSessions,
+    sealFailures,
+    providerSessionBindingsCleared,
+    providerSessionBindingFailures,
+    roundtableIssueReset,
+  };
 }
 
 /**
@@ -604,6 +935,147 @@ export const queueRoutes: FastifyPluginAsync<QueueRoutesOptions> = async (app, o
     return { cleared };
   });
 
+  // POST /api/threads/:threadId/history-reset — hide visible chat messages, then restart provider context.
+  //
+  // This uses MessageStore.softDelete only. It does not hard-delete messages, thread memory,
+  // persisted knowledge, artifacts, SQLite files, Redis databases, or session-chain records.
+  app.post<{ Params: { threadId: string }; Body: unknown }>(
+    '/api/threads/:threadId/history-reset',
+    async (request, reply) => {
+      const { threadId } = request.params;
+      const guard = await guardThreadOwnership(request, reply, threadStore, threadId);
+      if (!guard) return;
+
+      if (guard.thread.createdBy === 'system') {
+        reply.status(403);
+        return {
+          error: '系统公共对话不支持清空记录',
+          code: 'SYSTEM_THREAD_HISTORY_RESET_FORBIDDEN',
+        };
+      }
+
+      if (!messageStore) {
+        reply.status(503);
+        return {
+          error: '消息存储未启用，无法清空会话记录',
+          code: 'MESSAGE_STORE_UNAVAILABLE',
+        };
+      }
+
+      const parsed = historyResetBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        reply.status(400);
+        return {
+          error: '清空记录参数无效',
+          code: 'INVALID_HISTORY_RESET_BODY',
+          details: parsed.error.flatten(),
+        };
+      }
+
+      const body: HistoryResetBody = parsed.data;
+      const messages = await messageStore.getByThread(threadId, 10_000);
+      const startIndex =
+        body.mode === 'after' ? messages.findIndex((message) => message.id === body.afterMessageId) : -1;
+      if (body.mode === 'after' && startIndex < 0) {
+        reply.status(404);
+        return {
+          error: '找不到清空起点消息',
+          code: 'HISTORY_RESET_CURSOR_NOT_FOUND',
+        };
+      }
+
+      const targetMessages = body.mode === 'after' ? messages.slice(startIndex + 1) : messages;
+      const deletedMessageIds: string[] = [];
+      for (const message of targetMessages) {
+        const deleted = await messageStore.softDelete(message.id, guard.userId);
+        if (!deleted) continue;
+        deletedMessageIds.push(deleted.id);
+        socketManager.broadcastToRoom(`thread:${threadId}`, 'message_deleted', {
+          messageId: deleted.id,
+          threadId,
+          deletedBy: guard.userId,
+        });
+      }
+
+      let sessionReset: ThreadSessionResetResult | undefined;
+      if (body.restartSession ?? true) {
+        sessionReset = await performThreadSessionReset({
+          threadId,
+          userId: guard.userId,
+          thread: guard.thread,
+          body: {},
+          threadStore,
+          invocationTracker,
+          queueProcessor,
+          socketManager,
+          opts,
+          log: request.log,
+        });
+        if (!sessionReset.ok) {
+          reply.status(sessionReset.statusCode);
+          return {
+            ok: false,
+            deletedMessages: deletedMessageIds.length,
+            messageIds: deletedMessageIds,
+            sessionReset: sessionReset.body,
+          };
+        }
+      }
+
+      return {
+        ok: true,
+        mode: body.mode,
+        deletedMessages: deletedMessageIds.length,
+        messageIds: deletedMessageIds,
+        sessionReset,
+      };
+    },
+  );
+
+  // POST /api/threads/:threadId/session-reset — restart provider context without deleting chat history.
+  //
+  // This is intentionally separate from force-reset:
+  // - force-reset repairs stuck execution state.
+  // - session-reset cuts current CLI/provider resume bindings and optional roundtable issue runtime state.
+  //
+  // It does not delete messages, thread memory, session-chain records, SQLite files, or Redis databases.
+  app.post<{ Params: { threadId: string }; Body: unknown }>(
+    '/api/threads/:threadId/session-reset',
+    async (request, reply) => {
+      const { threadId } = request.params;
+      const guard = await guardThreadOwnership(request, reply, threadStore, threadId);
+      if (!guard) return;
+
+      const parsed = sessionResetBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        reply.status(400);
+        return {
+          error: '会话重启参数无效',
+          code: 'INVALID_SESSION_RESET_BODY',
+          details: parsed.error.flatten(),
+        };
+      }
+
+      const result = await performThreadSessionReset({
+        threadId,
+        userId: guard.userId,
+        thread: guard.thread,
+        body: parsed.data,
+        threadStore,
+        invocationTracker,
+        queueProcessor,
+        socketManager,
+        opts,
+        log: request.log,
+      });
+      if (!result.ok) {
+        reply.status(result.statusCode);
+        return result.body;
+      }
+      return result;
+    },
+  );
+
   // POST /api/threads/:threadId/cancel/:catId — F122B AC-B9: Per-cat cancel
   app.post<{ Params: { threadId: string; catId: string } }>(
     '/api/threads/:threadId/cancel/:catId',
@@ -631,7 +1103,7 @@ export const queueRoutes: FastifyPluginAsync<QueueRoutesOptions> = async (app, o
             if (siblingStillActive) {
               // Orphan cancel skipped — a sibling cat is still active; let normal lifecycle handle it
               reply.status(404);
-              return { error: '该猫当前未在执行', code: 'CAT_NOT_ACTIVE' };
+              return { error: '该成员当前未在执行', code: 'CAT_NOT_ACTIVE' };
             }
 
             await opts.invocationRecordStore.update(orphanRecord.id, { status: 'canceled' });
@@ -652,7 +1124,7 @@ export const queueRoutes: FastifyPluginAsync<QueueRoutesOptions> = async (app, o
           }
         }
         reply.status(404);
-        return { error: '该猫当前未在执行', code: 'CAT_NOT_ACTIVE' };
+        return { error: '该成员当前未在执行', code: 'CAT_NOT_ACTIVE' };
       }
 
       const cancelResult = invocationTracker.cancel(threadId, catId, guard.userId, 'user_cancel');

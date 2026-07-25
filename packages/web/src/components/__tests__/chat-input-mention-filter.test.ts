@@ -3,7 +3,7 @@
  *
  * Tests:
  * 1. Typing "@op" filters to opus-matching cats only
- * 2. Typing "@xyz" yields empty list with "无匹配猫猫" message
+ * 2. Typing "@xyz" yields empty list with "无匹配成员" message
  * 3. Enter on empty filtered results does not insert newline (P2-1 fix)
  * 4. detectMenuTrigger returns filter string
  */

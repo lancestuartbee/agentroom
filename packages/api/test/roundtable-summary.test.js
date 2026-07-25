@@ -230,4 +230,11 @@ describe('roundtable action planning', () => {
   it('routes post-summary save requests to artifact saving', () => {
     assert.equal(planRoundtableAction('把刚才的会议结论保存成 markdown 报告', ['codex', 'opus'], summarizedIssue).action, 'artifact_request');
   });
+
+  it('treats @all runtime-status complaints as roundtable status questions, not new topics', () => {
+    const message = '@all 其它人怎么不完成任务？';
+    assert.equal(isLikelyNewRoundtableTopic(message, summarizedIssue), false);
+    assert.equal(planRoundtableAction(message, ['codex', 'opus'], summarizedIssue).action, 'status_response');
+    assert.equal(planRoundtableAction(message, ['codex', 'opus'], null).action, 'status_response');
+  });
 });

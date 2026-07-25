@@ -169,7 +169,7 @@ const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     displayName: 'Multi-Mention 结果',
     icon: { type: 'svg', iconId: 'users' },
     themeColor: '#059669',
-    description: '多猫 @mention 聚合结果',
+    description: '多成员 @mention 聚合结果',
   },
   {
     id: 'scheduler',
@@ -183,7 +183,7 @@ const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     displayName: '持球通知',
     icon: { type: 'svg', iconId: 'hold-ball' },
     themeColor: '#D97706',
-    description: '猫猫持球等待中',
+    description: '成员持球等待中',
   },
   {
     id: 'callback-auth',

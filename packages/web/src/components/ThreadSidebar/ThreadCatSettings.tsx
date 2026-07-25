@@ -95,7 +95,7 @@ export function ThreadCatSettings({
               : 'opacity-0 group-hover:opacity-100 text-cafe-muted hover:text-cafe-accent'
           }`
         }
-        title="设置默认猫猫"
+        title="设置默认成员"
         role={triggerRole}
       >
         {triggerLabel ? (

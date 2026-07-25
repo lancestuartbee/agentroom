@@ -50,6 +50,29 @@ function makeRecordStore(records = []) {
   };
 }
 
+function makeThread(overrides = {}) {
+  return {
+    id: THREAD_ID,
+    createdBy: USER_A,
+    participants: [CAT_OPUS, CAT_CODEX],
+    preferredCats: [CAT_OPUS, CAT_CODEX],
+    mode: 'roundtable',
+    roundtableIssueState: {
+      v: 1,
+      issueId: 'issue-test',
+      threadId: THREAD_ID,
+      topic: 'polluted test topic',
+      status: 'open',
+      stage: 'critique_loop',
+      critiqueRound: 1,
+      maxCritiqueRounds: 5,
+      participants: [CAT_OPUS, CAT_CODEX],
+      updatedAt: Date.now(),
+    },
+    ...overrides,
+  };
+}
+
 function makeTracker({ activeSlots = {} } = {}) {
   // activeSlots: { 'threadId:catId': userId }
   const cancelAllCalls = [];
@@ -91,35 +114,80 @@ function makeQueueProcessor() {
   };
 }
 
+function makeMessageStore(messages = []) {
+  const map = new Map(messages.map((message) => [message.id, { ...message }]));
+  const softDeletes = [];
+  return {
+    getByThread: async (threadId, limit = 10000) =>
+      [...map.values()]
+        .filter((message) => message.threadId === threadId && !message.deletedAt && message.deliveryStatus !== 'canceled')
+        .slice(0, limit),
+    softDelete: async (id, deletedBy) => {
+      const message = map.get(id);
+      if (!message) return null;
+      const deleted = { ...message, deletedAt: Date.now(), deletedBy };
+      map.set(id, deleted);
+      softDeletes.push({ id, deletedBy });
+      return deleted;
+    },
+    markCanceled: async (id) => {
+      const message = map.get(id);
+      if (!message) return null;
+      const canceled = { ...message, deliveryStatus: 'canceled' };
+      map.set(id, canceled);
+      return canceled;
+    },
+    map,
+    softDeletes,
+  };
+}
+
 async function buildApp({
   userId = USER_A,
   tracker = makeTracker(),
   queueProcessor = makeQueueProcessor(),
   recordStore = makeRecordStore(),
+  thread = makeThread({ createdBy: userId }),
+  messageStore,
+  sessionManager,
+  sessionChainStore,
+  sessionSealer,
 } = {}) {
   const app = Fastify({ logger: false });
   const invocationQueue = new InvocationQueue();
+  const threadStoreUpdates = [];
+  const socketEvents = [];
 
   await app.register(queueRoutes, {
     threadStore: {
-      get: async (id) => ({ id, createdBy: userId }),
+      get: async (id) => (id === thread.id ? thread : { ...thread, id }),
       addParticipants: async () => {},
       updateLastActive: async () => {},
+      updateRoundtableIssueState: async (id, state) => {
+        threadStoreUpdates.push({ op: 'updateRoundtableIssueState', id, state });
+        if (state === null) delete thread.roundtableIssueState;
+        else thread.roundtableIssueState = state;
+      },
     },
     invocationQueue,
     queueProcessor,
     invocationTracker: tracker,
     socketManager: {
-      broadcastToRoom: () => {},
-      broadcastAgentMessage: () => {},
+      broadcastToRoom: (room, event, data) => socketEvents.push({ op: 'broadcastToRoom', room, event, data }),
+      broadcastAgentMessage: (message, threadId) =>
+        socketEvents.push({ op: 'broadcastAgentMessage', message, threadId }),
       getIO: () => ({}),
       emitToUser: () => {},
     },
     invocationRecordStore: recordStore,
+    ...(messageStore ? { messageStore } : {}),
+    ...(sessionManager ? { sessionManager } : {}),
+    ...(sessionChainStore ? { sessionChainStore } : {}),
+    ...(sessionSealer ? { sessionSealer } : {}),
   });
 
   await app.ready();
-  return { app, tracker, queueProcessor, recordStore };
+  return { app, tracker, queueProcessor, recordStore, threadStoreUpdates, socketEvents };
 }
 
 // ── P1: force-reset cross-user scope ──
@@ -177,6 +245,179 @@ describe('force-reset: does not affect other users processingSlots (P1 scope gua
     // User B's codex slot must NOT have been released
     const releaseCodexSlot = qp.actions.find((a) => a.op === 'releaseSlot' && a.cid === CAT_CODEX);
     assert.equal(releaseCodexSlot, undefined, 'user B codex slot must NOT be released by user A force-reset');
+  });
+});
+
+describe('session-reset: cuts provider context without deleting thread history', () => {
+  it('defaults to roundtable profile and clears current issue runtime state', async () => {
+    const sessionManagerDeletes = [];
+    const sessionManager = {
+      delete: async (...args) => sessionManagerDeletes.push(args),
+    };
+    const thread = makeThread();
+    const { app, threadStoreUpdates, socketEvents } = await buildApp({ thread, sessionManager });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/threads/${THREAD_ID}/session-reset`,
+      headers: { 'x-cat-cafe-user': USER_A },
+      payload: { catIds: [CAT_OPUS], cancelRunning: false },
+    });
+
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.catIds, [CAT_OPUS]);
+    assert.deepEqual(body.promptProfiles, ['roundtable']);
+    assert.equal(body.providerSessionBindingsCleared, 1);
+    assert.equal(body.roundtableIssueReset, true);
+    assert.deepEqual(sessionManagerDeletes, [[USER_A, CAT_OPUS, THREAD_ID, 'roundtable']]);
+    assert.equal(thread.roundtableIssueState, undefined);
+    assert.ok(
+      threadStoreUpdates.find((u) => u.op === 'updateRoundtableIssueState' && u.id === THREAD_ID && u.state === null),
+    );
+    assert.ok(
+      socketEvents.find(
+        (event) =>
+          event.op === 'broadcastToRoom' &&
+          event.room === `thread:${THREAD_ID}` &&
+          event.event === 'thread_updated' &&
+          event.data.roundtableIssueState === null,
+      ),
+    );
+  });
+
+  it('seals an active development session before clearing resume binding', async () => {
+    const activeSession = {
+      id: 'session-active',
+      status: 'active',
+      catId: CAT_CODEX,
+      threadId: THREAD_ID,
+    };
+    const sessionManagerDeletes = [];
+    const sessionChainStore = {
+      getActive: async (catId, threadId, promptProfile) =>
+        catId === CAT_CODEX && threadId === THREAD_ID && promptProfile === undefined ? activeSession : null,
+      update: async () => null,
+    };
+    const sealerCalls = [];
+    const sessionSealer = {
+      requestSeal: async (args) => {
+        sealerCalls.push({ op: 'requestSeal', args });
+        return { accepted: true, status: 'sealing', sessionId: args.sessionId };
+      },
+      finalize: async (args) => {
+        sealerCalls.push({ op: 'finalize', args });
+      },
+    };
+    const sessionManager = {
+      delete: async (...args) => sessionManagerDeletes.push(args),
+    };
+    const { app } = await buildApp({
+      thread: makeThread({ mode: 'development', roundtableIssueState: undefined }),
+      sessionManager,
+      sessionChainStore,
+      sessionSealer,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/threads/${THREAD_ID}/session-reset`,
+      headers: { 'x-cat-cafe-user': USER_A },
+      payload: { catIds: [CAT_CODEX], cancelRunning: false },
+    });
+
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.deepEqual(body.promptProfiles, ['development']);
+    assert.equal(body.sealedSessions, 1);
+    assert.deepEqual(sealerCalls, [
+      { op: 'requestSeal', args: { sessionId: 'session-active', reason: 'manual_context_reset' } },
+      { op: 'finalize', args: { sessionId: 'session-active' } },
+    ]);
+    assert.deepEqual(sessionManagerDeletes, [[USER_A, CAT_CODEX, THREAD_ID, undefined]]);
+  });
+});
+
+describe('history-reset: hides visible messages and restarts provider context', () => {
+  it('soft-deletes current thread messages and reuses session reset behavior', async () => {
+    const messageStore = makeMessageStore([
+      {
+        id: 'msg-user',
+        threadId: THREAD_ID,
+        userId: USER_A,
+        content: 'polluted user prompt',
+        timestamp: Date.now() - 2,
+        deliveryStatus: 'delivered',
+      },
+      {
+        id: 'msg-agent',
+        threadId: THREAD_ID,
+        userId: 'system',
+        content: 'polluted agent answer',
+        timestamp: Date.now() - 1,
+        deliveryStatus: 'delivered',
+      },
+    ]);
+    const sessionManagerDeletes = [];
+    const sessionManager = {
+      delete: async (...args) => sessionManagerDeletes.push(args),
+    };
+    const thread = makeThread();
+    const { app, socketEvents } = await buildApp({ thread, messageStore, sessionManager });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/threads/${THREAD_ID}/history-reset`,
+      headers: { 'x-cat-cafe-user': USER_A },
+      payload: { mode: 'all' },
+    });
+
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.equal(body.ok, true);
+    assert.equal(body.deletedMessages, 2);
+    assert.deepEqual(messageStore.softDeletes, [
+      { id: 'msg-user', deletedBy: USER_A },
+      { id: 'msg-agent', deletedBy: USER_A },
+    ]);
+    assert.equal((await messageStore.getByThread(THREAD_ID)).length, 0);
+    assert.equal(body.sessionReset.ok, true);
+    assert.equal(body.sessionReset.roundtableIssueReset, true);
+    assert.deepEqual(sessionManagerDeletes, [
+      [USER_A, CAT_OPUS, THREAD_ID, 'roundtable'],
+      [USER_A, CAT_CODEX, THREAD_ID, 'roundtable'],
+    ]);
+    const deletedEvents = socketEvents.filter((event) => event.event === 'message_deleted');
+    assert.deepEqual(
+      deletedEvents.map((event) => event.data.messageId),
+      ['msg-user', 'msg-agent'],
+    );
+  });
+
+  it('does not clear system public thread history', async () => {
+    const messageStore = makeMessageStore([
+      {
+        id: 'msg-public',
+        threadId: THREAD_ID,
+        userId: USER_A,
+        content: 'shared message',
+        timestamp: Date.now(),
+        deliveryStatus: 'delivered',
+      },
+    ]);
+    const { app } = await buildApp({ thread: makeThread({ createdBy: 'system' }), messageStore });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/threads/${THREAD_ID}/history-reset`,
+      headers: { 'x-cat-cafe-user': USER_A },
+      payload: { mode: 'all' },
+    });
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(messageStore.softDeletes.length, 0);
+    assert.equal((await messageStore.getByThread(THREAD_ID)).length, 1);
   });
 });
 

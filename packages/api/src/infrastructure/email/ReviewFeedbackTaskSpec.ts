@@ -678,7 +678,7 @@ export function createReviewFeedbackTaskSpec(opts: ReviewFeedbackTaskSpecOptions
     display: {
       label: 'Review 反馈',
       category: 'pr',
-      description: '聚合 PR review comments 通知猫猫',
+      description: '聚合 PR review comments 通知成员',
       subjectKind: 'pr',
     },
   };

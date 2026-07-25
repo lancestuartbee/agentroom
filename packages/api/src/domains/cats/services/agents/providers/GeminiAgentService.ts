@@ -1,6 +1,6 @@
 /**
  * Gemini Agent Service
- * 使用 Gemini CLI 子进程调用暹罗猫 (Gemini)
+ * 使用 Gemini/AGY CLI 子进程调用 Gemini 成员
  *
  * 双 Adapter 架构:
  *   antigravity-cli (默认): spawn 'agy' CLI + plain stdout → 全自动 headless
@@ -592,7 +592,7 @@ export class GeminiAgentService implements AgentService {
           yield {
             type: 'error',
             catId: this.catId,
-            error: `暹罗猫 CLI 响应超时 (${Math.round(event.timeoutMs / 1000)}s${event.firstEventAt == null ? ', 未收到首帧' : ''})`,
+            error: `Gemini CLI 响应超时 (${Math.round(event.timeoutMs / 1000)}s${event.firstEventAt == null ? ', 未收到首帧' : ''})`,
             // F212 Phase A (云端 codex P2): timeout cliDiagnostics 也透传到 metadata.
             metadata: event.cliDiagnostics ? { ...metadata, cliDiagnostics: event.cliDiagnostics } : metadata,
             timestamp: Date.now(),
@@ -1542,7 +1542,7 @@ export class GeminiAgentService implements AgentService {
     yield {
       type: 'text',
       catId: this.catId,
-      content: '暹罗猫已在 Antigravity 中开始工作，结果将通过 MCP 回传到对话中。',
+      content: 'Gemini 已在 Antigravity 中开始工作，结果将通过 MCP 回传到对话中。',
       metadata: agMetadata,
       timestamp: Date.now(),
     };

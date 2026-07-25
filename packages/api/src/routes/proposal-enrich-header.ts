@@ -54,34 +54,34 @@ function buildReportingProtocol(
   // targetCats contains a real value, not a placeholder ["..."].
   const sourceCatId = sourceCatHandle?.replace(/^@/, '') ?? null;
   const routingLine = sourceCatId
-    ? `**路由目标**：\`cat_cafe_cross_post_message(threadId: "${sourceThreadId}", targetCats: ["${sourceCatId}"])\` 或 content 行首 \`${sourceCatHandle}\`，确保源猫被唤醒。`
-    : `**路由目标**：\`cat_cafe_cross_post_message(threadId: "${sourceThreadId}")\`，并在 content 行首 \`@\` 源猫 handle 或设置 \`targetCats\` 确保源猫被唤醒。`;
+    ? `**路由目标**：\`cat_cafe_cross_post_message(threadId: "${sourceThreadId}", targetCats: ["${sourceCatId}"])\` 或 content 行首 \`${sourceCatHandle}\`，确保源成员被唤醒。`
+    : `**路由目标**：\`cat_cafe_cross_post_message(threadId: "${sourceThreadId}")\`，并在 content 行首 \`@\` 源成员 handle 或设置 \`targetCats\` 确保源成员被唤醒。`;
 
   switch (mode) {
     case 'none':
       return [
         '**回报模式：autonomous（无强制回报）** — 本 Thread 自治推进，源 Thread 不默认持有回执责任。',
         // AC-AA7: even voluntary cross-posts need routing credentials
-        `遇 operator 决策 / 阻塞 / 不可逆操作 / 跨 feature 冲突 / 共享文件争用，仍按家规主动用 \`cat_cafe_cross_post_message\` 上报（"无强制回报"≠"禁止上报"）。上报时必须携带 targetCats 或行首 @ 源猫 handle 确保消息被接收。`,
+        `遇 operator 决策 / 阻塞 / 不可逆操作 / 跨 feature 冲突 / 共享文件争用，仍按家规主动用 \`cat_cafe_cross_post_message\` 上报（"无强制回报"≠"禁止上报"）。上报时必须携带 targetCats 或行首 @ 源成员 handle 确保消息被接收。`,
         routingLine,
       ];
     case 'final-only':
       if (isParallelMode && reporterHandle) {
         return [
           `**回报模式：final-only（并行）report-back owner**：${reporterHandle}（提议顺序第一棒）负责综合所有并行回复，用 \`cat_cafe_cross_post_message\` 把**最终总结**回报到主 Thread（一次）。`,
-          '其它并行的猫独立思考 / 回复即可，**不要**各自 cross-post（由 report-back owner 统一汇总）。',
+          '其它并行成员独立思考 / 回复即可，**不要**各自 cross-post（由 report-back owner 统一汇总）。',
           routingLine,
         ];
       }
       return [
-        '**回报模式：final-only** — 完成后由最后一棒猫用 `cat_cafe_cross_post_message` 把**最终总结**回报到主 Thread（一次；中途不必逐步回报）。',
+        '**回报模式：final-only** — 完成后由最后一棒成员用 `cat_cafe_cross_post_message` 把**最终总结**回报到主 Thread（一次；中途不必逐步回报）。',
         routingLine,
       ];
     case 'state-transitions':
       if (isParallelMode && reporterHandle) {
         return [
           `**回报模式：state-transitions（并行）report-back owner**：${reporterHandle}（第一棒）负责在每个 phase boundary（阶段完成 / 重要决策 / 状态切换）用 \`cat_cafe_cross_post_message\` 回报主 Thread。`,
-          '其它并行的猫独立回复，由 report-back owner 统一汇总状态。',
+          '其它并行成员独立回复，由 report-back owner 统一汇总状态。',
           routingLine,
         ];
       }
@@ -144,17 +144,17 @@ function buildChainProtocol(
   const sourceCatId = sourceCatHandle?.replace(/^@/, '') ?? null;
   const routingHint = sourceCatId
     ? `（\`targetCats: ["${sourceCatId}"]\` 或行首 \`${sourceCatHandle}\`）`
-    : '（设置 `targetCats` 或行首 `@` 源猫 handle）';
+    : '（设置 `targetCats` 或行首 `@` 源成员 handle）';
   const finalStep = isNone
     ? '  - （本 Thread 为 autonomous 模式，无强制回报；接力完成即可）'
     : `  - 最后一棒完成后, 用 \`cat_cafe_cross_post_message\` 把总结回报到主 Thread${routingHint}`;
   return [
     '',
-    '## 接力链路（cat-driven @-chain）',
+    '## 接力链路（member-driven @-chain）',
     `顺序: ${chainOrder}${chainTail}`,
     'Server 只 wake 了**第一棒**。你接到这条消息后:',
     '  - 完成你的回合',
-    '  - 在自己回复的**行首独立一行** `@` 下一棒猫的 stable handle 把球传出去',
+    '  - 在自己回复的**行首独立一行** `@` 下一棒成员的 stable handle 把球传出去',
     finalStep,
     '',
     // NOTE: do NOT write the literal "#ideate" string here — parseIntent

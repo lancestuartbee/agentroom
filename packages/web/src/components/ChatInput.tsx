@@ -420,7 +420,7 @@ export function ChatInput({
         setMentionStart(trigger.start);
         setMentionFilter(trigger.filter);
         // Bare @ defaults to first individual cat so Enter doesn't accidentally
-        // insert a group mention like @thread.  When filter is active the user is
+        // insert a group mention like @参与者.  When filter is active the user is
         // intentionally narrowing, so start at 0.
         if (trigger.filter) {
           setSelectedIdx(0);
@@ -428,7 +428,7 @@ export function ChatInput({
           const idx = catOptions.findIndex((opt) => !opt.isGroup);
           // idx = -1 when no individual cats loaded yet → point past all options
           // so the existing Enter guard (opt === undefined → closeMenus) fires
-          // instead of accidentally inserting @thread
+          // instead of accidentally inserting @参与者
           setSelectedIdx(idx >= 0 ? idx : catOptions.length);
         }
       } else {
@@ -735,7 +735,7 @@ export function ChatInput({
       {hasActiveInvocation && (
         <div data-testid="active-invocation-banner" className="px-4 pt-2 flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-cocreator-primary)] animate-pulse" />
-          <span className="text-xs text-[var(--color-cocreator-primary)] font-medium">猫猫正在回复中...</span>
+          <span className="text-xs text-[var(--color-cocreator-primary)] font-medium">成员正在回复中...</span>
           <span className="text-xs text-cafe-muted flex-1">继续输入，消息会排队</span>
           {onStop && (
             <button
@@ -919,7 +919,7 @@ export function ChatInput({
                 ? '悄悄话...'
                 : hasActiveInvocation && !whisperTargetsAllIdle
                   ? '继续输入，消息会排队...'
-                  : '输入消息... (@ 召唤猫猫)'
+                  : '输入消息... (@ 召唤成员)'
             }
             className={`w-full resize-none rounded-xl border p-3 text-sm focus:outline-none focus:ring-2 placeholder:text-cafe-muted ${
               whisperMode

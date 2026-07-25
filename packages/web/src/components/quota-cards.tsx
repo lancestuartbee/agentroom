@@ -87,9 +87,9 @@ export interface PoolGroup {
 }
 
 const CODEX_POOL_DISPLAY: Record<string, string> = {
-  'codex-main': '缅因猫 Codex + GPT-5.2',
-  'codex-spark': '缅因猫 Spark',
-  'codex-review': '缅因猫 代码审查',
+  'codex-main': 'GPT Codex + GPT-5.2',
+  'codex-spark': 'GPT Spark',
+  'codex-review': 'GPT 代码审查',
   'codex-overflow': '溢出额度',
 };
 
@@ -151,7 +151,7 @@ export function degradationHint(poolId: string | undefined, utilization: number)
     case 'claude-weekly-all':
       return 'Opus 额度紧张，建议降级 Sonnet 或推迟重活';
     case 'claude-weekly-sonnet':
-      return 'Sonnet 额度也紧张，考虑切到缅因猫';
+      return 'Sonnet 额度也紧张，考虑切到 GPT/Codex';
     case 'codex-main':
       return '编码额度紧张，建议切到 @spark';
     case 'codex-spark':

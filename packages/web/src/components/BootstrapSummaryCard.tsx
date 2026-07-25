@@ -95,7 +95,7 @@ export function BootstrapSummaryCard({
           </div>
           <div>
             <p className="text-sm font-medium text-conn-emerald-text">记忆索引构建完成</p>
-            <p className="text-xs text-conn-green-text mt-0.5">猫猫现在可以搜索这个项目的历史知识了</p>
+            <p className="text-xs text-conn-green-text mt-0.5">成员现在可以搜索这个项目的历史知识了</p>
           </div>
         </div>
 

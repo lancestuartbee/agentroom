@@ -102,7 +102,7 @@ describe('PushSettingsPanel', () => {
       root.render(React.createElement(PushSettingsPanel));
     });
 
-    expect(container.textContent).toContain('猫猫消息');
+    expect(container.textContent).toContain('成员消息');
     expect(container.textContent).toContain('权限请求');
     expect(container.textContent).toContain('@提及');
     expect(container.textContent).toContain('定时任务');

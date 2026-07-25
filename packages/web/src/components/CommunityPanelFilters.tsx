@@ -102,7 +102,7 @@ export function CommunityPanelFilters({
           onChange={(e) => onCatFilterChange(e.target.value)}
           className={selectClass}
         >
-          <option value="all">全部负责猫</option>
+          <option value="all">全部负责成员</option>
           {uniqueCats.map((c) => (
             <option key={c} value={c}>
               @{c}

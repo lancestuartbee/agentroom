@@ -89,6 +89,41 @@ import { buildVoteTally, checkVoteCompletion, extractVoteFromText, VOTE_RESULT_S
 
 const log = createModuleLogger('route-parallel');
 
+function formatParallelStreamError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const compact = raw.replace(/\s+/g, ' ').trim();
+  return compact.length > 0 ? compact.slice(0, 500) : 'Unknown stream failure';
+}
+
+function withParallelStreamErrorBoundary(
+  stream: AsyncIterable<AgentMessage>,
+  catId: CatId,
+): AsyncIterable<AgentMessage> {
+  return (async function* guardedStream(): AsyncGenerator<AgentMessage> {
+    let sawDone = false;
+    try {
+      for await (const msg of stream) {
+        if (msg.type === 'done') sawDone = true;
+        yield msg;
+      }
+    } catch (err) {
+      if (sawDone) return;
+      const error = `成员响应流异常结束：${formatParallelStreamError(err)}`;
+      yield {
+        type: 'error',
+        catId,
+        error,
+        timestamp: Date.now(),
+      } as AgentMessage;
+      yield {
+        type: 'done',
+        catId,
+        timestamp: Date.now(),
+      } as AgentMessage;
+    }
+  })();
+}
+
 export async function* routeParallel(
   deps: RouteStrategyDeps,
   targetCats: CatId[],
@@ -210,7 +245,7 @@ export async function* routeParallel(
   const catToolNames = new Map<string, string[]>();
   const catCoverageMap = new Map<string, ContextEvalInput['coverageMap']>();
 
-  const streams = await Promise.all(
+  const rawStreams = await Promise.all(
     targetCats.map(async (catId) => {
       const catConfig: CatConfig | undefined = catRegistry.tryGet(catId as string)?.config;
       const teammates = targetCats.filter((id) => id !== catId);
@@ -582,6 +617,7 @@ export async function* routeParallel(
       });
     }),
   );
+  const streams = rawStreams.map((stream, index) => withParallelStreamErrorBoundary(stream, targetCats[index]!));
 
   // Yield degradation notifications before streaming starts (BACKLOG #32)
   for (const dm of degradationMsgs) {

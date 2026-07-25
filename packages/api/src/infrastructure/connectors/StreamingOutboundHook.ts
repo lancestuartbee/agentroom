@@ -132,7 +132,7 @@ export class StreamingOutboundHook {
         // F157: Cat-personality receipt for Feishu only; generic for others (AC-A8)
         // P2: Group chat @mention — add sender name to prefix when available
         const senderSuffix = binding.connectorId === 'feishu' && senderHint?.name ? `→${senderHint.name}` : '';
-        const prefix = displayName || senderSuffix ? `【${displayName || '猫猫'}🐱${senderSuffix}】` : '';
+        const prefix = displayName || senderSuffix ? `【${displayName || '成员'}${senderSuffix}】` : '';
         const placeholderText =
           binding.connectorId === 'feishu' ? `${prefix}${pickReceiptLine(catId)}` : `${prefix}🤔 思考中...`;
         const msgId = await adapter.sendPlaceholder(binding.externalChatId, placeholderText);

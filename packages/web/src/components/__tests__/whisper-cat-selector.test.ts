@@ -137,12 +137,12 @@ describe('WhisperCatSelector', () => {
 
   it('shows empty-selection warning when none selected', () => {
     renderSelector();
-    expect(container.textContent).toContain('请至少选一只猫猫');
+    expect(container.textContent).toContain('请至少选一位成员');
   });
 
   it('hides empty-selection warning when a cat is selected', () => {
     renderSelector({ selected: new Set(['codex']) });
-    expect(container.textContent).not.toContain('请至少选一只猫猫');
+    expect(container.textContent).not.toContain('请至少选一位成员');
   });
 });
 

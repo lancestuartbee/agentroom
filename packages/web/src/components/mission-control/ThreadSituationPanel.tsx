@@ -106,7 +106,7 @@ export function ThreadSituationPanel({
                     </span>
                   </p>
                   <p className="text-xs text-cafe-secondary">
-                    参与猫：{t.participants.length > 0 ? t.participants.join(', ') : '暂无'}
+                    参与成员：{t.participants.length > 0 ? t.participants.join(', ') : '暂无'}
                   </p>
                   <Link
                     href={`/thread/${t.id}`}

@@ -151,10 +151,10 @@ export function SuggestionDrawer({
               Self-claim policy：<span className="font-semibold">{currentSelfClaimScope}</span>
             </p>
             {currentSelfClaimScope === 'once' && (
-              <p className="mt-1 text-xs text-cafe-secondary">once：每只猫只允许一次非幂等自领。</p>
+              <p className="mt-1 text-xs text-cafe-secondary">once：每位成员只允许一次非幂等自领。</p>
             )}
             {currentSelfClaimScope === 'thread' && (
-              <p className="mt-1 text-xs text-cafe-secondary">thread：同一只猫同一时间只允许一个 active lease 线程。</p>
+              <p className="mt-1 text-xs text-cafe-secondary">thread：同一位成员同一时间只允许一个 active lease 线程。</p>
             )}
             {selfClaimPolicyBlocker === 'once' && (
               <p className="mt-1 text-xs text-[var(--mc-status-risk)]" data-testid="mc-self-claim-blocker-once">

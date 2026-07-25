@@ -131,7 +131,7 @@ export function HubEvalTab() {
   return (
     <div className="space-y-4" data-guide-id="observability.eval-panel">
       <p className="text-xs text-cafe-muted">
-        Harness Eval 控制面板：猫猫定期评估自身协作机制的健康度，下方是最新评估结论。
+        Harness Eval 控制面板：成员定期评估自身协作机制的健康度，下方是最新评估结论。
       </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCell label="评估结论" sublabel="总数" value={summary.counts.total} />
@@ -292,7 +292,7 @@ function DomainCard({ domain, onCatUpdated }: { domain: EvalDomainSummary; onCat
           <div className="text-xs font-medium uppercase tracking-wide text-cafe-muted">{domain.domainId}</div>
           <h3 className="mt-1 text-base font-semibold text-cafe">{domain.displayName}</h3>
           <p className="mt-1 text-xs text-cafe-muted">
-            评估频率: {domain.frequency} · 评估猫:{' '}
+            评估频率: {domain.frequency} · 评估成员:{' '}
             {editing ? (
               <span className="inline-flex items-center gap-1">
                 {availableCats.length > 0 ? (
@@ -343,7 +343,7 @@ function DomainCard({ domain, onCatUpdated }: { domain: EvalDomainSummary; onCat
                   type="button"
                   onClick={startEditing}
                   className="text-xs text-cafe-muted hover:text-cafe"
-                  title="编辑评估猫"
+                  title="编辑评估成员"
                 >
                   ✏️
                 </button>

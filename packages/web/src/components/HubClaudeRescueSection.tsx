@@ -77,7 +77,7 @@ export function HubClaudeRescueSection() {
         setError(message);
         addToast({
           type: 'error',
-          title: '布偶猫救援失败',
+          title: 'Claude 救援失败',
           message,
           duration: 5000,
         });
@@ -87,10 +87,10 @@ export function HubClaudeRescueSection() {
       setLastRun(body);
       addToast({
         type: body.rescuedCount > 0 ? 'success' : 'info',
-        title: body.rescuedCount > 0 ? '布偶猫已救活' : '布偶猫无需救活',
+        title: body.rescuedCount > 0 ? 'Claude session 已修复' : 'Claude session 无需修复',
         message:
           body.rescuedCount > 0
-            ? `救活 ${body.rescuedCount} 只布偶猫，跳过 ${body.skippedCount} 只。`
+            ? `修复 ${body.rescuedCount} 个 Claude session，跳过 ${body.skippedCount} 个。`
             : '没有需要动刀的坏 session。',
         duration: 3500,
       });
@@ -99,7 +99,7 @@ export function HubClaudeRescueSection() {
       setError('网络错误');
       addToast({
         type: 'error',
-        title: '布偶猫救援失败',
+        title: 'Claude 救援失败',
         message: '网络错误',
         duration: 5000,
       });
@@ -112,7 +112,7 @@ export function HubClaudeRescueSection() {
     <section className="rounded-lg border border-conn-amber-ring bg-conn-amber-bg/70 p-3 space-y-3">
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-3">
-          <h4 className="text-xs font-semibold text-conn-amber-text">布偶猫救援中心</h4>
+          <h4 className="text-xs font-semibold text-conn-amber-text">Claude session 救援中心</h4>
           <button
             type="button"
             onClick={() => {
@@ -139,9 +139,9 @@ export function HubClaudeRescueSection() {
 
       {lastRun && (
         <div className="rounded-lg border border-[var(--semantic-success)] bg-[var(--semantic-success-surface)] px-3 py-2 text-xs text-conn-emerald-text space-y-1">
-          <p className="font-medium">刚刚救活 {lastRun.rescuedCount} 只布偶猫</p>
+          <p className="font-medium">刚刚修复 {lastRun.rescuedCount} 个 Claude session</p>
           <p>
-            跳过 {lastRun.skippedCount} 只，处理 {lastRun.results.length} 个 session。
+            跳过 {lastRun.skippedCount} 个，处理 {lastRun.results.length} 个 session。
           </p>
         </div>
       )}
@@ -149,12 +149,12 @@ export function HubClaudeRescueSection() {
       {loading ? (
         <p className="text-xs text-conn-amber-text">扫描中...</p>
       ) : sessions.length === 0 ? (
-        <p className="text-xs text-conn-amber-text">暂未发现坏掉的布偶猫 session</p>
+        <p className="text-xs text-conn-amber-text">暂未发现坏掉的 Claude session</p>
       ) : (
         <div className="space-y-3">
           <div className="space-y-1">
             <p className="text-xs font-medium text-conn-amber-text">
-              检测到 {sessions.length} 只布偶猫 session 需要救援
+              检测到 {sessions.length} 个 Claude session 需要救援
             </p>
             <p className="text-xs text-conn-amber-text">先勾选要动刀的 session，再执行一键救活。</p>
           </div>
@@ -192,7 +192,7 @@ export function HubClaudeRescueSection() {
             disabled={rescuing || selectedTargets.length === 0}
             className="px-3 py-1.5 rounded bg-[var(--semantic-warning)] text-[var(--cafe-surface)] text-xs hover:opacity-90 disabled:opacity-50"
           >
-            {rescuing ? '救援中...' : `一键救活 ${selectedTargets.length} 只布偶猫`}
+            {rescuing ? '救援中...' : `一键修复 ${selectedTargets.length} 个 Claude session`}
           </button>
         </div>
       )}

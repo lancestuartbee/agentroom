@@ -3168,7 +3168,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           const notice: AgentMessage = {
             type: 'text',
             catId: catId as CatId,
-            content: `\n\n🐾 手抖了——最后一步没完成。上面的内容已经送到了，可以追问或让其他猫猫接着做。`,
+            content: `\n\n最后一步没完成。上面的内容已经送到了，可以追问或让其他成员接着做。`,
             timestamp: Date.now(),
           };
           for await (const out of streamProcessedOutputs(notice)) {
@@ -3414,10 +3414,10 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         // BLOCKING 4 fix: removed "请重新发送请求" — relay is automatic.
         // P2 fix: neutral wording — don't promise relay success before route-serial verifies availability.
         const cardText = [
-          '🙀 **Opus 4.8 炸毛了** —— 他这次手抖，工具调用格式写歪了，系统读不出来。',
-          '放心，**不是猫咖的问题**，是这只猫在长对话里偶尔会犯的毛病；系统已触发自动恢复，将尝试切换到备用上下文重试（如可用）。',
+          '**Opus 4.8 工具调用格式异常** —— 这次输出的 tool call 格式无法被系统解析。',
+          '**不是 Clowder AI 配置问题**。这是该模型在长对话里偶尔会遇到的问题；系统已触发自动恢复，将尝试切换到备用上下文重试（如可用）。',
           '',
-          '`[展开技术细节 ▾]` 发生了什么：claude-opus-4-8 在长对话后段，偶尔把"工具调用"写成 AI 内部旧格式，Claude Code 识别不了 | 根因：Anthropic 模型的已知问题（#49747），与猫咖无关 | 猫咖怎么兜底：自动检测异常 → 隔离问题对话 → 触发备用恢复路径（如 Opus 4.6 可用则接力）',
+          '`[展开技术细节 ▾]` 发生了什么：claude-opus-4-8 在长对话后段，偶尔把"工具调用"写成 AI 内部旧格式，Claude Code 识别不了 | 根因：Anthropic 模型的已知问题（#49747），与 Clowder AI 配置无关 | 系统兜底：自动检测异常 → 隔离问题对话 → 触发备用恢复路径（如 Opus 4.6 可用则接力）',
         ].join('\n');
         for await (const out of streamProcessedOutputs({
           type: 'text' as const,

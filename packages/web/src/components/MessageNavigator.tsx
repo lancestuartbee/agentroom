@@ -25,11 +25,11 @@ const VARIANT_BASE_FALLBACK: Record<string, string> = {
 };
 
 const FALLBACK_CAT_META: Record<string, { label: string; color: string }> = {
-  opus: { label: '布偶猫', color: CAT_COLORS.opus.primary },
-  codex: { label: '缅因猫', color: CAT_COLORS.codex.primary },
-  gemini: { label: '暹罗猫', color: CAT_COLORS.gemini.primary },
-  kimi: { label: '梵花猫', color: CAT_COLORS.kimi.primary },
-  dare: { label: '狸花猫', color: CAT_COLORS.dare.primary },
+  opus: { label: 'Claude', color: CAT_COLORS.opus.primary },
+  codex: { label: 'GPT/Codex', color: CAT_COLORS.codex.primary },
+  gemini: { label: 'Gemini', color: CAT_COLORS.gemini.primary },
+  kimi: { label: 'Kimi', color: CAT_COLORS.kimi.primary },
+  dare: { label: 'Dare', color: CAT_COLORS.dare.primary },
 };
 
 function resolveFallbackCatMeta(catId: string): { baseId: string; label: string; color: string } | undefined {

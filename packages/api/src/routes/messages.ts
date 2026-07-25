@@ -520,7 +520,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
       const catIds = sanitized.length > 0 ? sanitized : [...allCatIds];
       if (catIds.length === 0) {
         reply.status(400);
-        return { error: '没有可用的猫猫成员，请先在设置中添加一只猫猫', code: 'NO_TARGETS' };
+        return { error: '没有可用成员，请先在设置中添加一位成员', code: 'NO_TARGETS' };
       }
       const playerCount = parsedGame.playerCount ?? DEFAULT_PLAYER_COUNT;
       const seats = buildGameSeats({
@@ -622,7 +622,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
         : [...resolvedTargetCats];
     if (targetCats.length === 0) {
       reply.status(400);
-      return { error: '没有可用的猫猫成员，请先在设置中添加一只猫猫', code: 'NO_TARGETS' };
+      return { error: '没有可用成员，请先在设置中添加一位成员', code: 'NO_TARGETS' };
     }
     const primaryCat = targetCats[0] ?? 'unknown';
 
@@ -908,7 +908,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
           }
           // No queue available — thread is busy but we can't queue. Reject.
           reply.status(409);
-          return { error: '猫猫正在忙', code: 'THREAD_BUSY' };
+          return { error: '成员正在忙', code: 'THREAD_BUSY' };
         }
         controller = tryResult;
       }
@@ -1072,7 +1072,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
               catId: targetCats[0] ?? getDefaultCatId(),
               content: JSON.stringify({
                 type: 'invocation_startup_timeout',
-                message: '猫猫启动超时，已释放卡住的调用。',
+                message: '成员启动超时，已释放卡住的调用。',
                 invocationId: createResult.invocationId,
               }),
               timestamp: Date.now(),
@@ -1407,7 +1407,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
             if (pushSvcErr) {
               pushSvcErr
                 .notifyUser(userId, {
-                  title: '猫猫消息保存失败',
+                  title: '成员消息保存失败',
                   body: '消息已发送但未能保存，请检查',
                   tag: `cat-error-${resolvedThreadId}`,
                   data: { threadId: resolvedThreadId, url: `/?thread=${resolvedThreadId}` },
@@ -1470,7 +1470,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
                 outboundTurns.length > 0 ? flattenTurnTextParts(outboundTurns) : flattenTextParts(collectedTextParts)
               ).trim();
               const needsDecision = assistantText.length > 0 ? shouldMarkDecisionNotification(assistantText) : false;
-              const pushBodySource = assistantText || '猫猫已处理，请打开会话查看详情';
+              const pushBodySource = assistantText || '成员已处理，请打开会话查看详情';
               pushSvc
                 .notifyUser(userId, {
                   title: needsDecision ? `${catNames} 需要你决策` : `${catNames} 回复了`,
@@ -1559,7 +1559,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
             if (pushSvcCatch) {
               pushSvcCatch
                 .notifyUser(userId, {
-                  title: '猫猫出错了',
+                  title: '成员出错了',
                   body: errorMsg.slice(0, 100),
                   tag: `cat-error-${resolvedThreadId}`,
                   data: { threadId: resolvedThreadId, url: `/?thread=${resolvedThreadId}` },

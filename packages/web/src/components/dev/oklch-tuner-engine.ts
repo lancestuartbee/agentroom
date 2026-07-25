@@ -97,7 +97,7 @@ export const SEMANTIC_H_FIELD: Record<SemanticKey, keyof SemanticP> = {
 export const TIER_LABELS: Record<CatTier | 'insetText' | 'msgText', string> = {
   primary: '主色 (图标/头像环)',
   surface: '消息气泡背景',
-  text: '猫名文字',
+  text: '成员名文字',
   inset: '嵌套块 (Thinking/CLI)',
   ring: '聚焦环线',
   insetText: '嵌套块文字',

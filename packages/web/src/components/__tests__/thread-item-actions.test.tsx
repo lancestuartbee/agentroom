@@ -31,9 +31,9 @@ vi.mock('@/components/ThreadSidebar/ThreadCatSettings', () => ({
   }) =>
     React.createElement(
       'button',
-      { role: triggerRole, title: '设置默认猫猫', type: 'button' },
+      { role: triggerRole, title: '设置默认成员', type: 'button' },
       triggerIcon,
-      React.createElement('span', null, triggerLabel ?? '设置默认猫猫'),
+      React.createElement('span', null, triggerLabel ?? '设置默认成员'),
     ),
 }));
 
@@ -128,7 +128,7 @@ describe('ThreadItem actions', () => {
     expect(buttonByTitle('更多操作')).not.toBeNull();
     expect(buttonByTitle('更多操作')?.className).not.toContain('opacity-0');
 
-    expect(buttonByTitle('设置默认猫猫')).toBeNull();
+    expect(buttonByTitle('设置默认成员')).toBeNull();
     expect(buttonByTitle('重命名对话')).toBeNull();
     expect(buttonByTitle('导出对话')).toBeNull();
     expect(buttonByTitle('标签管理')).toBeNull();
@@ -150,7 +150,7 @@ describe('ThreadItem actions', () => {
     });
 
     const menu = container.querySelector('[role="menu"]');
-    expect(menu?.textContent).toContain('设置默认猫猫');
+    expect(menu?.textContent).toContain('设置默认成员');
     expect(menu?.textContent).toContain('重命名对话');
     expect(menu?.textContent).toContain('导出对话');
     expect(menu?.textContent).toContain('标签管理');
@@ -167,7 +167,7 @@ describe('ThreadItem actions', () => {
     const menu = container.querySelector('[role="menu"]');
     expect(menu).not.toBeNull();
 
-    for (const label of ['设置默认猫猫', '重命名对话', '导出对话', '标签管理', '收藏']) {
+    for (const label of ['设置默认成员', '重命名对话', '导出对话', '标签管理', '收藏']) {
       const item = Array.from(menu!.querySelectorAll('[role="menuitem"]')).find((el) =>
         el.textContent?.includes(label),
       );
