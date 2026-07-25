@@ -445,7 +445,8 @@ function projectLegacyPersonaIdentityToModelMembers(
     if (!templateBreed) continue;
 
     const breedLooksLegacy = recordHasLegacyPersonaIdentity(breed);
-    if (breedLooksLegacy) {
+    const templateBreedLooksLegacy = recordHasLegacyPersonaIdentity(templateBreed);
+    if (breedLooksLegacy && !templateBreedLooksLegacy) {
       copyIdentityFields(breed, templateBreed, BREED_IDENTITY_FIELDS);
     }
 
@@ -464,7 +465,11 @@ function projectLegacyPersonaIdentityToModelMembers(
       const catId = resolvedVariantCatId(breed, variant);
       const templateVariant = templateVariantById.get(String(variant.id)) ?? (catId ? templateVariantByCatId.get(catId) : null);
       if (!templateVariant) continue;
-      if (breedLooksLegacy || recordHasLegacyPersonaIdentity(variant)) {
+      if (
+        !templateBreedLooksLegacy &&
+        (breedLooksLegacy || recordHasLegacyPersonaIdentity(variant)) &&
+        !recordHasLegacyPersonaIdentity(templateVariant)
+      ) {
         copyIdentityFields(variant, templateVariant, VARIANT_IDENTITY_FIELDS);
       }
     }

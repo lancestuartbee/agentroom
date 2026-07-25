@@ -298,6 +298,58 @@ describe('cat-catalog-store', () => {
     assert.equal(hydrated.breeds[0]?.variants[0]?.accountRef, undefined);
   });
 
+  it('migrates legacy persona identity to model member defaults while preserving runtime bindings', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cat-catalog-store-member-migration-'));
+    const templatePath = join(projectRoot, 'cat-template.json');
+    const template = validConfig();
+    template.breeds[0].name = 'Claude';
+    template.breeds[0].displayName = 'Claude';
+    template.breeds[0].nickname = 'Opus';
+    template.breeds[0].avatar = '/avatars/claude.svg';
+    template.breeds[0].mentionPatterns = ['@opus', '@claude'];
+    template.breeds[0].roleDescription = 'Claude 模型家族，适合复杂推理。';
+    template.breeds[0].teamStrengths = '复杂推理、架构判断';
+    template.breeds[0].modelFamily = 'claude';
+    template.breeds[0].modelLine = 'Opus';
+    template.breeds[0].capabilityLevel = 3;
+    template.breeds[0].runtimeClient = 'Claude CLI';
+    template.breeds[0].variants[0].displayName = 'Claude';
+    template.breeds[0].variants[0].variantLabel = 'Opus';
+    template.breeds[0].variants[0].nickname = 'Opus';
+    template.breeds[0].variants[0].avatar = '/avatars/claude.svg';
+    template.breeds[0].variants[0].mentionPatterns = ['@opus', '@claude'];
+    template.breeds[0].variants[0].teamStrengths = '复杂推理、架构判断';
+    template.breeds[0].variants[0].modelFamily = 'claude';
+    template.breeds[0].variants[0].modelLine = 'Opus';
+    template.breeds[0].variants[0].capabilityLevel = 3;
+    template.breeds[0].variants[0].runtimeClient = 'Claude CLI';
+    writeFileSync(templatePath, JSON.stringify(template, null, 2));
+
+    const runtimeConfig = validConfig();
+    runtimeConfig.breeds[0].nickname = '宪宪';
+    runtimeConfig.breeds[0].mentionPatterns = ['@opus', '@布偶猫', '@宪宪'];
+    runtimeConfig.breeds[0].variants[0].displayName = '布偶猫';
+    runtimeConfig.breeds[0].variants[0].accountRef = 'lancestuart-us-icloud-com';
+    runtimeConfig.breeds[0].variants[0].defaultModel = 'claude-opus-4-8';
+    mkdirSync(join(projectRoot, '.cat-cafe'), { recursive: true });
+    writeFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), JSON.stringify(runtimeConfig, null, 2));
+
+    const catalogPath = bootstrapCatCatalog(projectRoot, templatePath);
+    const hydrated = JSON.parse(readFileSync(catalogPath, 'utf-8'));
+    const breed = hydrated.breeds[0];
+    const variant = breed.variants[0];
+
+    assert.equal(breed.displayName, 'Claude');
+    assert.equal(breed.nickname, 'Opus');
+    assert.deepEqual(breed.mentionPatterns, ['@opus', '@claude']);
+    assert.equal(breed.avatar, '/avatars/claude.svg');
+    assert.equal(breed.modelFamily, 'claude');
+    assert.equal(variant.displayName, 'Claude');
+    assert.equal(variant.nickname, 'Opus');
+    assert.equal(variant.accountRef, 'lancestuart-us-icloud-com');
+    assert.equal(variant.defaultModel, 'claude-opus-4-8');
+  });
+
   it('keeps existing custom runtime cats unbound during catalog migration', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'cat-catalog-store-custom-runtime-'));
     const templatePath = join(projectRoot, 'cat-template.json');

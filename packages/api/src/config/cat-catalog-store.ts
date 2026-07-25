@@ -7,6 +7,7 @@ import {
   pruneRosterToRuntimeBreeds,
   type RuntimeBreedWithCatIds,
 } from './cat-catalog-bootstrap-roster.js';
+import { resolveProjectTemplatePath } from './project-template-path.js';
 
 const CONFIG_SUBDIR = '.cat-cafe';
 const CAT_CATALOG_FILENAME = 'cat-catalog.json';
@@ -39,6 +40,135 @@ function writeFileAtomic(filePath: string, content: string): void {
 /** clowder-ai#340 P5: ClientId values — used to detect old `provider` field holding a clientId. */
 const CLIENT_ID_VALUES = new Set(['anthropic', 'openai', 'google', 'kimi', 'dare', 'antigravity', 'opencode', 'a2a']);
 
+const LEGACY_PERSONA_TERMS = ['布偶猫', '缅因猫', '暹罗猫', '狸花猫', '孟加拉猫', '金吉拉', '月影猫'];
+
+const BREED_IDENTITY_FIELDS = [
+  'name',
+  'displayName',
+  'nickname',
+  'avatar',
+  'roleDescription',
+  'teamStrengths',
+  'caution',
+  'restrictions',
+  'modelFamily',
+  'modelLine',
+  'capabilityLevel',
+  'runtimeClient',
+  'mentionPatterns',
+] as const;
+
+const VARIANT_IDENTITY_FIELDS = [
+  'displayName',
+  'variantLabel',
+  'nickname',
+  'avatar',
+  'color',
+  'roleDescription',
+  'personality',
+  'teamStrengths',
+  'caution',
+  'restrictions',
+  'strengths',
+  'modelFamily',
+  'modelLine',
+  'capabilityLevel',
+  'runtimeClient',
+  'mentionPatterns',
+] as const;
+
+function stringHasLegacyPersonaTerm(value: unknown): boolean {
+  return typeof value === 'string' && LEGACY_PERSONA_TERMS.some((term) => value.includes(term));
+}
+
+function recordHasLegacyPersonaIdentity(record: Record<string, unknown>): boolean {
+  return (
+    stringHasLegacyPersonaTerm(record.name) ||
+    stringHasLegacyPersonaTerm(record.displayName) ||
+    stringHasLegacyPersonaTerm(record.nickname) ||
+    stringHasLegacyPersonaTerm(record.roleDescription) ||
+    stringHasLegacyPersonaTerm(record.teamStrengths) ||
+    stringHasLegacyPersonaTerm(record.personality) ||
+    (Array.isArray(record.mentionPatterns) && record.mentionPatterns.some(stringHasLegacyPersonaTerm))
+  );
+}
+
+function jsonEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function replaceIdentityFields(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  fields: readonly string[],
+): boolean {
+  let dirty = false;
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      const nextValue = structuredClone(source[field]);
+      if (!jsonEqual(target[field], nextValue)) {
+        target[field] = nextValue;
+        dirty = true;
+      }
+    } else if (Object.prototype.hasOwnProperty.call(target, field)) {
+      delete target[field];
+      dirty = true;
+    }
+  }
+  return dirty;
+}
+
+function resolvedVariantCatId(breed: Record<string, unknown>, variant: Record<string, unknown>): string | null {
+  const variantCatId = variant.catId;
+  if (typeof variantCatId === 'string' && variantCatId.length > 0) return variantCatId;
+  const breedCatId = breed.catId;
+  return typeof breedCatId === 'string' && breedCatId.length > 0 ? breedCatId : null;
+}
+
+function migrateLegacyPersonaIdentity(catalog: CatCafeConfig, template: CatCafeConfig): boolean {
+  let dirty = false;
+  const catalogBreeds = catalog.breeds as unknown as Record<string, unknown>[];
+  const templateBreeds = template.breeds as unknown as Record<string, unknown>[];
+  const templateBreedById = new Map(templateBreeds.map((breed) => [String(breed.id), breed]));
+
+  for (const breed of catalogBreeds) {
+    const templateBreed = templateBreedById.get(String(breed.id));
+    if (!templateBreed) continue;
+
+    const breedLooksLegacy = recordHasLegacyPersonaIdentity(breed);
+    const templateBreedLooksLegacy = recordHasLegacyPersonaIdentity(templateBreed);
+    if (breedLooksLegacy && !templateBreedLooksLegacy) {
+      dirty = replaceIdentityFields(breed, templateBreed, BREED_IDENTITY_FIELDS) || dirty;
+    }
+
+    const variants = Array.isArray(breed.variants) ? (breed.variants as Record<string, unknown>[]) : [];
+    const templateVariants = Array.isArray(templateBreed.variants)
+      ? (templateBreed.variants as Record<string, unknown>[])
+      : [];
+    const templateVariantById = new Map(templateVariants.map((variant) => [String(variant.id), variant]));
+    const templateVariantByCatId = new Map<string, Record<string, unknown>>();
+    for (const templateVariant of templateVariants) {
+      const catId = resolvedVariantCatId(templateBreed, templateVariant);
+      if (catId) templateVariantByCatId.set(catId, templateVariant);
+    }
+
+    for (const variant of variants) {
+      const catId = resolvedVariantCatId(breed, variant);
+      const templateVariant = templateVariantById.get(String(variant.id)) ?? (catId ? templateVariantByCatId.get(catId) : null);
+      if (!templateVariant) continue;
+      if (
+        !templateBreedLooksLegacy &&
+        (breedLooksLegacy || recordHasLegacyPersonaIdentity(variant)) &&
+        !recordHasLegacyPersonaIdentity(templateVariant)
+      ) {
+        dirty = replaceIdentityFields(variant, templateVariant, VARIANT_IDENTITY_FIELDS) || dirty;
+      }
+    }
+  }
+
+  return dirty;
+}
+
 /**
  * clowder-ai#340: One-time catalog variant migration — rewrites file on disk then never runs again.
  *   1. old `provider` (clientId value) → `clientId` (P5 field rename)
@@ -57,6 +187,7 @@ const CLIENT_ID_VALUES = new Set(['anthropic', 'openai', 'google', 'kimi', 'dare
 function migrateCatalogVariants(
   catalog: CatCafeConfig,
   externalStandaloneBreedIds?: ReadonlySet<string>,
+  template?: CatCafeConfig,
 ): { catalog: CatCafeConfig; dirty: boolean } {
   let dirty = false;
   const next = structuredClone(catalog) as CatCafeConfig;
@@ -142,6 +273,10 @@ function migrateCatalogVariants(
     }
   }
 
+  if (template) {
+    dirty = migrateLegacyPersonaIdentity(next, template) || dirty;
+  }
+
   return { catalog: next, dirty };
 }
 
@@ -223,23 +358,25 @@ export function resolveCatCatalogPath(projectRoot: string): string {
  * Returns an empty set if the template is missing or unreadable — migration
  * still works against catalog-only ids in that case.
  */
-function readTemplateBreedIds(projectRoot: string): Set<string> {
-  const ids = new Set<string>();
+function readTemplateForCatalogMigration(projectRoot: string): { breedIds: Set<string>; template?: CatCafeConfig } {
+  const breedIds = new Set<string>();
   let templateRaw: string;
   try {
-    templateRaw = readFileSync(safePath(projectRoot, 'cat-template.json'), 'utf-8');
+    const templatePath = resolveProjectTemplatePath(projectRoot);
+    templateRaw = readFileSync(templatePath, 'utf-8');
   } catch {
-    return ids;
+    return { breedIds };
   }
   try {
-    const json = JSON.parse(templateRaw) as { breeds?: Array<{ id?: unknown }> };
+    const json = JSON.parse(templateRaw) as CatCafeConfig & { breeds?: Array<{ id?: unknown }> };
     for (const breed of json.breeds ?? []) {
-      if (typeof breed.id === 'string') ids.add(breed.id);
+      if (typeof breed.id === 'string') breedIds.add(breed.id);
     }
+    return { breedIds, template: json as CatCafeConfig };
   } catch {
     // Malformed template — treat as no external ids.
   }
-  return ids;
+  return { breedIds };
 }
 
 export function readCatCatalogRaw(projectRoot: string): string | null {
@@ -250,8 +387,8 @@ export function readCatCatalogRaw(projectRoot: string): string | null {
     const parsed = JSON.parse(raw) as CatCafeConfig;
     // Hand the migration template breed.ids so it can detect legacy variants
     // that were promoted to standalone breeds in template but not yet here.
-    const templateBreedIds = readTemplateBreedIds(projectRoot);
-    const migrated = migrateCatalogVariants(parsed, templateBreedIds);
+    const { breedIds: templateBreedIds, template } = readTemplateForCatalogMigration(projectRoot);
+    const migrated = migrateCatalogVariants(parsed, templateBreedIds, template);
     if (migrated.dirty) {
       const nextRaw = `${JSON.stringify(migrated.catalog, null, 2)}\n`;
       writeFileAtomic(catalogPath, nextRaw);

@@ -30,6 +30,10 @@ function writeTempConfig(data) {
   return path;
 }
 
+function repoTemplatePath() {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '../../../cat-template.json');
+}
+
 /** Minimal valid config for testing */
 function validConfig() {
   return {
@@ -472,16 +476,16 @@ describe('cat-config-loader', () => {
       assert.equal(String(result.catId), 'opus-45');
     });
 
-    it('longest-match-first: project config @布偶sonnet resolves to sonnet', () => {
-      const config = loadCatConfig();
-      const result = findBreedByMention(config, '@布偶sonnet 帮忙');
+    it('longest-match-first: project config @claude-sonnet resolves to sonnet', () => {
+      const config = loadCatConfig(repoTemplatePath());
+      const result = findBreedByMention(config, '@claude-sonnet 帮忙');
       assert.ok(result);
       assert.equal(String(result.catId), 'sonnet');
     });
 
-    it('breed-level short pattern still works when no prefix collision', () => {
-      const config = loadCatConfig();
-      const result = findBreedByMention(config, '@布偶 帮忙');
+    it('breed-level model-family pattern still works when no prefix collision', () => {
+      const config = loadCatConfig(repoTemplatePath());
+      const result = findBreedByMention(config, '@claude 帮忙');
       assert.ok(result);
       assert.equal(String(result.catId), 'opus');
     });
@@ -993,16 +997,16 @@ describe('F32-b P4c: Sonnet variant in project config', () => {
   });
 
   it('Sonnet expands to independent cat with correct overrides', () => {
-    const config = loadCatConfig();
+    const config = loadCatConfig(repoTemplatePath());
     const all = toAllCatConfigs(config);
     const sonnet = all.sonnet;
     assert.ok(sonnet, 'sonnet cat config exists');
     assert.equal(sonnet.breedId, 'ragdoll');
-    assert.equal(sonnet.displayName, '布偶猫');
+    assert.equal(sonnet.displayName, 'Claude');
     assert.equal(sonnet.variantLabel, 'Sonnet');
     assert.equal(sonnet.isDefaultVariant, false);
     assert.deepEqual(sonnet.color, { primary: '#B39DDB', secondary: '#EDE7F6' });
-    assert.deepEqual(sonnet.mentionPatterns, ['@sonnet', '@布偶sonnet']);
+    assert.deepEqual(sonnet.mentionPatterns, ['@sonnet', '@claude-sonnet']);
   });
 
   it('Sonnet does not share avatar/color with default opus', () => {
@@ -1013,14 +1017,14 @@ describe('F32-b P4c: Sonnet variant in project config', () => {
   });
 
   it('Fable 5 expands as a Ragdoll variant with its own model, avatar, and mentions', () => {
-    const config = loadCatConfig();
+    const config = loadCatConfig(repoTemplatePath());
     const all = toAllCatConfigs(config);
     const fable = all['fable-5'];
     assert.ok(fable, 'fable-5 cat config exists');
     assert.equal(fable.breedId, 'ragdoll');
     assert.equal(fable.defaultModel, 'claude-fable-5');
-    assert.equal(fable.avatar, '/avatars/claude-fable-5.png');
-    assert.deepEqual(fable.mentionPatterns, ['@fable5', '@fable-5', '@claude-fable-5', '@宪宪5', '@布偶猫5']);
+    assert.equal(fable.avatar, '/avatars/claude.svg');
+    assert.deepEqual(fable.mentionPatterns, ['@fable5', '@fable-5', '@claude-fable-5', '@claude-fable']);
   });
 
   it('total cat count is 16 (opus + sonnet + opus-45 + opus-47 + fable-5 + codex + gpt52 + spark + gemini + gemini25 + gemini35 + kimi + dare + antigravity + antig-opus + opencode)', () => {
@@ -1168,12 +1172,10 @@ describe('F167 Phase E: cat-config restrictions', () => {
     assert.equal(all.opus.restrictions, undefined);
   });
 
-  it('live project config: gemini has "禁止写代码" restriction', () => {
-    // Real project config: validates KD-20 data-driven migration for the
-    // primary flagged case (gemini was being harness-blocked by L3).
-    const config = loadCatConfig();
+  it('live project config: gemini no longer carries a hard-coded coding restriction', () => {
+    const config = loadCatConfig(repoTemplatePath());
     const all = toAllCatConfigs(config);
-    assert.ok(all.gemini?.restrictions?.includes('禁止写代码'), 'live gemini.restrictions must include 禁止写代码');
+    assert.equal(all.gemini?.restrictions, undefined);
   });
 });
 
