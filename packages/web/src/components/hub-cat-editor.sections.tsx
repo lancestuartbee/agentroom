@@ -19,6 +19,7 @@ import {
   showTransportSelector,
   splitMentionPatterns,
   splitStrengthTags,
+  uniqueCatId,
 } from './hub-cat-editor.model';
 import { CatColorField } from './hub-cat-editor-color-field';
 import { SectionCard, SelectField, TextAreaField, TextField } from './hub-cat-editor-fields';
@@ -64,6 +65,7 @@ export function IdentitySection({
   hasError,
   avatarUploading,
   hasDossier,
+  reservedCatIds,
   onChange,
   onAvatarUpload,
   onRefAudioUpload,
@@ -74,6 +76,8 @@ export function IdentitySection({
   avatarUploading: boolean;
   /** F208 OQ-9: true when this cat has a structured dossier profile. */
   hasDossier?: boolean;
+  /** Lowercase catIds already taken by other cats — used to auto-unique a new member's id. */
+  reservedCatIds?: ReadonlySet<string>;
   onChange: (patch: FormPatch) => void;
   onAvatarUpload: (file: File) => Promise<void>;
   onRefAudioUpload: (file: File) => Promise<void>;
@@ -99,7 +103,8 @@ export function IdentitySection({
             ariaLabel="Name"
             value={form.name}
             onChange={(value) => {
-              onChange({ name: value, displayName: value, catId: autoSlug(value, form.catId) });
+              const derivedId = uniqueCatId(autoSlug(value, form.catId), reservedCatIds ?? new Set());
+              onChange({ name: value, displayName: value, catId: derivedId });
             }}
             required
             placeholder="成员显示名称，如 我的助手"
