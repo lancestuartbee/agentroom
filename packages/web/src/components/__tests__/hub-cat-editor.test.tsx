@@ -847,6 +847,26 @@ describe('HubCatEditor', () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
+  it('auto-uniques the derived catId when a new member name collides with an existing id', async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/accounts') return Promise.resolve(jsonResponse({ projectPath: '/tmp', providers: [] }));
+      if (path === '/api/cat-templates') return Promise.resolve(jsonResponse({ templates: [] }));
+      return Promise.resolve(jsonResponse({}));
+    });
+    const existingCats = [{ id: 'opus', mentionPatterns: ['@opus'] }] as unknown as CatData[];
+    await act(async () => {
+      root.render(
+        React.createElement(HubCatEditor, { open: true, cat: null, existingCats, onClose: vi.fn(), onSaved: vi.fn() }),
+      );
+    });
+    await flushEffects();
+
+    // "Opus" slugifies to "opus", which is already taken → transparently becomes "opus-2".
+    await changeField(queryField(container, 'input[aria-label="Name"]'), 'Opus');
+    const catIdInput = queryField<HTMLInputElement>(container, 'input[aria-label="Cat ID"]');
+    expect(catIdInput.value).toBe('opus-2');
+  });
+
   it('AC-C2: defaults API-key member aliases to the selected model name', async () => {
     const onSaved = vi.fn(() => Promise.resolve());
     mockApiFetch.mockImplementation((path: string) => {

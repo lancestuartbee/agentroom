@@ -538,7 +538,13 @@ export function uniqueCatId(base: string, reserved: ReadonlySet<string>): string
     const candidate = `${trimmed}-${i}`;
     if (!reserved.has(candidate.toLowerCase())) return candidate;
   }
-  return `${trimmed}-${Math.random().toString(36).substring(2, 8)}`;
+  // Pathological (999 numeric suffixes all taken): draw random suffixes, re-checking each so
+  // uniqueness still holds. The 36^6 space vs a finite reserved set makes this terminate at once.
+  let candidate: string;
+  do {
+    candidate = `${trimmed}-${Math.random().toString(36).slice(2, 8)}`;
+  } while (reserved.has(candidate.toLowerCase()));
+  return candidate;
 }
 
 export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | null): HubCatEditorFormState {

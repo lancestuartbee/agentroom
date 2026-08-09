@@ -32,4 +32,12 @@ describe('uniqueCatId', () => {
   it('returns an empty base untouched (caller handles empty)', () => {
     expect(uniqueCatId('', reserved('opus'))).toBe('');
   });
+
+  it('stays unique even when every numeric suffix is taken (re-checked random fallback)', () => {
+    const taken = new Set<string>(['opus']);
+    for (let i = 2; i <= 999; i++) taken.add(`opus-${i}`);
+    const result = uniqueCatId('opus', taken);
+    expect(result.startsWith('opus-')).toBe(true);
+    expect(taken.has(result.toLowerCase())).toBe(false);
+  });
 });
