@@ -154,7 +154,8 @@ function migrateLegacyPersonaIdentity(catalog: CatCafeConfig, template: CatCafeC
 
     for (const variant of variants) {
       const catId = resolvedVariantCatId(breed, variant);
-      const templateVariant = templateVariantById.get(String(variant.id)) ?? (catId ? templateVariantByCatId.get(catId) : null);
+      const templateVariant =
+        templateVariantById.get(String(variant.id)) ?? (catId ? templateVariantByCatId.get(catId) : null);
       if (!templateVariant) continue;
       if (
         !templateBreedLooksLegacy &&
@@ -162,6 +163,81 @@ function migrateLegacyPersonaIdentity(catalog: CatCafeConfig, template: CatCafeC
         !recordHasLegacyPersonaIdentity(templateVariant)
       ) {
         dirty = replaceIdentityFields(variant, templateVariant, VARIANT_IDENTITY_FIELDS) || dirty;
+      }
+    }
+  }
+
+  return dirty;
+}
+
+/**
+ * Cross-member mention-alias uniqueness repair.
+ *
+ * A mention alias (e.g. `@claude`) must route to exactly one cat. Legacy catalogs
+ * accumulated the same alias on several Claude-family variants (opus/sonnet/opus-45/fable-5),
+ * which makes the alias-uniqueness gate in POST/PATCH /api/cats reject saving *any* of them
+ * ("别名 @claude 已被成员 X 使用") even though the operator never sees the duplicate in the
+ * profile they are editing. This normalizes the catalog so each alias belongs to a single
+ * owner: the first cat to claim it in canonical order (each breed's default variant first),
+ * stripping the duplicate from every later cat. Idempotent — a clean catalog is left untouched.
+ *
+ * Removal targets the location the alias is actually stored: a variant's own
+ * `mentionPatterns`, or the breed-level `mentionPatterns` when the default variant inherits it.
+ */
+function dedupeCrossMemberMentionPatterns(catalog: CatCafeConfig): boolean {
+  let dirty = false;
+  const claimed = new Map<string, string>(); // aliasLower -> owner catId
+  const breeds = catalog.breeds as unknown as Record<string, unknown>[];
+
+  for (const breed of breeds) {
+    const breedCatId = typeof breed.catId === 'string' ? breed.catId : undefined;
+    const defaultVariantId = typeof breed.defaultVariantId === 'string' ? breed.defaultVariantId : undefined;
+    const variants = Array.isArray(breed.variants) ? (breed.variants as Record<string, unknown>[]) : [];
+    // Iterate the default variant first so it claims breed-shared aliases; stored
+    // array order is preserved (we sort a shallow copy, not breed.variants itself).
+    const ordered = [...variants].sort(
+      (a, b) => (a.id === defaultVariantId ? 0 : 1) - (b.id === defaultVariantId ? 0 : 1),
+    );
+
+    for (const variant of ordered) {
+      const catId = (typeof variant.catId === 'string' && variant.catId) || breedCatId;
+      if (!catId) continue;
+      const isDefault = variant.id === defaultVariantId;
+      const ownPatterns = Array.isArray(variant.mentionPatterns) ? (variant.mentionPatterns as unknown[]) : undefined;
+
+      let target: Record<string, unknown>;
+      let sourceArray: unknown[];
+      if (ownPatterns && ownPatterns.length > 0) {
+        target = variant;
+        sourceArray = ownPatterns;
+      } else if (isDefault && Array.isArray(breed.mentionPatterns)) {
+        target = breed;
+        sourceArray = breed.mentionPatterns as unknown[];
+      } else {
+        // Non-default variant with no own patterns resolves to the synthetic `@catId`.
+        claimed.set(`@${catId}`.toLowerCase(), catId);
+        continue;
+      }
+
+      const kept: unknown[] = [];
+      let changed = false;
+      for (const raw of sourceArray) {
+        if (typeof raw !== 'string') {
+          kept.push(raw);
+          continue;
+        }
+        const key = raw.toLowerCase();
+        const owner = claimed.get(key);
+        if (owner !== undefined && owner !== catId) {
+          changed = true; // duplicate already owned by an earlier cat — drop it
+          continue;
+        }
+        claimed.set(key, catId);
+        kept.push(raw);
+      }
+      if (changed) {
+        target.mentionPatterns = kept;
+        dirty = true;
       }
     }
   }
@@ -276,6 +352,10 @@ function migrateCatalogVariants(
   if (template) {
     dirty = migrateLegacyPersonaIdentity(next, template) || dirty;
   }
+
+  // Repair legacy cross-member alias duplication (e.g. `@claude` on every Claude
+  // variant) so the alias-uniqueness gate can no longer block saving any member.
+  dirty = dedupeCrossMemberMentionPatterns(next) || dirty;
 
   return { catalog: next, dirty };
 }

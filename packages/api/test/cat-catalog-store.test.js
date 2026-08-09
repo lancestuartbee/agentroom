@@ -60,6 +60,55 @@ function validConfig() {
   };
 }
 
+/**
+ * Resolve each variant's effective mention patterns the same way toAllCatConfigs does,
+ * then map alias (lowercased) -> unique owner catIds. Used to assert cross-member
+ * alias uniqueness on the persisted catalog.
+ */
+function collectAliasOwners(config) {
+  const owners = new Map();
+  for (const breed of config.breeds ?? []) {
+    const dv = breed.defaultVariantId;
+    for (const v of breed.variants ?? []) {
+      const catId = v.catId ?? breed.catId;
+      const isDef = v.id === dv;
+      const mp =
+        v.mentionPatterns && v.mentionPatterns.length > 0
+          ? v.mentionPatterns
+          : isDef
+            ? (breed.mentionPatterns ?? [])
+            : [`@${catId}`];
+      for (const p of mp) {
+        const key = p.toLowerCase();
+        const arr = owners.get(key) ?? [];
+        if (!arr.includes(catId)) arr.push(catId);
+        owners.set(key, arr);
+      }
+    }
+  }
+  return owners;
+}
+
+/** catId -> resolved (effective) mention patterns array. */
+function resolvedMentionByCatId(config) {
+  const map = new Map();
+  for (const breed of config.breeds ?? []) {
+    const dv = breed.defaultVariantId;
+    for (const v of breed.variants ?? []) {
+      const catId = v.catId ?? breed.catId;
+      const isDef = v.id === dv;
+      const mp =
+        v.mentionPatterns && v.mentionPatterns.length > 0
+          ? v.mentionPatterns
+          : isDef
+            ? (breed.mentionPatterns ?? [])
+            : [`@${catId}`];
+      map.set(catId, mp);
+    }
+  }
+  return map;
+}
+
 function makeF127BootstrapTemplate() {
   return {
     version: 2,
@@ -348,6 +397,105 @@ describe('cat-catalog-store', () => {
     assert.equal(variant.nickname, 'Opus');
     assert.equal(variant.accountRef, 'lancestuart-us-icloud-com');
     assert.equal(variant.defaultModel, 'claude-opus-4-8');
+  });
+
+  it('deduplicates cross-member mention aliases so each alias routes to exactly one cat', () => {
+    // Repro of the real corruption: "@claude" duplicated across all 4 Claude-family
+    // variants (and "@claude-opus" across 2) blocks POST/PATCH /api/cats because the
+    // alias-uniqueness gate reports "别名 @claude 已被成员 X 使用" for any of them.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cat-catalog-store-alias-dedup-'));
+    const templatePath = join(projectRoot, 'cat-template.json');
+    // Non-legacy template so the persona-identity migration stays out of the way.
+    writeFileSync(templatePath, JSON.stringify(validConfig(), null, 2));
+
+    const runtimeConfig = validConfig();
+    runtimeConfig.breeds[0].name = 'Claude';
+    runtimeConfig.breeds[0].displayName = 'Claude';
+    runtimeConfig.breeds[0].nickname = 'Opus';
+    runtimeConfig.breeds[0].mentionPatterns = ['@opus', '@claude', '@claude-opus'];
+    const cli = { command: 'claude', outputFormat: 'stream-json' };
+    runtimeConfig.breeds[0].variants = [
+      {
+        id: 'opus-default',
+        clientId: 'anthropic',
+        defaultModel: 'claude-opus-4-8',
+        mcpSupport: true,
+        cli,
+        mentionPatterns: ['@claude', '@claude-opus'],
+      },
+      {
+        id: 'opus-sonnet',
+        catId: 'sonnet',
+        displayName: 'Claude',
+        clientId: 'anthropic',
+        defaultModel: 'claude-sonnet-4-6',
+        mcpSupport: true,
+        cli,
+        mentionPatterns: ['@sonnet', '@claude', '@claude-sonnet'],
+      },
+      {
+        id: 'opus-45',
+        catId: 'opus-45',
+        displayName: 'Claude',
+        clientId: 'anthropic',
+        defaultModel: 'claude-opus-4-5',
+        mcpSupport: true,
+        cli,
+        mentionPatterns: ['@opus45', '@opus-45', '@claude', '@claude-opus'],
+      },
+      {
+        id: 'fable-5',
+        catId: 'fable-5',
+        displayName: 'Claude',
+        clientId: 'anthropic',
+        defaultModel: 'claude-fable-5',
+        mcpSupport: true,
+        cli,
+        mentionPatterns: ['@fable5', '@fable-5', '@claude-fable-5', '@claude', '@claude-fable'],
+      },
+    ];
+    const secondary = {
+      family: 'ragdoll',
+      roles: ['developer'],
+      lead: false,
+      available: true,
+      evaluation: 'secondary',
+    };
+    runtimeConfig.roster = {
+      ...runtimeConfig.roster,
+      sonnet: secondary,
+      'opus-45': secondary,
+      'fable-5': secondary,
+    };
+    mkdirSync(join(projectRoot, '.cat-cafe'), { recursive: true });
+    writeFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), JSON.stringify(runtimeConfig, null, 2));
+
+    const catalogPath = bootstrapCatCatalog(projectRoot, templatePath);
+    const hydrated = JSON.parse(readFileSync(catalogPath, 'utf-8'));
+
+    // 1) No alias may route to more than one cat.
+    const owners = collectAliasOwners(hydrated);
+    for (const [alias, cats] of owners) {
+      assert.equal(cats.length, 1, `alias ${alias} must route to exactly one cat, got [${cats.join(', ')}]`);
+    }
+    // 2) Duplicated aliases stay with the canonical owner (default variant = opus).
+    assert.deepEqual(owners.get('@claude'), ['opus']);
+    assert.deepEqual(owners.get('@claude-opus'), ['opus']);
+    // 3) Each variant keeps its own distinct aliases.
+    const byCat = resolvedMentionByCatId(hydrated);
+    assert.ok(byCat.get('sonnet').includes('@sonnet') && byCat.get('sonnet').includes('@claude-sonnet'));
+    assert.ok(!byCat.get('sonnet').includes('@claude'), 'sonnet must no longer carry @claude');
+    assert.ok(byCat.get('opus-45').includes('@opus45') && byCat.get('opus-45').includes('@opus-45'));
+    assert.ok(!byCat.get('opus-45').includes('@claude') && !byCat.get('opus-45').includes('@claude-opus'));
+    assert.ok(byCat.get('fable-5').includes('@claude-fable-5') && byCat.get('fable-5').includes('@fable5'));
+    assert.ok(!byCat.get('fable-5').includes('@claude'), 'fable-5 must no longer carry @claude');
+    // 4) opus keeps its aliases.
+    assert.ok(byCat.get('opus').includes('@claude') && byCat.get('opus').includes('@claude-opus'));
+
+    // 5) Idempotent: a second bootstrap leaves the persisted file byte-identical.
+    const afterFirst = readFileSync(catalogPath, 'utf-8');
+    bootstrapCatCatalog(projectRoot, templatePath);
+    assert.equal(readFileSync(catalogPath, 'utf-8'), afterFirst, 'dedup migration must be idempotent');
   });
 
   it('keeps existing custom runtime cats unbound during catalog migration', () => {
