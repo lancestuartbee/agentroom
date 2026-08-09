@@ -1076,7 +1076,9 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
                 <PawIcon className="w-12 h-12 text-cafe-muted mx-auto mb-4" />
                 <p className="text-lg text-cafe-secondary mb-1">欢迎来到 Clowder AI!</p>
                 <p className="text-sm text-cafe-muted" suppressHydrationWarning>
-                  {cats.length > 0 ? '输入 @claude 或 @gpt 召唤成员开始聊天' : '还没有可用成员，先开始新手教程创建第一位成员'}
+                  {cats.length > 0
+                    ? '输入 @claude 或 @gpt 召唤成员开始聊天'
+                    : '还没有可用成员，先开始新手教程创建第一位成员'}
                 </p>
                 {showSetupCard && govStatus && (
                   <div className="mt-6 text-left">
@@ -1417,6 +1419,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
           open
           cat={editingCat}
           draft={null}
+          existingCats={cats}
           onClose={() => setEditingCatId(null)}
           onSaved={async () => {
             await refreshCats();

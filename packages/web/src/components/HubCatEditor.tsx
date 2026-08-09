@@ -28,6 +28,7 @@ import {
   splitMentionPatterns,
   toCodexRuntimeSettings,
   toStrategyForm,
+  uniqueCatId,
   withDefaultModelMentionPattern,
 } from './hub-cat-editor.model';
 import { AccountSection, IdentitySection, RoutingSection } from './hub-cat-editor.sections';
@@ -90,6 +91,19 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
     for (const c of existingCats) {
       if (c.id === editingId) continue;
       for (const p of c.mentionPatterns) set.add(p.toLowerCase());
+    }
+    return set;
+  }, [existingCats, cat?.id]);
+
+  // catId uniqueness: collect ids from OTHER cats (lowercase). catId is internal and
+  // auto-derived, so we transparently make it unique instead of surfacing a conflict.
+  const reservedCatIds = useMemo(() => {
+    if (!existingCats?.length) return new Set<string>();
+    const editingId = cat?.id;
+    const set = new Set<string>();
+    for (const c of existingCats) {
+      if (c.id === editingId) continue;
+      set.add(c.id.toLowerCase());
     }
     return set;
   }, [existingCats, cat?.id]);
@@ -322,7 +336,7 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
     }
     setSelectedTemplateId(t.id);
     const name = t.name;
-    const catId = autoSlug(name);
+    const catId = uniqueCatId(autoSlug(name), reservedCatIds);
     // Auto-suffix aliases that conflict with existing cats
     const rawAliases = [t.nickname, name].filter((s): s is string => Boolean(s));
     const deduped = rawAliases.map((alias) => {
@@ -437,8 +451,10 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
       }
     };
     try {
-      const effectiveForm =
-        !cat && selectedProfile?.authType === 'api_key' ? withDefaultModelMentionPattern(form) : form;
+      const baseForm = !cat && selectedProfile?.authType === 'api_key' ? withDefaultModelMentionPattern(form) : form;
+      // catId is internal & auto-derived — guarantee uniqueness at submit so a new member
+      // never hits the backend "already exists" conflict (edit keeps the cat's existing id).
+      const effectiveForm = cat ? baseForm : { ...baseForm, catId: uniqueCatId(baseForm.catId, reservedCatIds) };
       const catPayload = cat ? buildCatPatchPayload(effectiveForm, cat) : buildCatPayload(effectiveForm, cat);
       const rollbackCatPayload = cat ? buildCatPayload(initialState(cat, null), cat) : null;
       const strategyEditable = Boolean(
@@ -626,6 +642,7 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
             hasError={fieldErrors.identity}
             avatarUploading={uploadingAvatar}
             hasDossier={hasDossier}
+            reservedCatIds={reservedCatIds}
             onChange={patchForm}
             onAvatarUpload={handleAvatarUpload}
             onRefAudioUpload={handleRefAudioUpload}

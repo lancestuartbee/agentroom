@@ -526,6 +526,27 @@ export function autoSlug(name: string, currentId?: string): string {
   return `cat-${rand}`;
 }
 
+/**
+ * Make an auto-derived catId unique against ids taken by other members (`reserved`, lowercased).
+ * catId is internal/not user-editable, so on collision we transparently append a numeric suffix
+ * instead of surfacing a conflict — mirrors the mentionPattern alias auto-suffix.
+ */
+export function uniqueCatId(base: string, reserved: ReadonlySet<string>): string {
+  const trimmed = base.trim();
+  if (!trimmed || !reserved.has(trimmed.toLowerCase())) return trimmed;
+  for (let i = 2; i <= 999; i++) {
+    const candidate = `${trimmed}-${i}`;
+    if (!reserved.has(candidate.toLowerCase())) return candidate;
+  }
+  // Pathological (999 numeric suffixes all taken): draw random suffixes, re-checking each so
+  // uniqueness still holds. The 36^6 space vs a finite reserved set makes this terminate at once.
+  let candidate: string;
+  do {
+    candidate = `${trimmed}-${Math.random().toString(36).slice(2, 8)}`;
+  } while (reserved.has(candidate.toLowerCase()));
+  return candidate;
+}
+
 export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | null): HubCatEditorFormState {
   const createDraft = !cat ? draft : null;
   const persistedCliEffort = cat?.cli?.effort;
@@ -541,7 +562,8 @@ export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | n
     defaultModel,
     runtimeClient: cat?.runtimeClient,
   });
-  const variantLabel = cat?.variantLabel ?? cat?.nickname ?? createDraft?.templateNickname ?? derivedModelProfile.modelLine;
+  const variantLabel =
+    cat?.variantLabel ?? cat?.nickname ?? createDraft?.templateNickname ?? derivedModelProfile.modelLine;
   const nickname = cat?.nickname ?? variantLabel;
   return {
     catId,

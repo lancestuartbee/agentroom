@@ -233,6 +233,7 @@ export function SettingsContent({ section, initialEditCatId }: SettingsContentPr
           open
           cat={editingCat}
           draft={createDraft}
+          existingCats={cats}
           hasDossier={editingCatHasDossier}
           onClose={() => {
             setEditorOpen(false);
