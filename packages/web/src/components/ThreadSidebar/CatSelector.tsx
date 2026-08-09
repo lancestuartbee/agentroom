@@ -1,6 +1,7 @@
 'use client';
 
 import { formatCatName, useCatData } from '@/hooks/useCatData';
+import { familyLabel, groupCatsByModelFamily } from '@/lib/cat-family';
 import { catColorMix, catColorVar } from '@/lib/cat-slug';
 
 interface CatSelectorProps {
@@ -14,8 +15,8 @@ interface CatSelectorProps {
  * Used in thread creation (DirectoryPickerModal) and thread settings.
  */
 export function CatSelector({ selectedCats, onSelectionChange, title = '默认成员 (可选)' }: CatSelectorProps) {
-  const { getCatsByBreed } = useCatData();
-  const groups = getCatsByBreed();
+  const { cats } = useCatData();
+  const groups = groupCatsByModelFamily(cats);
 
   const toggleCat = (catId: string) => {
     if (selectedCats.includes(catId)) {
@@ -38,12 +39,14 @@ export function CatSelector({ selectedCats, onSelectionChange, title = '默认�
   return (
     <div className="space-y-2">
       <div className="text-xs text-cafe-secondary font-medium">{title}</div>
-      {[...groups.entries()].map(([breedId, cats]) => {
-        const breedName = cats[0].breedDisplayName ?? cats[0].displayName;
+      {[...groups.entries()].map(([familyKey, cats]) => {
+        const groupLabel = cats[0].modelFamily
+          ? familyLabel(cats[0].modelFamily)
+          : (cats[0].breedDisplayName ?? cats[0].displayName);
         return (
-          <div key={breedId}>
+          <div key={familyKey}>
             <div className="text-micro text-cafe-muted mb-1">
-              {breedName} 家族 · {clientIdLabel(cats[0].clientId)}
+              {groupLabel} 家族 · {clientIdLabel(cats[0].clientId)}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {cats.map((cat) => {

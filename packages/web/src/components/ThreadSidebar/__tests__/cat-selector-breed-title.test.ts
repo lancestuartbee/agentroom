@@ -43,14 +43,13 @@ const ragdollVariants: CatData[] = [
   },
 ];
 
-const breedMap = new Map<string, CatData[]>([['ragdoll', ragdollVariants]]);
-
+// These variants have no modelFamily, so CatSelector's real grouping falls back to a breed key and
+// the title still comes from breedDisplayName (the behavior this regression test guards).
 vi.mock('@/hooks/useCatData', () => ({
   useCatData: () => ({
     cats: ragdollVariants,
     isLoading: false,
     getCatById: (id: string) => ragdollVariants.find((c) => c.id === id),
-    getCatsByBreed: () => breedMap,
   }),
   formatCatName: (cat: { displayName: string; variantLabel?: string }) =>
     cat.variantLabel ? `${cat.displayName}（${cat.variantLabel}）` : cat.displayName,
@@ -92,8 +91,8 @@ describe('CatSelector breed group title (R24 P2-2)', () => {
     // Group title text should contain the breed name, NOT the first variant's override
     const groupTitle = container.querySelector('.text-micro');
     expect(groupTitle).toBeTruthy();
-    expect(groupTitle?.textContent).toContain('布偶猫家族');
-    expect(groupTitle?.textContent).not.toContain('定制布偶家族');
+    expect(groupTitle?.textContent).toContain('布偶猫 家族');
+    expect(groupTitle?.textContent).not.toContain('定制布偶 家族');
   });
 
   it('renders all variant chips within the breed group', async () => {
