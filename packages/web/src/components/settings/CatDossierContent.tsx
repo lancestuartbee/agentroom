@@ -21,6 +21,7 @@ import {
   type DossierProvenance,
   useDossierProfiles,
 } from '@/hooks/useDossierProfiles';
+import { familyLabel } from '@/lib/cat-family';
 import {
   SettingsBadge,
   SettingsCard,
@@ -79,26 +80,6 @@ function familyTone(family?: string): 'purple' | 'blue' | 'amber' | 'emerald' | 
       return 'emerald';
     default:
       return 'slate';
-  }
-}
-
-/** Family → display name. */
-function familyLabel(family?: string): string {
-  switch (family) {
-    case 'claude':
-      return 'Claude';
-    case 'gpt':
-      return 'GPT';
-    case 'gemini':
-      return 'Gemini';
-    case 'kimi':
-      return 'Kimi';
-    case 'opencode':
-      return 'OpenCode';
-    case 'dare':
-      return 'Dare';
-    default:
-      return family ?? '未知';
   }
 }
 
