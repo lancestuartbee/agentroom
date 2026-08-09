@@ -489,8 +489,10 @@ describe('cat-catalog-store', () => {
     assert.ok(!byCat.get('opus-45').includes('@claude') && !byCat.get('opus-45').includes('@claude-opus'));
     assert.ok(byCat.get('fable-5').includes('@claude-fable-5') && byCat.get('fable-5').includes('@fable5'));
     assert.ok(!byCat.get('fable-5').includes('@claude'), 'fable-5 must no longer carry @claude');
-    // 4) opus keeps its aliases.
+    // 4) opus keeps its aliases — including its @opus self-alias, which lived only at
+    //    breed level and would otherwise be shadowed (dropped) by the variant-level override.
     assert.ok(byCat.get('opus').includes('@claude') && byCat.get('opus').includes('@claude-opus'));
+    assert.ok(byCat.get('opus').includes('@opus'), 'opus must retain its breed-level @opus alias');
 
     // 5) Idempotent: a second bootstrap leaves the persisted file byte-identical.
     const afterFirst = readFileSync(catalogPath, 'utf-8');

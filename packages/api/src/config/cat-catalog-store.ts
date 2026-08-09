@@ -170,6 +170,31 @@ function migrateLegacyPersonaIdentity(catalog: CatCafeConfig, template: CatCafeC
   return dirty;
 }
 
+/** Union two pattern lists, `primary` first, dropping case-insensitive duplicates. */
+function mergePatterns(primary: readonly unknown[], extra: readonly unknown[]): unknown[] {
+  const merged: unknown[] = [...primary];
+  const seen = new Set(
+    primary.filter((value): value is string => typeof value === 'string').map((value) => value.toLowerCase()),
+  );
+  for (const value of extra) {
+    if (typeof value !== 'string') {
+      merged.push(value);
+    } else if (!seen.has(value.toLowerCase())) {
+      merged.push(value);
+      seen.add(value.toLowerCase());
+    }
+  }
+  return merged;
+}
+
+function sameStringArray(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 /**
  * Cross-member mention-alias uniqueness repair.
  *
@@ -181,17 +206,40 @@ function migrateLegacyPersonaIdentity(catalog: CatCafeConfig, template: CatCafeC
  * owner: the first cat to claim it in canonical order (each breed's default variant first),
  * stripping the duplicate from every later cat. Idempotent — a clean catalog is left untouched.
  *
- * Removal targets the location the alias is actually stored: a variant's own
- * `mentionPatterns`, or the breed-level `mentionPatterns` when the default variant inherits it.
+ * A default variant's aliases canonically live at breed level (the save path writes there and
+ * deletes any variant-level override), so a variant-level override on the default variant is a
+ * legacy artifact. `toAllCatConfigs` lets that override shadow the breed-level list, which can
+ * silently drop a still-valid breed alias like `@opus`. We therefore fold the breed-level
+ * aliases into the default variant's effective set before deduping so no valid alias is lost.
  */
 function dedupeCrossMemberMentionPatterns(catalog: CatCafeConfig): boolean {
   let dirty = false;
   const claimed = new Map<string, string>(); // aliasLower -> owner catId
-  const breeds = catalog.breeds as unknown as Record<string, unknown>[];
 
+  /** Drop cross-member duplicates (owned by an earlier cat) and case-insensitive repeats. */
+  const claimFor = (source: readonly unknown[], catId: string): unknown[] => {
+    const kept: unknown[] = [];
+    const local = new Set<string>();
+    for (const raw of source) {
+      if (typeof raw !== 'string') {
+        kept.push(raw);
+        continue;
+      }
+      const key = raw.toLowerCase();
+      const owner = claimed.get(key);
+      if ((owner !== undefined && owner !== catId) || local.has(key)) continue;
+      claimed.set(key, catId);
+      local.add(key);
+      kept.push(raw);
+    }
+    return kept;
+  };
+
+  const breeds = catalog.breeds as unknown as Record<string, unknown>[];
   for (const breed of breeds) {
     const breedCatId = typeof breed.catId === 'string' ? breed.catId : undefined;
     const defaultVariantId = typeof breed.defaultVariantId === 'string' ? breed.defaultVariantId : undefined;
+    const breedPatterns = Array.isArray(breed.mentionPatterns) ? (breed.mentionPatterns as unknown[]) : undefined;
     const variants = Array.isArray(breed.variants) ? (breed.variants as Record<string, unknown>[]) : [];
     // Iterate the default variant first so it claims breed-shared aliases; stored
     // array order is preserved (we sort a shallow copy, not breed.variants itself).
@@ -205,40 +253,34 @@ function dedupeCrossMemberMentionPatterns(catalog: CatCafeConfig): boolean {
       const isDefault = variant.id === defaultVariantId;
       const ownPatterns = Array.isArray(variant.mentionPatterns) ? (variant.mentionPatterns as unknown[]) : undefined;
 
-      let target: Record<string, unknown>;
-      let sourceArray: unknown[];
-      if (ownPatterns && ownPatterns.length > 0) {
-        target = variant;
-        sourceArray = ownPatterns;
-      } else if (isDefault && Array.isArray(breed.mentionPatterns)) {
-        target = breed;
-        sourceArray = breed.mentionPatterns as unknown[];
-      } else {
-        // Non-default variant with no own patterns resolves to the synthetic `@catId`.
-        claimed.set(`@${catId}`.toLowerCase(), catId);
+      if (isDefault && ownPatterns && ownPatterns.length > 0) {
+        // Fold breed-level aliases in so a stale override can't shadow (drop) a valid one.
+        const kept = claimFor(mergePatterns(breedPatterns ?? [], ownPatterns), catId);
+        if (!sameStringArray(ownPatterns, kept)) {
+          variant.mentionPatterns = kept;
+          dirty = true;
+        }
         continue;
       }
-
-      const kept: unknown[] = [];
-      let changed = false;
-      for (const raw of sourceArray) {
-        if (typeof raw !== 'string') {
-          kept.push(raw);
-          continue;
+      if (isDefault && breedPatterns) {
+        // Default variant inherits breed-level aliases; dedupe them in place.
+        const kept = claimFor(breedPatterns, catId);
+        if (!sameStringArray(breedPatterns, kept)) {
+          breed.mentionPatterns = kept;
+          dirty = true;
         }
-        const key = raw.toLowerCase();
-        const owner = claimed.get(key);
-        if (owner !== undefined && owner !== catId) {
-          changed = true; // duplicate already owned by an earlier cat — drop it
-          continue;
+        continue;
+      }
+      if (ownPatterns && ownPatterns.length > 0) {
+        const kept = claimFor(ownPatterns, catId);
+        if (!sameStringArray(ownPatterns, kept)) {
+          variant.mentionPatterns = kept;
+          dirty = true;
         }
-        claimed.set(key, catId);
-        kept.push(raw);
+        continue;
       }
-      if (changed) {
-        target.mentionPatterns = kept;
-        dirty = true;
-      }
+      // Variant with no own patterns resolves to the synthetic `@catId`.
+      claimed.set(`@${catId}`.toLowerCase(), catId);
     }
   }
 
