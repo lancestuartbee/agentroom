@@ -1114,6 +1114,10 @@ export class RedisThreadStore implements IThreadStore {
     if (thread.threadKind) {
       result.threadKind = thread.threadKind;
     }
+    // F247: A2A sandbox id
+    if (thread.sandboxId) {
+      result.sandboxId = thread.sandboxId;
+    }
     return result;
   }
 
@@ -1297,6 +1301,10 @@ export class RedisThreadStore implements IThreadStore {
     // F229 / F167: Restore thread kind marker (written by updateThreadKind; validate value)
     if (data.threadKind === 'concierge' || data.threadKind === 'gate-keeping') {
       result.threadKind = data.threadKind;
+    }
+    // F247: A2A sandbox id
+    if (data.sandboxId && typeof data.sandboxId === 'string') {
+      result.sandboxId = data.sandboxId;
     }
     return result;
   }

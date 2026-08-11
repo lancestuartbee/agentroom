@@ -1149,12 +1149,13 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           sessionId = undefined;
           log.info({ catId, threadId }, '#836: reborn session strategy — forcing new session');
         }
-        if (thread?.mode === 'casual' || thread?.mode === 'roundtable') {
+        if (thread?.mode === 'casual' || thread?.mode === 'roundtable' || thread?.mode === 'sandbox') {
           const artifactPaths = resolveThreadArtifactPaths(thread.id);
           mkdirSync(artifactPaths.reportsDir, { recursive: true });
           workingDirectory = artifactPaths.reportsDir;
           isLightweightArtifactWorkspace = true;
-          shouldRegisterLightweightArtifacts = thread.mode === 'casual' || thread.mode === 'roundtable';
+          shouldRegisterLightweightArtifacts =
+            thread.mode === 'casual' || thread.mode === 'roundtable' || thread.mode === 'sandbox';
         } else if (thread?.projectPath && thread.projectPath !== 'default') {
           // F101: Game threads use virtual projectPaths (e.g. 'games/werewolf') for
           // categorization only — they are not real filesystem directories. Skip them

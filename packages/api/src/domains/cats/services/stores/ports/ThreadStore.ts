@@ -211,6 +211,8 @@ export interface Thread {
    *  'gate-keeping' = 守门 thread (per-repo inbox / community ops 看板载体，F167 trigger-time guard)
    *  undefined/absence = 普通 thread。 */
   threadKind?: ThreadKind;
+  /** F247: A2A 沙盒模式绑定的沙盒 id。1:1 绑定。 */
+  sandboxId?: string;
   /** #813: Per-cat pending continuation capsule — written at session seal,
    *  consumed at next invocation start. Passive/lazy session renewal. */
   pendingContinuation?: Record<string, PendingContinuationEntry>;

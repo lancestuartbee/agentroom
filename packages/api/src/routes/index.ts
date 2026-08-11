@@ -93,6 +93,7 @@ export { tasksRoutes } from './tasks.js';
 export { threadBranchRoutes } from './thread-branch.js';
 export { threadCatsRoutes } from './thread-cats.js';
 export { threadsRoutes } from './threads.js';
+export { sandboxesRoutes } from './sandboxes.js';
 export { toolUsageRoutes } from './tool-usage.js';
 export { ttsRoutes } from './tts.js';
 export { uploadsRoutes } from './uploads.js';

@@ -1467,8 +1467,14 @@
     {
       "id": "F246",
       "name": "Approval Hub — 统一审批中心底座",
-      "status": "in-progress（Phase E: v2 adapters）| **Owner**: Ragdoll/Ragdoll (opus-46) | **Priority**: P2",
+      "status": "in-progress（Phase E: v2 adapters）| **Owner**: Ragdoll/Ragdoll (opus-46) | **Priority": P2",
       "file": "F246-approval-hub.md"
+    },
+    {
+      "id": "F247",
+      "name": "A2A 沙盒模式 — 项目级 A2A 开发容器",
+      "status": "spec | **Owner**: Kimi/K3 | **Priority**: P1",
+      "file": "F247-a2a-sandbox-mode.md"
     }
   ]
 }

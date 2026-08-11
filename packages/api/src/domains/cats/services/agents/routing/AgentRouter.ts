@@ -81,6 +81,17 @@ function buildRoundtableModeSystemPrompt(thread: Thread): string {
   ].join('\n');
 }
 
+function buildSandboxModeSystemPrompt(thread: Thread): string {
+  return [
+    '[A2A Sandbox mode]',
+    `Thread ${thread.id}.`,
+    'Use the sandbox prompt profile.',
+    'You are a lightweight member of this sandbox project.',
+    'Use development tools and quality gates as needed, but stay scoped to the current sandbox spec and members.',
+    'Do not bring in full household worldview or unrelated project context.',
+  ].join('\n');
+}
+
 function getModeRouteOptions(
   thread: Thread | null | undefined,
 ): Pick<RouteOptions, 'modeSystemPrompt' | 'maxA2ADepth' | 'promptProfile'> {
@@ -96,6 +107,13 @@ function getModeRouteOptions(
       promptProfile: 'roundtable',
       modeSystemPrompt: buildRoundtableModeSystemPrompt(thread),
       maxA2ADepth: 0,
+    };
+  }
+  if (thread?.mode === 'sandbox') {
+    return {
+      promptProfile: 'sandbox',
+      modeSystemPrompt: buildSandboxModeSystemPrompt(thread),
+      maxA2ADepth: 3,
     };
   }
   return {};
@@ -639,6 +657,8 @@ export interface AgentRouterOptions {
   conciergeHandleMapStore?: import('../../../../concierge/ConciergeHandleMapStore.js').IConciergeHandleMapStore;
   /** F229 Phase B: TriagePlan store for triage-plan marker → confirm/cancel card actions */
   conciergeTriagePlanStore?: import('../../../../concierge/ConciergeTriagePlanStore.js').IConciergeTriagePlanStore;
+  /** F247: Sandbox store for sandbox-scoped memory and member lookup */
+  sandboxStore?: import('../../../../sandbox/ports/SandboxStore.js').ISandboxStore;
 }
 
 /**
@@ -703,6 +723,8 @@ export class AgentRouter {
   private conciergeHandleMapStore?: import('../../../../concierge/ConciergeHandleMapStore.js').IConciergeHandleMapStore;
   /** F229 Phase B */
   private conciergeTriagePlanStore?: import('../../../../concierge/ConciergeTriagePlanStore.js').IConciergeTriagePlanStore;
+  /** F247: Sandbox store for sandbox-scoped memory and member lookup */
+  private sandboxStore?: import('../../../../sandbox/ports/SandboxStore.js').ISandboxStore;
   private speechMentionRe: RegExp;
 
   /**
@@ -809,6 +831,7 @@ export class AgentRouter {
     this.conciergeConfigStore = options.conciergeConfigStore;
     this.conciergeHandleMapStore = options.conciergeHandleMapStore;
     this.conciergeTriagePlanStore = options.conciergeTriagePlanStore;
+    this.sandboxStore = options.sandboxStore;
   }
 
   getSessionManagerForMaintenance(): Pick<SessionManager, 'delete'> {
@@ -989,6 +1012,37 @@ export class AgentRouter {
       hasMentions: false,
       routing_warnings: [],
     };
+  }
+
+  /**
+   * F247: Resolve targets for sandbox mode.
+   *
+   * Sandbox members are stored in Thread.preferredCats. Mentions are scoped to members.
+   * No explicit mention → route to all members.
+   */
+  private async resolveSandboxTargetsAndIntent(
+    message: string,
+    threadId: string,
+    thread: Thread | null,
+    options?: { persist?: boolean },
+  ): Promise<{ targetCats: CatId[]; intent: IntentResult; hasMentions: boolean; routing_warnings: CatRoutingError[] }> {
+    const memberCats = this.filterRoutableCats(Array.isArray(thread?.preferredCats) ? thread.preferredCats : []);
+    const allowed = new Set(memberCats.map(String));
+
+    const allMentions = await this.parseAllMentions(message, threadId);
+    const mentionedMembers = this.filterRoutableCats(allMentions.mentions).filter((catId) =>
+      allowed.has(String(catId)),
+    );
+
+    const hasMentions = mentionedMembers.length > 0;
+    const targetCats = hasMentions ? mentionedMembers : memberCats;
+
+    if (options?.persist && this.threadStore && targetCats.length > 0) {
+      await this.threadStore.addParticipants(threadId, targetCats);
+    }
+
+    const intent = parseIntent(message, targetCats.length);
+    return { targetCats, intent, hasMentions, routing_warnings: allMentions.routing_warnings };
   }
 
   /**
@@ -1586,6 +1640,7 @@ export class AgentRouter {
       ...(this.frustrationIssueStore ? { frustrationIssueStore: this.frustrationIssueStore } : {}),
       ...(this.pendingRequestStore ? { pendingRequestStore: this.pendingRequestStore } : {}),
       ...(this.ballCustody ? { ballCustody: this.ballCustody } : {}),
+      ...(this.sandboxStore ? { sandboxStore: this.sandboxStore } : {}),
     };
   }
 
@@ -1606,6 +1661,9 @@ export class AgentRouter {
     }
     if (thread?.mode === 'casual') {
       return this.resolveCasualTargetsAndIntent(message, resolvedThreadId, thread, options);
+    }
+    if (thread?.mode === 'sandbox') {
+      return this.resolveSandboxTargetsAndIntent(message, resolvedThreadId, thread, options);
     }
 
     // Capture both valid mentions AND routing_warnings (for disabled/not-found cats).

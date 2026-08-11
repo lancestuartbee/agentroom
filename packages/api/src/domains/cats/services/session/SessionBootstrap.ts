@@ -86,6 +86,8 @@ export interface BootstrapContext {
   hasTaskSnapshot: boolean;
   /** F065 Phase B: Whether thread memory was injected */
   hasThreadMemory: boolean;
+  /** F247: Whether sandbox memory was injected */
+  hasSandboxMemory: boolean;
 }
 
 export interface SessionBootstrapOptions {
@@ -95,6 +97,8 @@ export interface SessionBootstrapOptions {
   taskStore?: ITaskStore;
   /** F065 Phase B: Thread store for ThreadMemory injection */
   threadStore?: IThreadStore;
+  /** F247: Sandbox store for SandboxMemory injection */
+  sandboxStore?: import('../../../sandbox/ports/SandboxStore.js').ISandboxStore;
   /** F065 Phase C: 'generative' prefers handoff digest, 'extractive' uses extractive only */
   bootstrapDepth?: 'extractive' | 'generative';
 }
@@ -174,6 +178,24 @@ export async function buildSessionBootstrap(
       if (mem?.summary) {
         threadMemorySection = `\n[Thread Memory — ${mem.sessionsIncorporated} sessions]\n${mem.summary}`;
         hasThreadMemory = true;
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
+  // F247: Sandbox Memory (project-level rolling memory across runs)
+  let sandboxMemorySection = '';
+  let hasSandboxMemory = false;
+  if (opts.sandboxStore) {
+    try {
+      const sandbox = await opts.sandboxStore.getByThreadId(threadId);
+      if (sandbox) {
+        const mem = await opts.sandboxStore.getMemory(sandbox.id);
+        if (mem?.summary) {
+          sandboxMemorySection = `\n[Sandbox Memory — ${mem.runsIncorporated} runs]\n${mem.summary}`;
+          hasSandboxMemory = true;
+        }
       }
     } catch {
       // best-effort
@@ -298,12 +320,14 @@ export async function buildSessionBootstrap(
   const remainingBudget = MAX_BOOTSTRAP_TOKENS - baseTokens;
 
   const tmTokens = hasThreadMemory ? estimateTokens(threadMemorySection) : 0;
+  const smTokens = hasSandboxMemory ? estimateTokens(sandboxMemorySection) : 0;
   const recallTokens = recallSection ? estimateTokens(recallSection) : 0;
   const digestTokens = hasDigest ? estimateTokens(digestSection) : 0;
   const taskTokens = hasTaskSnapshot ? estimateTokens(taskSection) : 0;
 
-  // Drop order (lowest priority first): recall → task → digest → threadMemory
-  let totalVariable = tmTokens + recallTokens + digestTokens + taskTokens;
+  // Drop order (lowest priority first): recall → task → digest → threadMemory → sandboxMemory
+  // Sandbox memory is kept last because it is the project-level long-term context for the running sandbox.
+  let totalVariable = tmTokens + smTokens + recallTokens + digestTokens + taskTokens;
   if (totalVariable > remainingBudget) {
     // Drop recall first (auto-generated, lowest priority)
     recallSection = '';
@@ -322,6 +346,12 @@ export async function buildSessionBootstrap(
         if (totalVariable > remainingBudget) {
           threadMemorySection = '';
           hasThreadMemory = false;
+          totalVariable -= tmTokens;
+
+          if (totalVariable > remainingBudget) {
+            sandboxMemorySection = '';
+            hasSandboxMemory = false;
+          }
         }
       }
     }
@@ -331,6 +361,7 @@ export async function buildSessionBootstrap(
     identitySection +
     handoffNoteSection +
     threadMemorySection +
+    sandboxMemorySection +
     recallSection +
     digestSection +
     taskSection +
@@ -342,6 +373,7 @@ export async function buildSessionBootstrap(
     hasDigest,
     hasTaskSnapshot,
     hasThreadMemory,
+    hasSandboxMemory,
   };
 }
 

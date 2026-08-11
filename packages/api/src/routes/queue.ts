@@ -100,7 +100,7 @@ const steerBodySchema = z.object({
 
 const sessionResetBodySchema = z.object({
   catIds: z.array(z.string().min(1).max(100)).max(50).optional(),
-  promptProfile: z.enum(['development', 'casual', 'roundtable', 'all']).optional(),
+  promptProfile: z.enum(['development', 'casual', 'roundtable', 'sandbox', 'all']).optional(),
   cancelRunning: z.boolean().optional(),
   resetRoundtableIssue: z.boolean().optional(),
 });
@@ -123,7 +123,7 @@ const historyResetBodySchema = z
   });
 type HistoryResetBody = z.infer<typeof historyResetBodySchema>;
 
-const ALL_SESSION_PROMPT_PROFILES: readonly SessionPromptProfile[] = ['development', 'casual', 'roundtable'] as const;
+const ALL_SESSION_PROMPT_PROFILES: readonly SessionPromptProfile[] = ['development', 'casual', 'roundtable', 'sandbox'] as const;
 const MANUAL_CONTEXT_RESET_SEAL_REASON = 'manual_context_reset';
 
 /**
@@ -170,6 +170,8 @@ function resolveDefaultPromptProfiles(thread: Thread): SessionPromptProfile[] {
       return ['casual'];
     case 'roundtable':
       return ['roundtable'];
+    case 'sandbox':
+      return ['sandbox'];
     case 'development':
     default:
       return ['development'];

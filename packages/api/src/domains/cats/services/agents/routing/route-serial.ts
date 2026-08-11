@@ -860,6 +860,7 @@ export async function* routeSerial(
               transcriptReader: deps.invocationDeps.transcriptReader,
               ...(deps.invocationDeps.taskStore ? { taskStore: deps.invocationDeps.taskStore } : {}),
               ...(deps.invocationDeps.threadStore ? { threadStore: deps.invocationDeps.threadStore } : {}),
+              ...(deps.sandboxStore ? { sandboxStore: deps.sandboxStore } : {}),
               ...(bootstrapDepth ? { bootstrapDepth } : {}),
             },
             catId,

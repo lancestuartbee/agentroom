@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs';
 import type { F163Authority } from './f163-types.js';
 
-export const COLLECTION_KINDS = ['project', 'world', 'domain', 'research', 'global'] as const;
+export const COLLECTION_KINDS = ['project', 'world', 'domain', 'research', 'global', 'sandbox'] as const;
 export type CollectionKind = (typeof COLLECTION_KINDS)[number];
 
 export type CollectionSensitivity = 'public' | 'internal' | 'private' | 'restricted';

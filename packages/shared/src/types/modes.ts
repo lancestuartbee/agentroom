@@ -5,7 +5,7 @@
  * thread/session mode contract shared by api and web.
  */
 
-export const THREAD_MODES = ['casual', 'roundtable', 'development'] as const;
+export const THREAD_MODES = ['casual', 'roundtable', 'development', 'sandbox'] as const;
 
 export type ThreadMode = (typeof THREAD_MODES)[number];
 

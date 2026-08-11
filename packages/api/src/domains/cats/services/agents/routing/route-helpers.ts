@@ -72,6 +72,8 @@ export interface RouteStrategyDeps {
   worldStore?: import('../../../../world/interfaces.js').IWorldStore;
   /** F233 Phase B (B2): Ball-custody ingest — fire-and-forget 旁路写球权事件（append + appended-guard apply）。optional, fail-open */
   ballCustody?: import('../../../../ball-custody/BallCustodyIngest.js').IBallCustodyIngest;
+  /** F247: Sandbox store for sandbox-scoped memory injection (optional, fail-open) */
+  sandboxStore?: import('../../../../sandbox/ports/SandboxStore.js').ISandboxStore;
 }
 
 /** Mutable context for tracking persistence failures across the generator boundary.

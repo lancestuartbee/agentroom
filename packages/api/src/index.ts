@@ -260,6 +260,7 @@ import {
   threadBranchRoutes,
   threadCatsRoutes,
   threadsRoutes,
+  sandboxesRoutes,
   toolUsageRoutes,
   ttsRoutes,
   uploadsRoutes,
@@ -566,6 +567,11 @@ async function main(): Promise<void> {
   const profileUpdateProposalStore = createProfileUpdateProposalStore(redis);
   const profileUpdateLock = new SessionMutex();
   const profileDir = resolveWritableProfileDir(process.cwd(), resolveL0CompilerScriptPath());
+  const { InMemorySandboxStore } = await import('./domains/sandbox/stores/InMemorySandboxStore.js');
+  const sandboxStore = new InMemorySandboxStore({
+    indexFilePath: join(profileDir, 'a2a-sandbox-index.jsonl'),
+  });
+  await sandboxStore.rehydrate();
   const frustrationIssueStore = createFrustrationIssueStore(redis);
 
   // F235: Community issue draft store + publisher for "Publish to Community" flow
@@ -1554,6 +1560,7 @@ async function main(): Promise<void> {
     conciergeConfigStore: conciergeConfigStoreShared,
     conciergeHandleMapStore: conciergeHandleMapStoreShared,
     conciergeTriagePlanStore,
+    sandboxStore,
   });
 
   // F39: Message queue delivery
@@ -2542,6 +2549,7 @@ async function main(): Promise<void> {
       | undefined,
     conciergeThreadService: conciergeThreadServiceShared,
   });
+  await app.register(sandboxesRoutes, { threadStore, sandboxStore });
   await app.register(labelsRoutes, { labelStore, threadStore });
   await app.register(threadBranchRoutes, {
     threadStore,

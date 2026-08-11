@@ -103,7 +103,8 @@ export function ChatInput({
   const setThreads = useChatStore((s) => s.setThreads);
   const [fetchedThread, setFetchedThread] = useState<Thread | null>(null);
   const currentThread = fetchedThread?.id === threadId ? fetchedThread : storeThread;
-  const isLightweightThread = currentThread?.mode === 'casual' || currentThread?.mode === 'roundtable';
+  const isLightweightThread =
+    currentThread?.mode === 'casual' || currentThread?.mode === 'roundtable' || currentThread?.mode === 'sandbox';
   const mentionCats = useMemo(() => scopeCatsForMentionOptions(cats, currentThread), [cats, currentThread]);
   const hasThreadMetadata = !threadId || hasMentionRoutingMetadata(currentThread);
   const catOptions = useMemo(

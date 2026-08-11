@@ -435,7 +435,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
 
     // Default to 'default' thread for lobby (prevents global broadcast)
     const resolvedThreadId = threadId ?? 'default';
-    let resolvedThreadMode: 'casual' | 'roundtable' | 'development' | undefined;
+    let resolvedThreadMode: 'casual' | 'roundtable' | 'development' | 'sandbox' | undefined;
 
     // F167 L1 AC-A3: user message is a fresh turn — clear any in-flight ping-pong
     // streak on this thread's active worklist (no-op if none).

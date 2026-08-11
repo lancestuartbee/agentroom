@@ -228,6 +228,7 @@ function truncateBlock(value: string, maxLength: number): string {
 function threadModeLabel(mode: ThreadMode): string {
   if (mode === 'casual') return '闲聊';
   if (mode === 'roundtable') return '圆桌会议';
+  if (mode === 'sandbox') return 'A2A沙盒';
   return '开发协作';
 }
 

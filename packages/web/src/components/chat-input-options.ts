@@ -14,7 +14,7 @@ export interface CatOption {
 }
 
 interface MentionThreadScope {
-  mode?: 'casual' | 'roundtable' | 'development';
+  mode?: 'casual' | 'roundtable' | 'development' | 'sandbox';
   preferredCats?: string[];
   participants?: string[];
 }

@@ -49,7 +49,7 @@ export function DirectoryPickerModal({
   submitLabel?: string;
   allowLobby?: boolean;
 }) {
-  const availableModes = modeOptions ?? (['development', 'casual', 'roundtable'] as ThreadMode[]);
+  const availableModes = modeOptions ?? (['development', 'casual', 'roundtable', 'sandbox'] as ThreadMode[]);
   const [threadMode, setThreadMode] = useState<ThreadMode>(
     availableModes.includes(initialMode) ? initialMode : (availableModes[0] ?? 'development'),
   );
@@ -122,7 +122,7 @@ export function DirectoryPickerModal({
   // F068-R7: Confirm creation with currently selected project
   const confirmCreate = useCallback(() => {
     console.log('[DirectoryPicker] confirmCreate called, selectedPath=', selectedPath);
-    if (threadMode === 'casual' || threadMode === 'roundtable') {
+    if (threadMode === 'casual' || threadMode === 'roundtable' || threadMode === 'sandbox') {
       selectWithOptions(undefined);
       return;
     }
@@ -193,9 +193,9 @@ export function DirectoryPickerModal({
 
   const [catsExpanded, setCatsExpanded] = useState(false);
   const catSummary = selectedCats.length > 0 ? `已选 ${selectedCats.length} 位成员` : '';
-  const isLightweightMode = threadMode === 'casual' || threadMode === 'roundtable';
+  const isLightweightMode = threadMode === 'casual' || threadMode === 'roundtable' || threadMode === 'sandbox';
   const createButtonLabel =
-    submitLabel ?? (threadMode === 'casual' ? '创建闲聊' : threadMode === 'roundtable' ? '创建圆桌' : '创建对话');
+    submitLabel ?? (threadMode === 'casual' ? '创建闲聊' : threadMode === 'roundtable' ? '创建圆桌' : threadMode === 'sandbox' ? '创建A2A沙盒' : '创建对话');
 
   useEffect(() => {
     if (!isLightweightMode) return;
@@ -256,7 +256,7 @@ export function DirectoryPickerModal({
                       : 'text-cafe-secondary hover:bg-[var(--console-hover-bg)]'
                   }`}
                 >
-                  {mode === 'development' ? '开发协作' : mode === 'casual' ? '闲聊' : '圆桌会议'}
+                  {mode === 'development' ? '开发协作' : mode === 'casual' ? '闲聊' : mode === 'sandbox' ? 'A2A沙盒' : '圆桌会议'}
                 </button>
               ))}
             </div>
