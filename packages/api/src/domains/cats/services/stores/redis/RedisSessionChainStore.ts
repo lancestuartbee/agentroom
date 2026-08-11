@@ -159,11 +159,7 @@ export class RedisSessionChainStore implements ISessionChainStore {
     return this.hydrate(data);
   }
 
-  async getActive(
-    catId: CatId,
-    threadId: string,
-    promptProfile?: SessionPromptProfile,
-  ): Promise<SessionRecord | null> {
+  async getActive(catId: CatId, threadId: string, promptProfile?: SessionPromptProfile): Promise<SessionRecord | null> {
     const activeId = await this.redis.get(SessionChainKeys.active(catId, threadId, promptProfile));
     if (!activeId) return null;
     const record = await this.get(activeId);

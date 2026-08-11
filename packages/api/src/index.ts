@@ -2551,7 +2551,23 @@ async function main(): Promise<void> {
       | undefined,
     conciergeThreadService: conciergeThreadServiceShared,
   });
-  await app.register(sandboxesRoutes, { threadStore, sandboxStore });
+  await app.register(sandboxesRoutes, {
+    threadStore,
+    sandboxStore,
+    // F247 Phase C: sandbox cron tasks reuse the existing dynamic-task machinery.
+    scheduleDeps: {
+      dynamicTaskStore: {
+        insert: (def) => dynamicTaskStore.insert(def),
+        remove: (id) => dynamicTaskStore.remove(id),
+        getById: (id) => dynamicTaskStore.getById(id),
+      },
+      taskRunner: {
+        registerDynamic: (spec, id) => taskRunnerV2.registerDynamic(spec, id),
+        unregister: (id) => taskRunnerV2.unregister(id),
+        triggerNow: (id, o) => taskRunnerV2.triggerNow(id, o),
+      },
+    },
+  });
   await app.register(labelsRoutes, { labelStore, threadStore });
   await app.register(threadBranchRoutes, {
     threadStore,

@@ -15,11 +15,12 @@ import type {
   UpdateSandboxStatusInput,
 } from '@cat-cafe/shared';
 import { isThreadMode } from '@cat-cafe/shared';
-import type { Thread } from '../domains/cats/services/stores/ports/ThreadStore.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import type { IThreadStore, Thread } from '../domains/cats/services/stores/ports/ThreadStore.js';
 import type { ISandboxStore } from '../domains/sandbox/ports/SandboxStore.js';
-import type { IThreadStore } from '../domains/cats/services/stores/ports/ThreadStore.js';
+import type { SandboxScheduleDeps } from '../domains/sandbox/services/sandbox-schedule.js';
+import { syncSandboxSchedule, triggerSandboxRunNow } from '../domains/sandbox/services/sandbox-schedule.js';
 import { createModuleLogger } from '../infrastructure/logger.js';
 import { validateProjectPath } from '../utils/project-path.js';
 import { resolveUserId } from '../utils/request-identity.js';
@@ -29,6 +30,25 @@ const log = createModuleLogger('routes/sandboxes');
 export interface SandboxesRoutesOptions {
   threadStore: IThreadStore;
   sandboxStore: ISandboxStore;
+  /**
+   * F247 Phase C: scheduler surface. Optional so the routes stay usable (and testable)
+   * without a live task runner — a sandbox without it simply never fires on cron.
+   */
+  scheduleDeps?: SandboxScheduleDeps;
+}
+
+/**
+ * The cron task is a projection of `spec.schedule`, so every mutation path converges
+ * it rather than hand-rolling register/unregister. Failures are logged, never fatal:
+ * losing a schedule must not lose the sandbox itself.
+ */
+async function syncSchedule(sandbox: Sandbox, scheduleDeps: SandboxScheduleDeps | undefined): Promise<void> {
+  if (!scheduleDeps) return;
+  try {
+    await syncSandboxSchedule(sandbox, scheduleDeps);
+  } catch (err) {
+    log.error({ err, sandboxId: sandbox.id }, 'Failed to sync sandbox schedule');
+  }
 }
 
 const sandboxSpecSchema = z
@@ -103,7 +123,7 @@ function sanitizeSandboxForResponse(sandbox: Sandbox): Sandbox {
 }
 
 export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async (app, opts) => {
-  const { threadStore, sandboxStore } = opts;
+  const { threadStore, sandboxStore, scheduleDeps } = opts;
 
   // POST /api/sandboxes - 创建沙盒（同时创建绑定 Thread）
   app.post('/api/sandboxes', async (request, reply) => {
@@ -142,9 +162,15 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
       await threadStore.updateThreadMode(thread.id, 'sandbox');
       await threadStore.updatePreferredCats(thread.id, members as CatId[]);
 
-      // Bind sandbox to thread
+      // Bind sandbox to thread. Persist the link: assigning to the returned object only
+      // mutates a local copy, so against Redis the binding would silently disappear.
       thread.sandboxId = sandbox.id;
+      await threadStore.updateSandboxId(thread.id, sandbox.id);
       await sandboxStore.bindThread(sandbox.id, thread.id);
+
+      // bindThread mutates threadId, which the schedule needs as its delivery target.
+      const bound = (await sandboxStore.get(sandbox.id)) ?? sandbox;
+      await syncSchedule(bound, scheduleDeps);
 
       reply.status(201);
       return {
@@ -211,6 +237,9 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
     }
 
     const updated = await sandboxStore.updateSpec(id, parseResult.data as UpdateSandboxSpecInput);
+    // Editing the spec in the dev pane is how the schedule changes — converge it now so
+    // a new/removed cron takes effect without the operator restarting anything.
+    if (updated) await syncSchedule(updated, scheduleDeps);
     reply.status(200);
     return { sandbox: sanitizeSandboxForResponse(updated!) };
   });
@@ -275,8 +304,54 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
     }
 
     const updated = await sandboxStore.updateStatus(id, parseResult.data as UpdateSandboxStatusInput);
+    // Pause/resume is expressed purely as status — converge the cron so a paused sandbox
+    // actually stops firing instead of quietly running on in the background.
+    if (updated) await syncSchedule(updated, scheduleDeps);
     reply.status(200);
     return { sandbox: sanitizeSandboxForResponse(updated!) };
+  });
+
+  // POST /api/sandboxes/:id/run — run once now, from the run pane.
+  // The main way an operator smoke-tests a freshly written spec instead of waiting a day.
+  app.post('/api/sandboxes/:id/run', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = resolveUserId(request);
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required' };
+    }
+
+    const sandbox = await sandboxStore.get(id);
+    if (!sandbox) {
+      reply.status(404);
+      return { error: 'Sandbox not found' };
+    }
+
+    const thread = await threadStore.get(sandbox.threadId);
+    if (!thread || thread.createdBy !== userId) {
+      reply.status(403);
+      return { error: 'Sandbox does not belong to this user' };
+    }
+
+    if (sandbox.status !== 'active') {
+      reply.status(409);
+      return { error: `Sandbox is ${sandbox.status}; resume it before running` };
+    }
+
+    if (!scheduleDeps) {
+      reply.status(503);
+      return { error: 'Scheduler not available' };
+    }
+
+    try {
+      const result = await triggerSandboxRunNow(sandbox, scheduleDeps);
+      reply.status(202);
+      return { success: true, taskId: result.taskId };
+    } catch (err) {
+      log.error({ err, sandboxId: id }, 'Failed to trigger sandbox run');
+      reply.status(500);
+      return { error: 'Failed to trigger sandbox run', detail: String(err) };
+    }
   });
 };
 

@@ -397,6 +397,9 @@ export interface IThreadStore {
   updateFavorite(threadId: string, favorited: boolean): void | Promise<void>;
   updateThinkingMode(threadId: string, mode: 'debug' | 'play'): void | Promise<void>;
   updateThreadMode(threadId: string, mode: ThreadMode): void | Promise<void>;
+  /** F247: bind a thread to its sandbox. Must be persisted — assigning to a returned
+   * Thread object is a no-op against Redis, so the link would silently vanish. */
+  updateSandboxId(threadId: string, sandboxId: string): void | Promise<void>;
   updateThreadAudience(threadId: string, audience: ThreadAudience): void | Promise<void>;
   updateMentionActionabilityMode(threadId: string, mode: MentionActionabilityMode): void | Promise<void>;
   updatePreferredCats(threadId: string, catIds: CatId[]): void | Promise<void>;
@@ -757,6 +760,11 @@ export class ThreadStore implements IThreadStore {
   updateThreadMode(threadId: string, mode: ThreadMode): void {
     const thread = this.get(threadId);
     if (thread) thread.mode = mode;
+  }
+
+  updateSandboxId(threadId: string, sandboxId: string): void {
+    const thread = this.get(threadId);
+    if (thread) thread.sandboxId = sandboxId;
   }
 
   updateThreadAudience(threadId: string, audience: ThreadAudience): void {

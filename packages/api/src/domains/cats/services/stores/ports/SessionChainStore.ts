@@ -331,7 +331,7 @@ export class SessionChainStore implements ISessionChainStore {
       this.chainKeyIndex.delete(record.chainKey);
     }
 
-      const key = this.catThreadKey(record.catId, record.threadId, record.promptProfile);
+    const key = this.catThreadKey(record.catId, record.threadId, record.promptProfile);
     if (this.activeIndex.get(key) === id) {
       this.activeIndex.delete(key);
     }

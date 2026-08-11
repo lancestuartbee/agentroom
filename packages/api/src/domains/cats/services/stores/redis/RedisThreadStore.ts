@@ -463,6 +463,11 @@ export class RedisThreadStore implements IThreadStore {
     await this.setDetailFields(key, 'mode', mode);
   }
 
+  async updateSandboxId(threadId: string, sandboxId: string): Promise<void> {
+    const key = ThreadKeys.detail(threadId);
+    await this.setDetailFields(key, 'sandboxId', sandboxId);
+  }
+
   async updateThreadAudience(threadId: string, audience: ThreadAudience): Promise<void> {
     const key = ThreadKeys.detail(threadId);
     await this.setDetailFields(key, 'audience', JSON.stringify(normalizeThreadAudience(audience)));
