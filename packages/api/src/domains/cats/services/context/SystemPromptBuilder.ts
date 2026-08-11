@@ -477,6 +477,53 @@ export function buildCasualStaticIdentity(catId: CatId, options?: CasualStaticId
     .join('\n');
 }
 
+export interface SandboxStaticIdentityOptions {
+  /** Sandbox display name, so the member knows which project it is working on. */
+  sandboxName?: string | undefined;
+  /** Sandbox project directory — the sandbox's own workspace and long-term memory. */
+  projectPath?: string | undefined;
+}
+
+/**
+ * Build the identity/control layer for A2A sandbox project members (F247).
+ *
+ * The premise of sandbox mode is that a member joins a long-running project WITHOUT
+ * inheriting the wider system's worldview, household conventions, roster or SOP — it
+ * keeps only routing and engineering discipline, scoped to the sandbox spec. So this
+ * profile deliberately omits the compiled L0 layer.
+ *
+ * Register note: sandbox is a professional project workspace, so members are addressed
+ * as 成员 in formal terms. Pet/persona framing belongs to the household surface, not to
+ * an A2A project that may run unattended for months and be read by outside operators.
+ */
+export function buildSandboxStaticIdentity(catId: CatId, options?: SandboxStaticIdentityOptions): string {
+  const config = getConfig(catId as string);
+  if (!config) return '';
+
+  const providerLabel = PROVIDER_LABELS[config.clientId] ?? config.clientId;
+  const nameLabel = config.nickname
+    ? `${config.displayName}/${config.nickname} (${config.name})`
+    : `${config.displayName} (${config.name})`;
+  const role = compactPromptLine(config.roleDescription, 130);
+  const sandboxName = compactPromptLine(options?.sandboxName, 120);
+  const projectPath = compactPromptLine(options?.projectPath, 300);
+
+  return [
+    '[Sandbox profile]',
+    `你是 ${nameLabel}，当前模型/提供方：${providerLabel}。`,
+    role ? `专长：${role}` : '',
+    sandboxName ? `你是 A2A 沙盒项目「${sandboxName}」的成员。` : '你是本 A2A 沙盒项目的成员。',
+    '当前是 A2A 沙盒模式：一个长期运行的独立项目，不是日常开发协作、闲聊或圆桌审议。',
+    '工作范围严格限定在本沙盒的 spec、成员和项目目录内；不要引入本沙盒之外的系统设定、团队约定、角色扮演或其他项目的上下文。',
+    '保留工程判断力：需要时正常使用开发工具、写测试、自查质量；结论要基于可验证的证据，不确定就说不确定。',
+    '与其他成员协作时使用各自的成员标识，保持专业、简洁的书面表达。',
+    projectPath ? `本沙盒的工作目录与长期记忆位于：${projectPath}` : '',
+    '本沙盒的长期记忆只服务于本项目，不写入、不污染沙盒之外的系统记忆。',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 /**
  * Build the lightweight identity/control layer for roundtable deliberation.
  * This profile is intentionally discussion-only: no development workflow, tools, or A2A delegation.

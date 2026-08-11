@@ -250,7 +250,24 @@ export type SpawnCliOverride = (options: CliSpawnOptions) => AsyncGenerator<unkn
 
 export type PromptProfile = SessionPromptProfile;
 
+/**
+ * "Lightweight" here means: do NOT compile the full household L0 into the provider's
+ * native system prompt — use the profile's own slim instruction instead.
+ *
+ * F247: sandbox belongs here. Its whole premise is that members join a project without
+ * inheriting the wider system's worldview, conventions and roster; leaving it out meant
+ * sandbox runs silently shipped the full compiled L0 to the CLI.
+ */
 export function isLightweightPromptProfile(promptProfile?: PromptProfile): boolean {
+  return promptProfile === 'casual' || promptProfile === 'roundtable' || promptProfile === 'sandbox';
+}
+
+/**
+ * Chat-cost profiles whose reasoning effort is capped. Distinct from
+ * `isLightweightPromptProfile`: capping effort is a cost decision for conversational
+ * modes, whereas a sandbox does real project work and keeps its configured effort.
+ */
+export function isEffortCappedPromptProfile(promptProfile?: PromptProfile): boolean {
   return promptProfile === 'casual' || promptProfile === 'roundtable';
 }
 

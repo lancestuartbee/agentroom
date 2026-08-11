@@ -580,8 +580,7 @@ export function parseCritiqueMeta(text: string): {
     /(^|\n)\s*(?:[-*]\s*)?(?:#{2,4}\s*)?(?:\*\*)?新的?挑战(?:\*\*)?\s*[:：]?|我挑战|挑战\s*@|继续挑战|新的实质挑战/.test(
       text,
     );
-  const readyToVote =
-    explicitReadyToVote ?? /(可以进入投票|可进入投票|准备投票|可以投票|足够收束|进入投票)/.test(text);
+  const readyToVote = explicitReadyToVote ?? /(可以进入投票|可进入投票|准备投票|可以投票|足够收束|进入投票)/.test(text);
   const blocker =
     explicitBlocker ??
     /(仍未解决|关键分歧|证据不足|缺少证据|不能投票|不能达成|无法达成|仍然反对|仍未消除|仍有.*不确定|不确定性)/.test(
@@ -656,7 +655,7 @@ export function buildFinalSummary(
       ? '形成多数倾向但未达成全体共识'
       : '未达成共识';
 
-  const finalConclusion = resultLines.length > 1 ? resultLines.join('\n') : resultLines[0] ?? '暂无明确结论。';
+  const finalConclusion = resultLines.length > 1 ? resultLines.join('\n') : (resultLines[0] ?? '暂无明确结论。');
 
   return [
     '# 圆桌会议总结',
@@ -811,7 +810,10 @@ function hasArtifactRequestCue(message: string): boolean {
 function isClearlyLightweightMessage(message: string): boolean {
   const text = message.trim();
   if (!text) return true;
-  if (text.length <= 30 && /(谢谢|多谢|好的|可以|收到|明白|了解|ok|OK|嗯|辛苦|今天星期几|现在几点|日期|星期几)/.test(text)) {
+  if (
+    text.length <= 30 &&
+    /(谢谢|多谢|好的|可以|收到|明白|了解|ok|OK|嗯|辛苦|今天星期几|现在几点|日期|星期几)/.test(text)
+  ) {
     return true;
   }
   if (text.length <= 18 && !/[？?]/.test(text)) return true;
@@ -822,7 +824,11 @@ export function isLikelyNewRoundtableTopic(message: string, currentIssue?: Round
   const text = message.trim();
   if (!text) return false;
   if (hasRoundtableRuntimeStatusCue(text)) return false;
-  if (/(新议题|下一个议题|另一个议题|换个议题|开启.*圆桌|开始.*圆桌|开.*圆桌|圆桌讨论|大家讨论|大家怎么看|各自观点)/.test(text)) {
+  if (
+    /(新议题|下一个议题|另一个议题|换个议题|开启.*圆桌|开始.*圆桌|开.*圆桌|圆桌讨论|大家讨论|大家怎么看|各自观点)/.test(
+      text,
+    )
+  ) {
     return true;
   }
   if (hasVoteCue(text) || hasSummaryCue(text) || hasContinueCue(text) || hasArtifactRequestCue(text)) return false;
@@ -869,7 +875,8 @@ export function planRoundtableAction(
   }
   if (currentIssue && !isLikelyNewRoundtableTopic(message, currentIssue)) {
     return {
-      action: isClearlyLightweightMessage(message) || currentIssue.status === 'summarized' ? 'single_response' : 'followup',
+      action:
+        isClearlyLightweightMessage(message) || currentIssue.status === 'summarized' ? 'single_response' : 'followup',
       focusCats: [],
       strictFocusOnly: false,
     };
@@ -1217,16 +1224,7 @@ export async function* routeRoundtable(
   }
 
   if (actionPlan.action === 'artifact_request' && currentIssue) {
-    yield* runArtifactRequest(
-      deps,
-      message,
-      userId,
-      threadId,
-      options,
-      currentIssue,
-      primaryCat,
-      actionPlan.focusCats,
-    );
+    yield* runArtifactRequest(deps, message, userId, threadId, options, currentIssue, primaryCat, actionPlan.focusCats);
     return;
   }
 

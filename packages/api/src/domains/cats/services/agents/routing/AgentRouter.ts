@@ -86,9 +86,11 @@ function buildSandboxModeSystemPrompt(thread: Thread): string {
     '[A2A Sandbox mode]',
     `Thread ${thread.id}.`,
     'Use the sandbox prompt profile.',
-    'You are a lightweight member of this sandbox project.',
+    'You are a member of this sandbox project.',
     'Use development tools and quality gates as needed, but stay scoped to the current sandbox spec and members.',
-    'Do not bring in full household worldview or unrelated project context.',
+    // F247: sandbox members address each other as members. Persona/pet framing and the
+    // wider system's conventions belong outside this mode by design.
+    'Refer to participants as members. Do not import the wider system conventions, role-play framing, or unrelated project context.',
   ].join('\n');
 }
 
@@ -1429,15 +1431,7 @@ export class AgentRouter {
       // matched by parseGroupMentions and are not individual cat mentions.
       // Only suppress breed handles with ≥1 routable cat (service + available);
       // breeds where all cats are unavailable still warn so the user gets feedback.
-      const groupHandles = new Set([
-        'all',
-        '全体',
-        'thread',
-        '本帖',
-        '参与者',
-        '全体参与者',
-        '本帖参与者',
-      ]);
+      const groupHandles = new Set(['all', '全体', 'thread', '本帖', '参与者', '全体参与者', '本帖参与者']);
       for (const [catId, config] of Object.entries(catRegistry.getAllConfigs())) {
         if (config.breedId && this.isRoutableCat(catId)) {
           groupHandles.add(`all-${config.breedId}`);

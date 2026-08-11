@@ -703,10 +703,24 @@ export async function* routeSerial(
       const service = getService(deps.services, catId);
       const needsServerRoutingGuard = !isLightweightProfile && (service.needsServerRoutingGuard?.() ?? false);
       const hasNativeL0 = service.injectsL0Natively?.() ?? false;
-      const staticIdentity = buildPromptProfileStaticIdentity(catId, threadId, routePromptProfile, () =>
-        hasNativeL0
-          ? buildStaticIdentityPackOnly(catId, { packBlocks })
-          : buildStaticIdentity(catId, { mcpAvailable, packBlocks }),
+      // F247: a sandbox member is told which project it belongs to and where that
+      // project's workspace/long-term memory lives — that scope IS its identity here,
+      // in place of the household worldview it deliberately does not inherit.
+      const identitySandbox =
+        routePromptProfile === 'sandbox' && deps.sandboxStore
+          ? await Promise.resolve(deps.sandboxStore.getByThreadId(threadId)).catch(() => null)
+          : null;
+      const staticIdentity = buildPromptProfileStaticIdentity(
+        catId,
+        threadId,
+        routePromptProfile,
+        () =>
+          hasNativeL0
+            ? buildStaticIdentityPackOnly(catId, { packBlocks })
+            : buildStaticIdentity(catId, { mcpAvailable, packBlocks }),
+        identitySandbox
+          ? { name: identitySandbox.spec?.name ?? identitySandbox.title, projectPath: identitySandbox.projectPath }
+          : undefined,
       );
       // L0-budget-defense PR-B-impl (ADR-038 件套 ④): staging is NOT prepended
       // to staticIdentity here. Cloud R2 P1 #2237 L1099: folding staging into

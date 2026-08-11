@@ -268,10 +268,22 @@ export async function* routeParallel(
       const hasNativeL0 = service.injectsL0Natively?.() ?? false;
       // Staging is injected in invoke-single-cat independently of staticIdentity
       // (Cloud R2 P1 #2237 L1099). See route-serial.ts for the architecture rationale.
-      const staticIdentity = buildPromptProfileStaticIdentity(catId, threadId, routePromptProfile, () =>
-        hasNativeL0
-          ? buildStaticIdentityPackOnly(catId, { packBlocks })
-          : buildStaticIdentity(catId, { mcpAvailable, packBlocks }),
+      // F247: see route-serial.ts — the sandbox's own scope replaces the inherited worldview.
+      const identitySandbox =
+        routePromptProfile === 'sandbox' && deps.sandboxStore
+          ? await Promise.resolve(deps.sandboxStore.getByThreadId(threadId)).catch(() => null)
+          : null;
+      const staticIdentity = buildPromptProfileStaticIdentity(
+        catId,
+        threadId,
+        routePromptProfile,
+        () =>
+          hasNativeL0
+            ? buildStaticIdentityPackOnly(catId, { packBlocks })
+            : buildStaticIdentity(catId, { mcpAvailable, packBlocks }),
+        identitySandbox
+          ? { name: identitySandbox.spec?.name ?? identitySandbox.title, projectPath: identitySandbox.projectPath }
+          : undefined,
       );
       // F041: inject HTTP callback only when MCP is NOT actually available (fallback)
       const mcpInstructions =
@@ -1387,7 +1399,10 @@ export async function* routeParallel(
           } as AgentMessage;
         }
 
-        if (!suppressSilentNoText && (shouldPersistNoTextMessage || sawUserFacingSystemInfo || shouldEmitSilentCompletion)) {
+        if (
+          !suppressSilentNoText &&
+          (shouldPersistNoTextMessage || sawUserFacingSystemInfo || shouldEmitSilentCompletion)
+        ) {
           catProducedOutput = true;
         }
 
