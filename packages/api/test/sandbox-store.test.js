@@ -7,6 +7,42 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 describe('Sandbox store', () => {
+  // Regression: sandbox ids double as evidence collection ids. A bare UUID starts
+  // with a hex digit ~62.5% of the time, which violates COLLECTION_ID_RE's
+  // "name must start with a letter" rule — measured 641/1000 failures before the fix.
+  // Loop many ids so the probabilistic failure cannot slip through as a flake.
+  test('generated sandbox ids are always valid evidence collection ids', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { validateCollectionId } = await import('../dist/domains/memory/collection-types.js');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-idtest-'));
+    const projectPath = join(tmpDir, 'project');
+    await import('node:fs/promises').then((fs) => fs.mkdir(projectPath, { recursive: true }));
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+
+    for (let i = 0; i < 200; i++) {
+      const sandbox = await store.create(
+        {
+          title: `Sandbox ${i}`,
+          projectPath,
+          members: ['opus'],
+          spec: { specVersion: '1', name: `S${i}`, goal: 'goal', members: ['opus'] },
+        },
+        'user-1',
+      );
+      assert.doesNotThrow(
+        () => validateCollectionId(sandbox.id),
+        `sandbox id must be a valid collection id: ${sandbox.id}`,
+      );
+      assert.equal(sandbox.id.startsWith('sandbox:'), true);
+    }
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
   test('InMemorySandboxStore persists to disk and rehydrates on restart', async () => {
     const { InMemorySandboxStore } = await import(
       '../dist/domains/sandbox/stores/InMemorySandboxStore.js'

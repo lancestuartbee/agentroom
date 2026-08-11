@@ -31,8 +31,15 @@ const DEFAULT_SETTINGS: SandboxSettingsV1 = {
   maxRunLogs: 100,
 };
 
+/**
+ * Sandbox ids double as evidence collection ids (`<kind>:<name>`), so they must
+ * satisfy COLLECTION_ID_RE (`^[a-z]+:[a-z][a-z0-9-]*$`) — the name segment has to
+ * START WITH A LETTER. A bare UUID starts with a hex digit ~62.5% of the time, so
+ * `sandbox:${uuid}` failed collection registration for most sandboxes (measured:
+ * 641/1000). The `sb-` prefix makes every generated id collection-compatible.
+ */
 function generateSandboxId(): string {
-  return `sandbox:${randomUUID()}`;
+  return `sandbox:sb-${randomUUID()}`;
 }
 
 function sanitizeProjectPath(projectPath: string): string {
