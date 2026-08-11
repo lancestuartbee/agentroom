@@ -137,6 +137,12 @@ export interface ExecuteContext {
   invokeTrigger?: ScheduleInvokeTrigger;
   /** F233 PR3: optional ball-custody event sink for scheduler-originated events. */
   ballCustody?: IBallCustodyIngest;
+  /**
+   * F247 Phase C: sandbox store, so a sandbox run reads the CURRENT spec at fire time
+   * rather than a copy frozen at schedule-registration time. This is what makes dev-pane
+   * spec edits take effect on the very next run.
+   */
+  sandboxStore?: import('../../domains/sandbox/ports/SandboxStore.js').ISandboxStore;
 }
 
 /**

@@ -37,6 +37,8 @@ export interface TaskRunnerV2Options {
   invokeTrigger?: ScheduleInvokeTrigger;
   /** F233 PR3: optional ball-custody event sink for scheduler-originated events. */
   ballCustody?: IBallCustodyIngest;
+  /** F247 Phase C: sandbox store — sandbox-run tasks read the current spec at fire time. */
+  sandboxStore?: import('../../domains/sandbox/ports/SandboxStore.js').ISandboxStore;
   /** Ephemeral lifecycle notifications (toast-only, not persisted in thread history) */
   notifyLifecycle?: ScheduleLifecycleNotifier;
   /** #415: dynamic task store — needed for once-trigger auto-retirement */
@@ -133,6 +135,7 @@ export class TaskRunnerV2 {
   private fetchContent: TaskRunnerV2Options['fetchContent'];
   private invokeTrigger: TaskRunnerV2Options['invokeTrigger'];
   private ballCustody: TaskRunnerV2Options['ballCustody'];
+  private sandboxStore: TaskRunnerV2Options['sandboxStore'];
   private notifyLifecycle: TaskRunnerV2Options['notifyLifecycle'];
   private dynamicTaskStore: TaskRunnerV2Options['dynamicTaskStore'];
   /** F167 Phase M: busy checker for pre-fire defer (queueProcessor.isThreadBusy() || invocationTracker.has()) */
@@ -150,6 +153,7 @@ export class TaskRunnerV2 {
     this.fetchContent = opts.fetchContent;
     this.invokeTrigger = opts.invokeTrigger;
     this.ballCustody = opts.ballCustody;
+    this.sandboxStore = opts.sandboxStore;
     this.notifyLifecycle = opts.notifyLifecycle;
     this.dynamicTaskStore = opts.dynamicTaskStore;
     this.isThreadBusy = opts.isThreadBusy;
@@ -551,6 +555,7 @@ export class TaskRunnerV2 {
       fetchContent: this.fetchContent,
       invokeTrigger: this.invokeTrigger,
       ballCustody: this.ballCustody,
+      sandboxStore: this.sandboxStore,
       onItemOutcome: (_taskId, _subjectKey, outcome, errorSummary) => {
         if (outcome === 'RUN_DELIVERED') hasDelivered = true;
         if (outcome === 'RUN_FAILED') lastError = errorSummary;

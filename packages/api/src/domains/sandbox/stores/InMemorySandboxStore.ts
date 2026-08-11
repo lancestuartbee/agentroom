@@ -8,6 +8,7 @@
  * 后续可替换为 Redis / SQLite 实现。
  */
 
+import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type {
@@ -22,7 +23,6 @@ import type {
   UpdateSandboxSpecInput,
   UpdateSandboxStatusInput,
 } from '@cat-cafe/shared';
-import { randomUUID } from 'node:crypto';
 import type { ISandboxStore } from '../ports/SandboxStore.js';
 
 const DEFAULT_SETTINGS: SandboxSettingsV1 = {
@@ -424,10 +424,7 @@ export class InMemorySandboxStore implements ISandboxStore {
     const timestamp = Date.now();
     const historyPath = join(historyDir, `spec-${timestamp}.yaml`);
 
-    await Promise.all([
-      writeFile(specPath, toYamlString(spec)),
-      writeFile(historyPath, toYamlString(spec)),
-    ]);
+    await Promise.all([writeFile(specPath, toYamlString(spec)), writeFile(historyPath, toYamlString(spec))]);
   }
 
   private async persistMemory(projectPath: string, memory: SandboxMemoryV1): Promise<void> {
@@ -440,7 +437,17 @@ export class InMemorySandboxStore implements ISandboxStore {
     const dir = getRunsDir(projectPath);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${run.runId}.md`);
-    const content = [`# Run ${run.runId}`, ``, `- Trigger: ${run.trigger}`, `- Triggered At: ${new Date(run.triggeredAt).toISOString()}`, `- Spec Version: ${run.specVersion}`, ``, `## Summary`, ``, run.summary].join('\n');
+    const content = [
+      `# Run ${run.runId}`,
+      ``,
+      `- Trigger: ${run.trigger}`,
+      `- Triggered At: ${new Date(run.triggeredAt).toISOString()}`,
+      `- Spec Version: ${run.specVersion}`,
+      ``,
+      `## Summary`,
+      ``,
+      run.summary,
+    ].join('\n');
     await writeFile(path, content);
   }
 }

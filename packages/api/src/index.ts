@@ -1001,6 +1001,8 @@ async function main(): Promise<void> {
     notifyLifecycle: schedulerLifecycleToast,
     fetchContent: schedulerFetchContent,
     ...(ballCustodyIngest ? { ballCustody: ballCustodyIngest } : {}),
+    // F247 Phase C: sandbox-run tasks resolve the current spec at fire time.
+    sandboxStore,
   });
 
   // ── F139 Phase 3A: Dynamic task store + template registry ──

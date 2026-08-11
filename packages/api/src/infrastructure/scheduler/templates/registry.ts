@@ -1,5 +1,6 @@
 import { reminderTemplate } from './reminder.js';
 import { repoActivityTemplate } from './repo-activity.js';
+import { sandboxRunTemplate } from './sandbox-run.js';
 import type { TaskTemplate } from './types.js';
 import { webDigestTemplate } from './web-digest.js';
 
@@ -28,5 +29,6 @@ export const templateRegistry = new TemplateRegistry();
 templateRegistry.register(reminderTemplate);
 templateRegistry.register(webDigestTemplate);
 templateRegistry.register(repoActivityTemplate);
+templateRegistry.register(sandboxRunTemplate);
 
 export type { DynamicTaskParams, TaskTemplate } from './types.js';

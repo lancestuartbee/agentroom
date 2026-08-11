@@ -38,6 +38,8 @@ export interface PipelineContext {
   invokeTrigger?: ScheduleInvokeTrigger;
   /** F233 PR3: optional ball-custody event sink for scheduler-originated events. */
   ballCustody?: IBallCustodyIngest;
+  /** F247 Phase C: sandbox store for sandbox-run tasks (current spec read at fire time). */
+  sandboxStore?: import('../../domains/sandbox/ports/SandboxStore.js').ISandboxStore;
   /** #415: per-workItem outcome callback (used for failure notifications) */
   onItemOutcome?: (taskId: string, subjectKey: string, outcome: RunOutcome, errorSummary: string | null) => void;
 }
@@ -76,6 +78,7 @@ export async function executeTaskPipeline(ctx: PipelineContext): Promise<void> {
     fetchContent,
     invokeTrigger,
     ballCustody,
+    sandboxStore,
     onItemOutcome,
   } = ctx;
   const startMs = Date.now();
@@ -195,6 +198,7 @@ export async function executeTaskPipeline(ctx: PipelineContext): Promise<void> {
         fetchContent,
         invokeTrigger,
         ballCustody,
+        sandboxStore,
       });
       pendingExecutes.push(rawExecute.catch(() => {}));
       let errorSummary: string | null = null;

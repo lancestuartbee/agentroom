@@ -7,7 +7,6 @@ import type {
   Sandbox,
   SandboxMemoryV1,
   SandboxRunRecordV1,
-  SandboxSpecV1,
   SandboxStateFileV1,
   UpdateSandboxSettingsInput,
   UpdateSandboxSpecInput,
