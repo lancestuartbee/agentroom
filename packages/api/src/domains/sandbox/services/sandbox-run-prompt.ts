@@ -26,11 +26,20 @@ import type { SandboxMemoryV1, SandboxSpecV1 } from '@cat-cafe/shared';
 /** Location of run reports, relative to the sandbox project directory. */
 export const SANDBOX_RUNS_RELATIVE_DIR = '.a2a-sandbox/runs';
 
+/**
+ * How many durable learnings get injected verbatim into a run prompt. Storage is
+ * unbounded (learnings are the accumulated asset); only the injection is capped,
+ * and the prompt discloses how many were held back.
+ */
+const MAX_INJECTED_LEARNINGS = 20;
+
 export interface SandboxRunReportInput {
   runId: string;
   trigger: 'scheduled' | 'manual';
   specVersion: string;
   summary: string;
+  /** Durable conclusions — these, and only these, become accumulated knowledge. */
+  learned?: string[];
 }
 
 /**
@@ -38,6 +47,7 @@ export interface SandboxRunReportInput {
  * Also used verbatim in the prompt as the template the cat must follow.
  */
 export function renderSandboxRunReport(input: SandboxRunReportInput): string {
+  const learned = (input.learned ?? []).filter((line) => line.trim().length > 0);
   return [
     `# Sandbox Run ${input.runId}`,
     '',
@@ -47,6 +57,10 @@ export function renderSandboxRunReport(input: SandboxRunReportInput): string {
     '## Summary',
     '',
     input.summary.trim(),
+    '',
+    '## Learned',
+    '',
+    ...(learned.length > 0 ? learned.map((line) => `- ${line.trim()}`) : ['- （本次没有可沉淀的新结论）']),
     '',
   ].join('\n');
 }
@@ -74,7 +88,16 @@ function buildMemorySection(memory: SandboxMemoryV1 | null): string[] {
 
   const learned = memory.learnedItems ?? [];
   if (learned.length > 0) {
-    lines.push('', '已学到的结论：', ...learned.map((item) => `- ${item.content}`));
+    // Bound what we inject, not what we store. After months of runs the full list
+    // would crowd out the actual task; injecting the newest slice keeps the prompt
+    // usable. Disclose the remainder — silently truncating would read as "this is
+    // everything I know", which is worse than a smaller honest window.
+    const shown = learned.slice(-MAX_INJECTED_LEARNINGS);
+    const held = learned.length - shown.length;
+    lines.push('', '已学到的结论：', ...shown.map((item) => `- ${item.content}`));
+    if (held > 0) {
+      lines.push(`（另外还有 ${held} 条更早的学习条目未在此展开，需要时可查阅沙盒记忆文件。）`);
+    }
   }
 
   const openQuestions = memory.openQuestions ?? [];
@@ -116,7 +139,12 @@ export function buildSandboxRunPrompt(input: SandboxRunPromptInput): string {
   lines.push('## 本次运行要求');
   lines.push('1. 按项目目标执行本次运行。');
   lines.push('2. 运行结束前，必须把本次结论写入运行报告文件（见下），否则本次运行不会被记录，积累会断档。');
-  lines.push('3. 报告里的结论要具体、可验证；写清楚学到了什么、以及哪些判断还需要更多证据。');
+  lines.push('3. 报告分两部分，请严格区分——这是本沙盒能不能越跑越懂行的关键：');
+  lines.push('   - `## Summary`：**今天发生了什么**。当日观察、当日结论，允许过期。');
+  lines.push(
+    '   - `## Learned`：**从此以后都成立的判断**。只写你有信心长期复用的结论，它们会累积进沙盒的长期记忆，并出现在以后每一次运行里。',
+  );
+  lines.push('   宁可 `## Learned` 为空，也不要把当日噪音写进去——写错的长期结论会持续误导后续所有运行。');
   lines.push('');
   lines.push('## 运行报告（必须写，格式不可改）');
   lines.push(`写入路径：\`${SANDBOX_RUNS_RELATIVE_DIR}/${runId}.md\`（相对本沙盒项目目录）`);
@@ -131,7 +159,8 @@ export function buildSandboxRunPrompt(input: SandboxRunPromptInput): string {
       runId,
       trigger,
       specVersion: spec.specVersion,
-      summary: '（本次运行的结论写在这里）',
+      summary: '（今天做了什么、观察到什么，写在这里）',
+      learned: ['（一条可长期复用的结论；没有就删掉这行，留空即可）'],
     }).trimEnd(),
   );
   lines.push('```');

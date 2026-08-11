@@ -1,7 +1,30 @@
+import type { SandboxMemoryV1 } from '@cat-cafe/shared';
 import { SCHEDULER_TRIGGER_PREFIX } from '@cat-cafe/shared';
+import type { ISandboxStore } from '../../../domains/sandbox/ports/SandboxStore.js';
+import { foldRunsIntoMemory } from '../../../domains/sandbox/services/fold-runs-into-memory.js';
 import { buildSandboxRunPrompt } from '../../../domains/sandbox/services/sandbox-run-prompt.js';
 import type { TaskSpec_P1 } from '../types.js';
 import type { DynamicTaskParams, TaskTemplate } from './types.js';
+
+/**
+ * Fold any run reports written since the last fold into the sandbox's rolling memory,
+ * and return the memory this run should be briefed with.
+ *
+ * Never fatal: a sandbox that cannot fold should still run (and try again next time)
+ * rather than skip the day entirely.
+ */
+async function foldPendingRuns(store: ISandboxStore, sandboxId: string): Promise<SandboxMemoryV1 | null> {
+  const memory = await store.getMemory(sandboxId);
+  try {
+    const runs = await store.listRuns(sandboxId, 500);
+    const folded = foldRunsIntoMemory(memory, runs);
+    if (!folded.changed) return memory;
+    await store.updateMemory(sandboxId, folded.memory);
+    return folded.memory;
+  } catch {
+    return memory;
+  }
+}
 
 /** Instance ids minted for sandbox schedules. Also gates pre-fire defer (see below). */
 export const SANDBOX_RUN_INSTANCE_PREFIX = 'sandbox-run-';
@@ -82,7 +105,14 @@ export const sandboxRunTemplate: TaskTemplate = {
 
           // Read CURRENT spec + memory at fire time: this is what makes the dev pane a
           // live control surface instead of a one-shot setup form.
-          const memory = await ctx.sandboxStore.getMemory(sid);
+          //
+          // Fold first: reports written since the last fire (by the previous scheduled
+          // run, a manual run, or a cat that finished late) become accumulated knowledge
+          // now, so THIS run is briefed on them. Doing it here rather than on a separate
+          // job is what makes the loop self-healing — however a report arrived, the next
+          // run picks it up, and the fold is idempotent so re-reading the directory
+          // cannot double-count.
+          const memory = await foldPendingRuns(ctx.sandboxStore, sid);
           const runId = mintRunId(Date.now());
           const prompt = buildSandboxRunPrompt({
             spec: sandbox.spec,

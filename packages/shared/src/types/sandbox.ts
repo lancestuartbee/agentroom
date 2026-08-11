@@ -113,6 +113,14 @@ export interface SandboxRunRecordV1 {
   specVersion: string;
   /** 运行结果摘要 */
   summary: string;
+  /**
+   * 本次运行沉淀下来的 durable 结论。
+   *
+   * 与 `summary` 的区别是这次设计的要害：summary 是"今天发生了什么"（会过期），
+   * learned 是"从此以后都成立的判断"（要积累）。两者混在一起，几个月后记忆就退化
+   * 成一堆读不动的日志——只有 learned 会进入 `SandboxMemoryV1.learnedItems`。
+   */
+  learned?: string[];
   /** 运行产物路径（相对沙盒目录） */
   artifacts?: string[];
 }

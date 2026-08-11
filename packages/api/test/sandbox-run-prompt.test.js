@@ -123,4 +123,71 @@ describe('Sandbox run prompt', () => {
 
     await rm(tmpDir, { recursive: true, force: true });
   });
+
+  // The whole loop, end to end: a cat writes a report -> the store parses it ->
+  // it folds into memory -> the NEXT run is briefed with it. If any link breaks the
+  // sandbox keeps running and silently stops learning, so pin the whole chain.
+  test('a run report written today shows up as knowledge in tomorrow\'s prompt', async () => {
+    const { buildSandboxRunPrompt, renderSandboxRunReport } = await import(
+      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
+    );
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-loop-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    // Day 1: the cat runs and writes its report, separating today's noise from a
+    // durable conclusion.
+    await writeFile(
+      join(runsDir, 'run-day1.md'),
+      renderSandboxRunReport({
+        runId: 'run-day1',
+        trigger: 'scheduled',
+        specVersion: '1',
+        summary: '今日大盘缩量，未触发买点',
+        learned: ['低换手率+放量突破 是较强买入信号'],
+      }),
+      'utf-8',
+    );
+
+    // The store must parse both halves back out.
+    const store2 = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    await store2.rehydrate();
+    const runs = await store2.listRuns(sandbox.id);
+    const record = runs.find((r) => r.runId === 'run-day1');
+    assert.ok(record, 'run report must be readable');
+    assert.match(record.summary, /今日大盘缩量/);
+    assert.deepEqual(record.learned, ['低换手率+放量突破 是较强买入信号']);
+    assert.doesNotMatch(record.summary, /低换手率/, 'durable learning must not leak back into the summary');
+
+    // Day 2: fold, then brief the next run.
+    const folded = foldRunsIntoMemory(null, runs);
+    assert.equal(folded.changed, true);
+
+    const tomorrow = buildSandboxRunPrompt({
+      spec: SPEC,
+      memory: folded.memory,
+      runId: 'run-day2',
+      trigger: 'scheduled',
+    });
+
+    assert.match(tomorrow, /低换手率\+放量突破/, "yesterday's learning must brief today's run");
+    assert.match(tomorrow, /今日大盘缩量/, 'recent run context is still visible in the rolling summary');
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
 });

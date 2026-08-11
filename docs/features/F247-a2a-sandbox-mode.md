@@ -131,9 +131,13 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 - [x] AC-C1: 支持创建沙盒时配置 cron schedule。`spec.schedule` 是唯一真相源，cron 任务只是它的投影；创建/改 spec/暂停都走 `syncSandboxSchedule()` 收敛，避免改 cron 后两个调度并存。时区透传到 trigger（真实盯盘没有时区等于没有时间）。
 - [x] AC-C2: schedule 触发时自动在绑定 Thread 内发起运行消息。`sandbox-run` 模板在 fire 时读**当前** spec + 已积累记忆构造运行指令，因此左栏改完下一次运行立即生效。开启 `deferWhileThreadBusy`，避免 cron 打断正在进行的 spec 编辑。
 - [x] AC-C3: 支持手动触发运行和暂停/恢复 schedule。`POST /api/sandboxes/:id/run`（无 cron 也可手动跑，便于新 spec 冒烟）；暂停通过 status 收敛，paused 沙盒不再触发。
-- [~] AC-C4: 每次运行生成运行记录并更新 `SandboxMemoryV1`。
+- [x] AC-C4: 每次运行生成运行记录并更新 `SandboxMemoryV1`。
   - [x] 运行记录闭环：调度器是 fire-and-forget（`trigger()` 在派发时就 resolve，没有完成回调），因此闭环走文件系统——猫把运行报告写进 `.a2a-sandbox/runs/`，store 读回。目录既是大脑也是完成通道，不需要新增完成 hook 或 MCP 工具。
-  - [ ] **未完成：`SandboxMemoryV1` 的蒸馏更新**。目前 run record 能落盘并被读回，但还没有把 runs 蒸馏进滚动记忆 + `learnedItems`。没有这一步，运行有痕迹但认知不增长。**这是 Phase C 剩余的关键一环，也是"越跑越懂行"真正兑现的地方。**
+  - [x] 记忆折叠：每次 fire 前先把上次以来的新报告折进滚动记忆，因此**本次运行就能读到上次学到的东西**。放在运行链路里（而非单独的蒸馏任务）使闭环自愈——无论报告是定时跑、手动跑还是猫迟到写的，下一次运行都会捡起来；靠 `lastRunAt` 游标保证幂等，重复读目录不会重复计数。
+
+**durable vs ephemeral（这条是月级记忆的成败关键）**：运行报告分两段——`## Summary` 是"今天发生了什么"（会过期），`## Learned` 是"从此以后都成立的判断"（要积累）。只有后者进入 `learnedItems`。两者混在一起，几个月后记忆就退化成读不动的日志。
+
+**边界策略：限制注入，不限制存储**。滚动摘要有上限（否则会撑爆 prompt 预算，被 SessionBootstrap 整段丢弃）；durable 学习条目在磁盘上永不丢弃——它们就是积累下来的资产。封顶发生在注入 prompt 时，且 prompt 会**明说还有多少条没展开**，而不是静默截断。
 
 > ⚠️ 契约警告：`renderSandboxRunReport()`（我们让猫写的格式）与 `InMemorySandboxStore.listRunFiles()`（系统解析的格式）共用 `- Trigger:` / `- Spec Version:` / `## Summary` 三个标记。两边一旦漂移，**每次运行都会被静默丢弃**——不报错、不打日志，只是沙盒突然不再学习。该契约由 `test/sandbox-run-prompt.test.js` 的 round-trip 测试钉死，改任一侧都会让它变红。
 

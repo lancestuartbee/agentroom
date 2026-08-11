@@ -47,6 +47,23 @@ function sanitizeProjectPath(projectPath: string): string {
   return projectPath.replace(/\.\./g, '');
 }
 
+/**
+ * Extract durable learnings from a run report's `## Learned` section.
+ *
+ * The rendered template ships a parenthesised placeholder line for the "nothing to
+ * add today" case; treating that as a real learning would poison long-term memory
+ * with empty entries, so placeholder-shaped bullets are dropped.
+ */
+function parseLearnedBullets(section: string | undefined): string[] {
+  if (!section) return [];
+  return section
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2).trim())
+    .filter((line) => line.length > 0 && !/^[（(].*[）)]$/.test(line));
+}
+
 function getSandboxDir(projectPath: string): string {
   return join(sanitizeProjectPath(projectPath), '.a2a-sandbox');
 }
@@ -375,13 +392,22 @@ export class InMemorySandboxStore implements ISandboxStore {
         const runId = name.replace(/\.md$/, '');
         const triggerMatch = /- Trigger: (\w+)/.exec(content);
         const specVersionMatch = /- Spec Version: (.+)/.exec(content);
+
+        // `## Summary` runs until `## Learned` (when present). Without this split the
+        // durable-learning section would be swallowed back into the ephemeral summary,
+        // collapsing the very distinction the run report exists to express.
+        const afterSummary = content.split('## Summary')[1] ?? content;
+        const [summaryPart, learnedPart] = afterSummary.split('## Learned');
+        const learned = parseLearnedBullets(learnedPart);
+
         results.push({
           v: 1,
           runId,
           trigger: (triggerMatch?.[1] as 'scheduled' | 'manual') ?? 'manual',
           triggeredAt: statResult.mtimeMs,
           specVersion: specVersionMatch?.[1] ?? 'unknown',
-          summary: content.split('## Summary')[1]?.trim() ?? content,
+          summary: (summaryPart ?? content).trim(),
+          ...(learned.length > 0 ? { learned } : {}),
         });
       }
     } catch {
