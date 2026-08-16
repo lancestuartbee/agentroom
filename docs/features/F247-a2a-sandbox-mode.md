@@ -161,8 +161,8 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 > - 沙盒**必须有 projectPath**：记忆、spec 历史、运行报告都在 `<projectPath>/.a2a-sandbox/`。此前它被归到"轻量模式"（casual/roundtable）而强制落在大厅，等于让沙盒没有大脑所在地。
 >
 > ⚠️ 旧数据：在此之前从「A2A沙盒」选项建出来的会话是孤儿（`mode=sandbox` 但无 `sandboxId`），无法补建（缺 goal/members）。删掉重建。
-- [ ] AC-D2: 沙盒会话顶部显示 mode、schedule 状态、回流开关。
-- [ ] AC-D3: 沙盒会话渲染左右双栏，左栏可编辑 spec，右栏展示运行态。
+- [x] AC-D2: 沙盒会话顶部显示 mode、schedule 状态、回流开关 —— `SandboxSpecBar` 常驻开发态顶部（名称 / 状态 / 目标 / cron+时区 / 回流 / 成员，长文案折叠），并承载**暂停 / 恢复**。运行面板此前拒绝运行已暂停沙盒却没有任何恢复入口，那是个死路。
+- [x] AC-D3: 沙盒会话渲染左右双栏，左栏可编辑 spec，右栏展示运行态。左栏 = 开发态对话（改 spec 走 AC-D4 的对话式路径），**spec 现在在左栏可见**——此前操作者是在对着一个自己看不见的东西说话；右栏 = `SandboxRunPane`（进入沙盒会话自动打开）。
 - [x] AC-D4: 开发态对话修改 spec 后，目录中 `spec.yaml` 和 `spec/` 历史同步更新。成员通过 `cat_cafe_sandbox_update_spec` 走 `PATCH /api/callback/sandbox/spec`；**不接受 sandboxId**（由 invocation 的 threadId 推导），且要求调用者 ∈ `sandbox.members`（"由 thread 推导"是 scope，不是 authorization）。
 
 > **成员在 v1 固定，不可对话式修改**（KD-5）。成员同时存在于 `Sandbox.members`（授权依据）和 `spec.members`（调度器选 runner 的依据）；允许编辑会让两者分叉，出现"被唤醒的成员无权改 spec"的运行态。因此**创建时拒绝两者不一致，所有 spec mutation path 一律拒绝 members 编辑**。此前 Phase D 文本写过"可对话式修改成员"，以本条为准。

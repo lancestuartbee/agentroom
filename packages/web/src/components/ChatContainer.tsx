@@ -71,6 +71,7 @@ import { ProjectSetupCard } from './ProjectSetupCard';
 import { QueuePanel } from './QueuePanel';
 import { RightStatusPanel } from './RightStatusPanel';
 import { SandboxRunPane } from './SandboxRunPane';
+import { SandboxSpecBar } from './SandboxSpecBar';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SplitPaneView } from './SplitPaneView';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -1051,6 +1052,10 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
             allowLobby={upgradeTargetMode !== 'development'}
           />
         )}
+
+        {/* F247 AC-D2/AC-D3: the sandbox this conversation is shaping. Renders nothing for
+            an ordinary thread, so it needs no mode branch here. */}
+        <SandboxSpecBar />
 
         {intentMode === 'ideate' && <ParallelStatusBar onStop={handleStop} threadId={threadId} />}
         {showThinkingIndicator && <ThinkingIndicator onCancel={cancelInvocation} threadId={threadId} />}
