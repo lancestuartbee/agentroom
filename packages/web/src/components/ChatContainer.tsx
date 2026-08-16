@@ -70,6 +70,7 @@ import { ProjectSetupCard } from './ProjectSetupCard';
 
 import { QueuePanel } from './QueuePanel';
 import { RightStatusPanel } from './RightStatusPanel';
+import { defaultPanelModeForThread, reconcileRightPanelForThread } from './right-panel-lifecycle';
 import { SandboxRunPane } from './SandboxRunPane';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SplitPaneView } from './SplitPaneView';
@@ -273,18 +274,25 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   // to go find would leave months of autonomous runs effectively invisible.
   //
   // Only on entering the thread, so a deliberate switch to another panel sticks.
-  // Depends on the thread LIST, not just threadId: thread metadata arrives asynchronously,
-  // so the first pass often sees no sandboxId yet. Without re-running when the list
-  // updates, entering a sandbox thread on a cold load would never open its run pane.
+  // F247: reconcile the GLOBAL panel mode against the thread now in view. ChatContainer
+  // stays mounted across thread switches, so entry, exit and re-entry all have to be
+  // handled explicitly — see right-panel-lifecycle.ts for why this is one decision
+  // rather than three conditions.
+  //
+  // Depends on the thread LIST, not just threadId: metadata arrives asynchronously, so
+  // a cold load would otherwise see no sandboxId and never open the run pane.
   const sandboxPaneThreadRef = useRef<string | null>(null);
   const sandboxThreadId = useChatStore(
     (s) => s.threads.find((t) => t.id === threadId && t.mode === 'sandbox' && t.sandboxId)?.id ?? null,
   );
   useEffect(() => {
-    if (!sandboxThreadId || sandboxPaneThreadRef.current === sandboxThreadId) return;
-    // Once per thread entry — a deliberate switch to another panel must stick.
-    sandboxPaneThreadRef.current = sandboxThreadId;
-    setRightPanelMode('sandbox');
+    const result = reconcileRightPanelForThread({
+      currentMode: useChatStore.getState().rightPanelMode,
+      ctx: { sandboxThreadId },
+      autoOpenedFor: sandboxPaneThreadRef.current,
+    });
+    sandboxPaneThreadRef.current = result.autoOpenedFor;
+    if (result.nextMode) setRightPanelMode(result.nextMode);
   }, [sandboxThreadId, setRightPanelMode]);
 
   // F232 P2（云端 round 5）：显式关闭右侧 panel——先退出 workspace/transcript mode（否则上面的 auto-open
@@ -1037,9 +1045,11 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
             if (statusPanelOpen) {
               closeStatusPanel();
             } else {
-              // closeRightPanel() 退回 'status' 防 auto-open 循环；重新打开时默认进 workspace
-              // （status/transcript 各有底部工具栏图标单独入口，不需要 PanelTabs tab 栏切换）。
-              setRightPanelMode('workspace');
+              // closeRightPanel() 退回 'status' 防 auto-open 循环；重新打开时进该 thread 的
+              // 默认面板（status/transcript 各有底部工具栏图标单独入口）。
+              // F247: sandbox thread 必须回到运行态面板 —— header 是关闭后唯一的重开入口，
+              // 固定进 workspace 会让运行态面板再也回不去。
+              setRightPanelMode(defaultPanelModeForThread({ sandboxThreadId }));
               setStatusPanelOpen(true);
             }
           }}
