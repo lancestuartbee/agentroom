@@ -39,10 +39,16 @@ const SUMMARY_SEPARATOR = '\n';
 
 export interface FoldResult {
   memory: SandboxMemoryV1 & { learnedItems: SandboxLearnedItemV1[] };
-  /** False when no run was newer than the cursor — caller can skip a write. */
+  /** False when nothing on disk differs from memory — caller can skip a write. */
   changed: boolean;
-  /** Runs actually incorporated by this fold. */
+  /** Runs newly incorporated by this fold. */
   foldedRunIds: string[];
+  /**
+   * Promoted learnings whose source report has since been rewritten. Their content is
+   * intentionally NOT updated (the exported copy would desync), so the caller surfaces
+   * this rather than letting the two versions drift unnoticed.
+   */
+  divergedPromotedIds: string[];
 }
 
 function emptyMemory(): SandboxMemoryV1 & { learnedItems: SandboxLearnedItemV1[] } {
@@ -110,42 +116,69 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
     .slice()
     .sort((a, b) => a.triggeredAt - b.triggeredAt);
 
-  const existingEntries = base.summary ? base.summary.split(SUMMARY_SEPARATOR).filter(Boolean) : [];
-  const summary = boundSummary([...existingEntries, ...fresh.map(formatSummaryEntry)]);
+  /** Promoted learnings whose source report has since changed — reported, not applied. */
+  const divergedPromotedIds: string[] = [];
 
-  // LEARNINGS ARE RE-EXTRACTED FROM EVERY VISIBLE REPORT, not just the fresh ones.
+  // THE ROLLING SUMMARY IS RECOMPUTED FROM THE VISIBLE REPORTS, not appended to.
   //
-  // There is no way to prove that a file written by an external actor is finished. Any
-  // completion signal we could demand — a sentinel line, a quiescence window, an atomic
-  // rename — either relies on the member's cooperation or is a heuristic dressed up as a
-  // guarantee. An earlier version used a 5s quiescence window and it merely moved the
-  // race later: a report that gained its durable bullet after the window had already
-  // been marked processed, so the learning was lost for good.
+  // It is injected into the next run's prompt, so a half-written summary does not just
+  // look untidy — it actively misleads later runs until it scrolls out of the window.
+  // Deriving it fresh each time makes it self-correcting: when the report completes, so
+  // does the summary.
+  const summary = boundSummary(
+    runs
+      .slice()
+      .sort((a, b) => a.triggeredAt - b.triggeredAt)
+      .map(formatSummaryEntry),
+  );
+
+  // LEARNINGS TRACK WHAT THE REPORTS CURRENTLY SAY.
   //
-  // So the design stops needing that proof. `processedRunIds` gates only the SUMMARY
-  // (which must not be appended twice), while learnings are re-derived from all reports
-  // on every fold and deduped by a stable id. A learning appended at any later time is
-  // simply picked up on the next fold.
-  const seen = new Set(base.learnedItems.map((item) => item.id));
-  const newLearnings: SandboxLearnedItemV1[] = [];
+  // An earlier version paired "no proof of completion is needed" with first-write-wins,
+  // which is self-contradictory: first-write-wins IS an immutability assumption. Review
+  // showed the consequence — a half-written bullet read on the first scan was sealed
+  // into memory permanently, and the completed rewrite was ignored.
+  //
+  // Since a report can change at any moment, memory has to be a PROJECTION of it and
+  // converge to the current content. Two deliberate exceptions to pure projection:
+  //
+  //  - Learnings are never REMOVED when their report disappears. Reports may be archived
+  //    over a months-long project, and learnings are the accumulated asset — pruning
+  //    reports must not cause amnesia.
+  //  - Promoted learnings are frozen. Once a learning has been exported out of the
+  //    sandbox (Phase E), silently rewriting the local copy would desync it from the
+  //    copy already published, so the divergence is logged instead of applied.
+  const byId = new Map(base.learnedItems.map((item) => [item.id, item]));
+  let learningsChanged = false;
+
   for (const record of runs) {
     for (const [index, content] of (record.learned ?? []).entries()) {
       const trimmed = content.trim();
       if (!trimmed) continue;
-      // First write wins for a given slot: durable knowledge should not silently mutate
-      // under us if a report is rewritten.
       const id = `${record.runId}-${index}`;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      newLearnings.push({ id, content: trimmed, sourceRunAt: record.triggeredAt, promoted: false });
+      const existing = byId.get(id);
+
+      if (!existing) {
+        byId.set(id, { id, content: trimmed, sourceRunAt: record.triggeredAt, promoted: false });
+        learningsChanged = true;
+        continue;
+      }
+      if (existing.content === trimmed) continue;
+      if (existing.promoted) {
+        divergedPromotedIds.push(id);
+        continue;
+      }
+      byId.set(id, { ...existing, content: trimmed, sourceRunAt: record.triggeredAt });
+      learningsChanged = true;
     }
   }
 
-  const learnedItems = [...base.learnedItems, ...newLearnings];
+  const learnedItems = [...byId.values()];
 
-  // A late-appended learning is a real change even when no NEW run appeared.
-  if (fresh.length === 0 && newLearnings.length === 0) {
-    return { memory: base, changed: false, foldedRunIds: [] };
+  // Any of these is a real change worth persisting: a new run, a corrected/late
+  // learning, or a summary that no longer matches the reports.
+  if (fresh.length === 0 && !learningsChanged && summary === base.summary) {
+    return { memory: base, changed: false, foldedRunIds: [], divergedPromotedIds };
   }
 
   const last = fresh[fresh.length - 1];
@@ -171,5 +204,6 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
     },
     changed: true,
     foldedRunIds,
+    divergedPromotedIds,
   };
 }

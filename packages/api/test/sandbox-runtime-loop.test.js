@@ -669,3 +669,92 @@ describe('Sandbox fold — learnings are retriable, not gated on proving a write
     assert.equal(again.memory.runsIncorporated, 1);
   });
 });
+
+describe('Sandbox memory converges to what the reports currently say', () => {
+  const { } = {};
+  const run = (learned, summary = 's') => [
+    { v: 1, runId: 'r1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary, learned },
+  ];
+
+  // Re-review finding (luna). I claimed "no proof that the writer finished is needed"
+  // while using first-write-wins — but first-write-wins IS an immutability assumption.
+  // The two cannot both hold: a half-written bullet read first was sealed forever.
+  // Resolution: memory is a PROJECTION of the reports, so it converges to whatever they
+  // currently say.
+  test('a slot rewritten from partial to complete is corrected in memory', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+
+    const first = foldRunsIntoMemory(null, run(['partial concl']));
+    assert.equal(first.memory.learnedItems[0].content, 'partial concl');
+
+    const second = foldRunsIntoMemory(first.memory, run(['complete conclusion']));
+    assert.equal(second.changed, true, 'a corrected learning is a real change');
+    assert.equal(second.memory.learnedItems.length, 1, 'correcting must not duplicate the slot');
+    assert.equal(second.memory.learnedItems[0].content, 'complete conclusion');
+  });
+
+  test('a promoted learning is not silently rewritten under the exported copy', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+
+    const first = foldRunsIntoMemory(null, run(['exported conclusion']));
+    // Simulate Phase E promotion: this content now also lives outside the sandbox.
+    const promoted = {
+      ...first.memory,
+      learnedItems: first.memory.learnedItems.map((i) => ({ ...i, promoted: true })),
+    };
+
+    const second = foldRunsIntoMemory(promoted, run(['rewritten after promotion']));
+    assert.equal(
+      second.memory.learnedItems[0].content,
+      'exported conclusion',
+      'promoted content is frozen: silently changing it would desync the copy already exported',
+    );
+    assert.equal(second.memory.learnedItems[0].promoted, true);
+  });
+
+  // Reports may be archived or pruned over a months-long project. Learnings are the
+  // accumulated asset, so they must survive their source report disappearing — memory
+  // tracks the reports while they exist, it does not evaporate with them.
+  test('a learning survives its source report being pruned', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+
+    const first = foldRunsIntoMemory(null, run(['durable knowledge']));
+    const afterPrune = foldRunsIntoMemory(first.memory, []);
+
+    assert.equal(afterPrune.memory.learnedItems.length, 1, 'pruning reports must not cause amnesia');
+    assert.equal(afterPrune.memory.learnedItems[0].content, 'durable knowledge');
+  });
+
+  // Re-review finding (luna P2): the rolling summary is injected into the next run's
+  // prompt, so a half-written summary actively misleads future runs. Recomputing it
+  // from the visible reports makes it self-correcting too.
+  test('a half-written summary is corrected once the report completes', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+
+    const partial = foldRunsIntoMemory(null, run(['L'], '今天的复盘写到一半'));
+    assert.match(partial.memory.summary, /写到一半/);
+
+    const complete = foldRunsIntoMemory(partial.memory, run(['L'], '今天的复盘：完整结论在这里'));
+    assert.match(complete.memory.summary, /完整结论在这里/);
+    assert.doesNotMatch(complete.memory.summary, /写到一半/, 'the stale half-written summary must not linger');
+  });
+
+  test('an unchanged disk state is still a no-op', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+    const first = foldRunsIntoMemory(null, run(['A']));
+    const again = foldRunsIntoMemory(first.memory, run(['A']));
+    assert.equal(again.changed, false);
+    assert.equal(again.memory.learnedItems.length, 1);
+    assert.equal(again.memory.runsIncorporated, 1);
+  });
+});

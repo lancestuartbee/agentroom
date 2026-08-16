@@ -24,6 +24,17 @@ async function foldPendingRuns(store: ISandboxStore, sandboxId: string): Promise
     // permanently invisible — it would sit on disk forever, never folded.
     const runs = await store.listRuns(sandboxId);
     const folded = foldRunsIntoMemory(memory, runs);
+
+    // A promoted learning whose source report was rewritten is deliberately NOT updated
+    // in place — the copy already exported out of the sandbox would silently desync.
+    // Surface it instead, so the divergence is a visible decision rather than a quiet one.
+    if (folded.divergedPromotedIds.length > 0) {
+      log.warn(
+        { sandboxId, learningIds: folded.divergedPromotedIds },
+        'Promoted sandbox learnings diverge from their rewritten reports — local copy left unchanged',
+      );
+    }
+
     if (!folded.changed) return memory;
     await store.updateMemory(sandboxId, folded.memory);
     return folded.memory;
