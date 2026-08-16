@@ -178,3 +178,66 @@ describe('SandboxRunPane', () => {
     await act(async () => root.unmount());
   });
 });
+
+describe('SandboxRunPane stale state', () => {
+  beforeEach(() => {
+    mockThreads = [{ id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-1' }];
+    mockApiFetch.mockReset();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  // Review finding (luna P2): after one successful load, a failed poll only set `error`,
+  // which was rendered solely when there was no state at all. So stale runs kept looking
+  // current — the same "looks fine, is silently wrong" shape this feature keeps hitting.
+  //
+  // Drives the REAL poll on the same mounted component; remounting would reset state and
+  // never reach the stale branch, which is exactly the kind of test that passes without
+  // proving anything.
+  it('marks the view as stale when a later poll fails, keeping the last good data', async () => {
+    let call = 0;
+    mockApiFetch.mockImplementation(() => {
+      call += 1;
+      if (call === 1) {
+        return Promise.resolve(
+          jsonResponse({
+            sandbox: SANDBOX,
+            memory: null,
+            runs: [
+              {
+                v: 1,
+                runId: 'r1',
+                trigger: 'scheduled',
+                triggeredAt: 1000,
+                specVersion: '1',
+                summary: '上次成功读到的运行',
+              },
+            ],
+            runsAvailable: true,
+          }),
+        );
+      }
+      return Promise.resolve({ ok: false, status: 503, json: async () => ({}) });
+    });
+
+    const { container, root } = await render();
+    expect(container.querySelector('[data-testid="sandbox-stale-banner"]')).toBeNull();
+    expect(container.textContent).toContain('上次成功读到的运行');
+
+    // Advance past the poll interval so the SAME instance re-fetches and fails.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+
+    expect(call).toBeGreaterThan(1);
+    expect(container.querySelector('[data-testid="sandbox-stale-banner"]')).not.toBeNull();
+    // The last good snapshot must remain — an empty pane would be worse than a stale one.
+    expect(container.textContent).toContain('上次成功读到的运行');
+
+    await act(async () => root.unmount());
+  });
+});

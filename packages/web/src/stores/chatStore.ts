@@ -634,6 +634,25 @@ function updateThreadMessage(
 
 // ── Store interface ──
 
+/**
+ * Right-hand panel modes. `status` is the narrow default; everything else takes over the
+ * wide right half. F247 added `sandbox` (the A2A sandbox run pane).
+ */
+export type RightPanelMode = 'status' | 'workspace' | 'transcript' | 'sandbox';
+
+/**
+ * True for modes that occupy the WIDE right panel rather than the narrow status rail.
+ *
+ * Every wide mode has to be listed in three places at once — the auto-open effect, the
+ * close handler, and the chat-column flex basis — and F247 shipped a mode that was only
+ * added to one of them: the pane could be opened but never closed, because closing set
+ * statusPanelOpen=false and the auto-open effect immediately undid it. One predicate, so
+ * the next mode cannot be half-registered.
+ */
+export function isWideRightPanelMode(mode: RightPanelMode): boolean {
+  return mode !== 'status';
+}
+
 export interface ChatState {
   // Per-thread state (flat — reflects the active thread for backward compat)
   messages: ChatMessage[];
@@ -971,8 +990,7 @@ export interface ChatState {
   ) => void;
 
   // ── F63: Workspace Explorer ──
-  /** F247: 'sandbox' is the run pane — the right half of the A2A sandbox dual-pane view. */
-  rightPanelMode: 'status' | 'workspace' | 'transcript' | 'sandbox';
+  rightPanelMode: RightPanelMode;
   workspaceWorktreeId: string | null;
   workspaceWorktreeAliases: WorktreeAliasMap;
   workspaceWorktreeAliasesProjectPath: string | null;
@@ -984,7 +1002,7 @@ export interface ChatState {
   /** @internal Last workspace-file-set event context (timestamp + threadId).
    * Used by WorkspacePanel to distinguish fresh navigate from stale leftovers on mount. */
   _workspaceFileSetAt: { ts: number; threadId: string | null };
-  setRightPanelMode: (mode: 'status' | 'workspace' | 'transcript' | 'sandbox') => void;
+  setRightPanelMode: (mode: RightPanelMode) => void;
   /** 显式关闭右侧 panel 时退出 workspace/transcript mode（否则 ChatContainer auto-open effect 立即重开，关不掉）。 */
   closeRightPanel: () => void;
   setWorkspaceWorktreeId: (id: string | null) => void;
@@ -1297,8 +1315,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // 显式关闭 panel 时必须先退出这两个 mode 回 status，否则 effect 立即重开（关不掉）。status 无此问题，保留。
   closeRightPanel: () =>
     set((s) => ({
-      rightPanelMode:
-        s.rightPanelMode === 'workspace' || s.rightPanelMode === 'transcript' ? 'status' : s.rightPanelMode,
+      rightPanelMode: isWideRightPanelMode(s.rightPanelMode) ? 'status' : s.rightPanelMode,
     })),
   setWorkspaceWorktreeId: (id) => {
     // Guard: skip destructive reset when worktreeId is unchanged.

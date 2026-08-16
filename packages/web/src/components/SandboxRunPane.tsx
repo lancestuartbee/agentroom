@@ -66,6 +66,12 @@ export function SandboxRunPane(): JSX.Element | null {
     }
   }, [sandboxId]);
 
+  // A failed poll leaves the last good snapshot on screen. That is the right call — an
+  // empty pane would be worse — but only if the operator can tell it is frozen. Silently
+  // showing stale runs as current is the same class of lie the backend refuses to tell
+  // when it distinguishes "unreadable" from "never ran".
+  const isStale = state !== null && error !== null;
+
   useEffect(() => {
     void load();
     // The run loop fires on a daily cadence, so this poll only needs to catch a manual
@@ -119,6 +125,15 @@ export function SandboxRunPane(): JSX.Element | null {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 gap-4 text-sm" data-testid="sandbox-run-pane">
+      {isStale && (
+        <div
+          className="px-3 py-2 rounded border border-[var(--console-border)] text-[var(--console-text-muted)]"
+          data-testid="sandbox-stale-banner"
+        >
+          下面显示的是上一次成功读取的数据，可能已过期（{error}）
+        </div>
+      )}
+
       <section className="flex flex-col gap-1">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-medium">运行态 · {sandbox.title}</h2>

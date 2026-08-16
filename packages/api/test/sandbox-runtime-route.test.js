@@ -1,10 +1,10 @@
 import './helpers/setup-cat-registry.js';
 
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
-import { mkdtemp, rm, mkdir, chmod, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, test } from 'node:test';
 
 const AUTH = { 'x-cat-cafe-user': 'user-1' };
 const SPEC = { specVersion: '1', name: 'Stock sandbox', goal: 'g', members: ['opus'] };
@@ -23,9 +23,7 @@ function fakeThreadStore(thread) {
 async function buildApp() {
   const Fastify = (await import('fastify')).default;
   const { sandboxesRoutes } = await import('../dist/routes/sandboxes.js');
-  const { InMemorySandboxStore } = await import(
-    '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-  );
+  const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-route-'));
   const projectPath = join(tmpDir, 'project');
@@ -33,10 +31,7 @@ async function buildApp() {
   await mkdir(runsDir, { recursive: true });
 
   const sandboxStore = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-  const sandbox = await sandboxStore.create(
-    { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-    'user-1',
-  );
+  const sandbox = await sandboxStore.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
   await sandboxStore.bindThread(sandbox.id, 'thread-1');
 
   const thread = { id: 'thread-1', createdBy: 'user-1', projectPath, mode: 'sandbox' };
@@ -47,9 +42,7 @@ async function buildApp() {
 }
 
 async function writeReport(runsDir, runId, { summary, learned, triggeredAt }) {
-  const { renderSandboxRunReport } = await import(
-    '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-  );
+  const { renderSandboxRunReport } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
   await writeFile(
     join(runsDir, `${runId}.md`),
     renderSandboxRunReport({ runId, trigger: 'scheduled', specVersion: '1', summary, learned, triggeredAt }),

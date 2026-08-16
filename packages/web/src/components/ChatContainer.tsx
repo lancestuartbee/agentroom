@@ -27,7 +27,12 @@ import { useVadInterrupt } from '@/hooks/useVadInterrupt';
 import { useVoiceAutoPlay } from '@/hooks/useVoiceAutoPlay';
 import { useVoiceStream } from '@/hooks/useVoiceStream';
 import { useWorkspaceNavigate } from '@/hooks/useWorkspaceNavigate';
-import { type ChatMessage as ChatMessageData, type Thread, useChatStore } from '@/stores/chatStore';
+import {
+  type ChatMessage as ChatMessageData,
+  isWideRightPanelMode,
+  type Thread,
+  useChatStore,
+} from '@/stores/chatStore';
 import { useGameStore } from '@/stores/gameStore';
 import { useGuideStore } from '@/stores/guideStore';
 import { useSidebarStore } from '@/stores/sidebarStore';
@@ -65,6 +70,7 @@ import { ProjectSetupCard } from './ProjectSetupCard';
 
 import { QueuePanel } from './QueuePanel';
 import { RightStatusPanel } from './RightStatusPanel';
+import { SandboxRunPane } from './SandboxRunPane';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SplitPaneView } from './SplitPaneView';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -79,7 +85,6 @@ import {
 import { getProjectPaths } from './ThreadSidebar/thread-utils';
 import { VoteActiveBar } from './VoteActiveBar';
 import { type VoteConfig, VoteConfigModal } from './VoteConfigModal';
-import { SandboxRunPane } from './SandboxRunPane';
 import { WorkspacePanel } from './WorkspacePanel';
 import { FloatingTranscriptContainer } from './workspace/FloatingTranscriptContainer';
 import { ResizeHandle } from './workspace/ResizeHandle';
@@ -257,10 +262,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
 
   // F063/F195: auto-open panel when workspace or transcript mode is set
   useEffect(() => {
-    if (
-      (rightPanelMode === 'workspace' || rightPanelMode === 'transcript' || rightPanelMode === 'sandbox') &&
-      !statusPanelOpen
-    ) {
+    if (isWideRightPanelMode(rightPanelMode) && !statusPanelOpen) {
       setStatusPanelOpen(true);
     }
   }, [rightPanelMode, statusPanelOpen]);
@@ -271,14 +273,19 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   // to go find would leave months of autonomous runs effectively invisible.
   //
   // Only on entering the thread, so a deliberate switch to another panel sticks.
+  // Depends on the thread LIST, not just threadId: thread metadata arrives asynchronously,
+  // so the first pass often sees no sandboxId yet. Without re-running when the list
+  // updates, entering a sandbox thread on a cold load would never open its run pane.
   const sandboxPaneThreadRef = useRef<string | null>(null);
+  const sandboxThreadId = useChatStore(
+    (s) => s.threads.find((t) => t.id === threadId && t.mode === 'sandbox' && t.sandboxId)?.id ?? null,
+  );
   useEffect(() => {
-    if (!threadId || sandboxPaneThreadRef.current === threadId) return;
-    const thread = useChatStore.getState().threads.find((t) => t.id === threadId);
-    if (thread?.mode !== 'sandbox' || !thread.sandboxId) return;
-    sandboxPaneThreadRef.current = threadId;
+    if (!sandboxThreadId || sandboxPaneThreadRef.current === sandboxThreadId) return;
+    // Once per thread entry — a deliberate switch to another panel must stick.
+    sandboxPaneThreadRef.current = sandboxThreadId;
     setRightPanelMode('sandbox');
-  }, [threadId, setRightPanelMode]);
+  }, [sandboxThreadId, setRightPanelMode]);
 
   // F232 P2（云端 round 5）：显式关闭右侧 panel——先退出 workspace/transcript mode（否则上面的 auto-open
   // effect 立即重开，关不掉），再关闭。所有 close 入口（header toggle / ResizeHandle 折叠）统一走这里。
@@ -1012,7 +1019,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
       <div
         className="flex flex-col min-w-0"
         style={
-          statusPanelOpen && isDesktop && (rightPanelMode === 'workspace' || rightPanelMode === 'transcript')
+          statusPanelOpen && isDesktop && isWideRightPanelMode(rightPanelMode)
             ? { flexBasis: `${chatBasis}%`, flexGrow: 0, flexShrink: 0 }
             : { flex: '1 1 0%' }
         }
