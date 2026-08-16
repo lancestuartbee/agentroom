@@ -52,9 +52,17 @@ function sanitizeProjectPath(projectPath: string): string {
 const log = createModuleLogger('sandbox/store');
 
 /**
- * How long a report must sit unchanged before an incomplete-looking one is accepted as
- * final rather than assumed mid-write. Members finish writing in milliseconds and runs
- * fire on a daily cadence, so this only ever affects a scan that overlaps a live write.
+ * DEBOUNCE ONLY — deliberately not a correctness boundary.
+ *
+ * "Unchanged for N seconds" can never prove "finished", and an earlier version that
+ * treated it as proof merely moved the race later: a report that gained its durable
+ * bullet after the window had already been marked processed. Correctness now lives in
+ * the fold, which re-extracts learnings from every report on every pass, so a late
+ * append is always absorbed.
+ *
+ * What this window still buys is summary quality: the rolling summary IS appended once
+ * and never revised, so it is worth waiting a moment before capturing a report that
+ * looks like it is still being written.
  */
 const REPORT_QUIESCENCE_MS = 5_000;
 

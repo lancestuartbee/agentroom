@@ -586,3 +586,86 @@ describe('Sandbox run report — a run with no durable learnings is still comple
     await rm(tmpDir, { recursive: true, force: true });
   });
 });
+
+describe('Sandbox fold — learnings are retriable, not gated on proving a write finished', () => {
+  // Re-review finding (luna). A quiescence window only proves "unchanged for N seconds",
+  // never "finished" — it just moved the race later. There is no way to prove an
+  // external writer is done, so the design must not need that proof: processedRunIds
+  // now gates only the SUMMARY, while learnings are re-extracted from every visible
+  // report on each fold and deduped by stable id.
+  test('a learning appended long after the run was folded is still absorbed', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+    const { appendFile, utimes } = await import('node:fs/promises');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-retriable-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+    const file = join(runsDir, 'run-z.md');
+
+    await writeFile(
+      file,
+      [
+        '# Sandbox Run run-z',
+        '',
+        '- Trigger: scheduled',
+        '- Triggered At: 2026-01-01T00:00:00.000Z',
+        '- Spec Version: 1',
+        '',
+        '## Summary',
+        '',
+        '摘要',
+        '',
+        '## Learned',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    // Well past any debounce window — the file looks settled but is not finished.
+    const old = new Date(Date.now() - 60_000);
+    await utimes(file, old, old);
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const first = foldRunsIntoMemory(null, await store.listRuns(sandbox.id));
+    assert.deepEqual(first.foldedRunIds, ['run-z'], 'the run itself is recorded');
+    assert.equal(first.memory.learnedItems.length, 0);
+
+    // The member finishes writing much later.
+    await appendFile(file, '- 迟到但真实的结论\n', 'utf-8');
+
+    const second = foldRunsIntoMemory(first.memory, await store.listRuns(sandbox.id));
+    assert.equal(second.changed, true, 'a newly appended learning must count as a change');
+    assert.equal(second.memory.learnedItems.length, 1, 'the late learning must be absorbed');
+    assert.match(second.memory.learnedItems[0].content, /迟到但真实的结论/);
+    // The summary must NOT be folded twice.
+    assert.equal(second.memory.runsIncorporated, 1, 'the run must not be counted again');
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('re-folding unchanged reports is still a no-op after decoupling', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+    const runs = [
+      { v: 1, runId: 'r1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary: 'a', learned: ['A'] },
+    ];
+    const first = foldRunsIntoMemory(null, runs);
+    const again = foldRunsIntoMemory(first.memory, runs);
+
+    assert.equal(again.changed, false, 'nothing new on disk means nothing to write');
+    assert.equal(again.memory.learnedItems.length, 1);
+    assert.equal(again.memory.runsIncorporated, 1);
+  });
+});

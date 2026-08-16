@@ -20,6 +20,14 @@ import type { SandboxLearnedItemV1, SandboxMemoryV1, SandboxRunRecordV1 } from '
  *    Durable learnings are never discarded on disk — they are the accumulated asset;
  *    capping happens where they are injected into a prompt, and the prompt says how
  *    many were held back rather than silently truncating.
+ *
+ * 3. NEVER REQUIRE PROOF THAT AN EXTERNAL WRITER FINISHED. Reports are written by the
+ *    member, not by us, so "the file is complete" is unknowable — every candidate
+ *    signal is either the member's cooperation (which it may forget) or a timing
+ *    heuristic (which only moves the race). Instead, summary folding and learning
+ *    extraction are decoupled: the summary is gated by processedRunIds because it is
+ *    append-once, while learnings are re-derived from every report on every pass and
+ *    deduped by stable id, so a late append is absorbed whenever it lands.
  */
 
 /** How many recent run summaries the rolling summary keeps verbatim. */
@@ -102,30 +110,43 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
     .slice()
     .sort((a, b) => a.triggeredAt - b.triggeredAt);
 
-  if (fresh.length === 0) {
-    return { memory: base, changed: false, foldedRunIds: [] };
-  }
-
   const existingEntries = base.summary ? base.summary.split(SUMMARY_SEPARATOR).filter(Boolean) : [];
   const summary = boundSummary([...existingEntries, ...fresh.map(formatSummaryEntry)]);
 
+  // LEARNINGS ARE RE-EXTRACTED FROM EVERY VISIBLE REPORT, not just the fresh ones.
+  //
+  // There is no way to prove that a file written by an external actor is finished. Any
+  // completion signal we could demand — a sentinel line, a quiescence window, an atomic
+  // rename — either relies on the member's cooperation or is a heuristic dressed up as a
+  // guarantee. An earlier version used a 5s quiescence window and it merely moved the
+  // race later: a report that gained its durable bullet after the window had already
+  // been marked processed, so the learning was lost for good.
+  //
+  // So the design stops needing that proof. `processedRunIds` gates only the SUMMARY
+  // (which must not be appended twice), while learnings are re-derived from all reports
+  // on every fold and deduped by a stable id. A learning appended at any later time is
+  // simply picked up on the next fold.
+  const seen = new Set(base.learnedItems.map((item) => item.id));
   const newLearnings: SandboxLearnedItemV1[] = [];
-  for (const record of fresh) {
+  for (const record of runs) {
     for (const [index, content] of (record.learned ?? []).entries()) {
       const trimmed = content.trim();
       if (!trimmed) continue;
-      newLearnings.push({
-        id: `${record.runId}-${index}`,
-        content: trimmed,
-        sourceRunAt: record.triggeredAt,
-        promoted: false,
-      });
+      // First write wins for a given slot: durable knowledge should not silently mutate
+      // under us if a report is rewritten.
+      const id = `${record.runId}-${index}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      newLearnings.push({ id, content: trimmed, sourceRunAt: record.triggeredAt, promoted: false });
     }
   }
 
-  // Guard against a re-written report re-adding the same learning under the same id.
-  const seen = new Set(base.learnedItems.map((item) => item.id));
-  const learnedItems = [...base.learnedItems, ...newLearnings.filter((item) => !seen.has(item.id))];
+  const learnedItems = [...base.learnedItems, ...newLearnings];
+
+  // A late-appended learning is a real change even when no NEW run appeared.
+  if (fresh.length === 0 && newLearnings.length === 0) {
+    return { memory: base, changed: false, foldedRunIds: [] };
+  }
 
   const last = fresh[fresh.length - 1];
   const foldedRunIds = fresh.map((r) => r.runId);
