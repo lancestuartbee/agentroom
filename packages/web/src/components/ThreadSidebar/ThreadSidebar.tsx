@@ -15,6 +15,7 @@ import { LabelFilterBar } from './LabelFilterBar';
 import { SectionGroup } from './SectionGroup';
 import { ThreadItem } from './ThreadItem';
 import { ThreadOrganizerModal } from './ThreadOrganizerModal';
+import { submitThreadCreate } from './thread-create';
 import { pushThreadRouteWithHistory } from './thread-navigation';
 import {
   getProjectPaths,
@@ -181,25 +182,16 @@ export function ThreadSidebar({ onClose, className }: ThreadSidebarProps) {
       setIsCreating(true);
       setShowPicker(false);
       try {
-        const res = await apiFetch(`/api/threads`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...(opts.projectPath ? { projectPath: opts.projectPath } : {}),
-            ...(opts.mode && opts.mode !== 'development' ? { mode: opts.mode } : {}),
-            ...(opts.preferredCats?.length ? { preferredCats: opts.preferredCats } : {}),
-            ...(opts.title ? { title: opts.title } : {}),
-            ...(opts.pinned ? { pinned: opts.pinned } : {}),
-            ...(opts.backlogItemId ? { backlogItemId: opts.backlogItemId } : {}),
-          }),
-        });
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => '(no body)');
-          console.error('[createInProject] POST /api/threads failed:', res.status, errBody);
-          notifyThreadCreateFailure('这次创建对话没有成功，请稍后重试。');
+        // F247 AC-D1: a sandbox is created together with its thread through a different
+        // endpoint. Which one — and whether the draft is complete — is decided in
+        // thread-create.ts so this handler cannot drift away from it again.
+        const created = await submitThreadCreate<Thread>(opts, apiFetch);
+        if (!created.ok) {
+          console.error('[createInProject] create failed:', created.error);
+          notifyThreadCreateFailure(created.error);
           return;
         }
-        const thread: Thread = await res.json();
+        const thread = created.thread;
         setThreads([thread, ...threads.filter((existing) => existing.id !== thread.id)]);
 
         // F33: Bind external sessions after thread creation (best-effort, parallel)

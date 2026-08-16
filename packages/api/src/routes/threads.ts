@@ -232,6 +232,30 @@ function threadModeLabel(mode: ThreadMode): string {
   return '开发协作';
 }
 
+/**
+ * F247 AC-D1: `mode === 'sandbox'` is a claim that `thread.sandboxId` points at a real
+ * Sandbox — the run pane reads it, the dev-pane write path derives authorization from it,
+ * and the scheduler delivers into it. These generic routes can set the mode but can never
+ * supply a goal or members, so letting them through produces a thread that looks like a
+ * sandbox in every surface and has nothing behind it.
+ *
+ * Creating a sandbox here instead would only invent the goal the caller never gave. So the
+ * rule is: refuse, and name the one door that creates both together. Threads that already
+ * own a sandbox are exempt — that path is repair, not birth.
+ */
+const SANDBOX_THREAD_GUARD_CODE = 'SANDBOX_THREAD_REQUIRES_SANDBOX';
+
+function checkSandboxThreadMode(
+  mode: ThreadMode | undefined,
+  existingSandboxId: string | undefined,
+): { error: string; code: string } | null {
+  if (mode !== 'sandbox' || existingSandboxId) return null;
+  return {
+    error: 'A2A sandbox threads are created together with their sandbox — use POST /api/sandboxes',
+    code: SANDBOX_THREAD_GUARD_CODE,
+  };
+}
+
 function extractMarkdownSections(text: string, titles: readonly string[]): string {
   const wanted = new Set(titles.map((title) => title.trim()));
   const lines = text.split(/\r?\n/);
@@ -456,6 +480,12 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
     if (!userId) {
       reply.status(401);
       return { error: 'Identity required (session cookie or X-Cat-Cafe-User header)' };
+    }
+
+    const sandboxViolation = checkSandboxThreadMode(mode, undefined);
+    if (sandboxViolation) {
+      reply.status(400);
+      return sandboxViolation;
     }
 
     const resolvedProjectPath = await resolveCreateThreadProjectPath(projectPath, bootcampState as BootcampStateV1);
@@ -823,6 +853,13 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
       preferredWorkspaceMode,
       labels,
     } = parseResult.data;
+
+    const sandboxViolation = checkSandboxThreadMode(mode, thread.sandboxId);
+    if (sandboxViolation) {
+      reply.status(400);
+      return sandboxViolation;
+    }
+
     if (title !== undefined) {
       await threadStore.updateTitle(id, title);
       try {

@@ -153,7 +153,14 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 > Phase E 开工前必须先定义**删除语义**（删除是撤回该学习，还是保留？已 promoted 的能否撤回？），并把 divergence 状态**持久化或记录来源指纹**，不能只靠日志——log-only 不足以支撑 operator 侧的 UX。
 
 ### Phase D（Frontend Dual-Pane UX v1）
-- [ ] AC-D1: 创建会话 modal 可选择"A2A 沙盒"。
+- [x] AC-D1: 创建会话 modal 可选择"A2A 沙盒"，并**真的创建出 Sandbox 实体**。选项此前只是把 thread 标成 `mode=sandbox`，前端从不调用 `POST /api/sandboxes`——运行态面板读一个不存在的 id，右栏永远空白。
+
+> **沙盒线程只和它的沙盒一起诞生**（AC-D1 契约）。`Thread.mode === 'sandbox'` 不是一个标签，而是"`thread.sandboxId` 指向一个真实 Sandbox"的断言：运行面板读它、开发态写路径靠它推 authorization、调度器往它投递。因此：
+> - 前端沙盒创建走 `POST /api/sandboxes`（唯一同时创建两者的入口），成员列表**一份**同时写进 `members` 和 `spec.members`（KD-5 要求二者一致，客户端从同一个数组构造，让不一致在前端不可表达）。
+> - `POST /api/threads` 与 `PATCH /api/threads/:id` **拒绝** `mode: 'sandbox'`（400 `SANDBOX_THREAD_REQUIRES_SANDBOX`），因为它们收不到 goal / members，放行只会凭空发明数据。已绑定 sandbox 的 thread 例外——那条路径是修复，不是诞生。
+> - 沙盒**必须有 projectPath**：记忆、spec 历史、运行报告都在 `<projectPath>/.a2a-sandbox/`。此前它被归到"轻量模式"（casual/roundtable）而强制落在大厅，等于让沙盒没有大脑所在地。
+>
+> ⚠️ 旧数据：在此之前从「A2A沙盒」选项建出来的会话是孤儿（`mode=sandbox` 但无 `sandboxId`），无法补建（缺 goal/members）。删掉重建。
 - [ ] AC-D2: 沙盒会话顶部显示 mode、schedule 状态、回流开关。
 - [ ] AC-D3: 沙盒会话渲染左右双栏，左栏可编辑 spec，右栏展示运行态。
 - [x] AC-D4: 开发态对话修改 spec 后，目录中 `spec.yaml` 和 `spec/` 历史同步更新。成员通过 `cat_cafe_sandbox_update_spec` 走 `PATCH /api/callback/sandbox/spec`；**不接受 sandboxId**（由 invocation 的 threadId 推导），且要求调用者 ∈ `sandbox.members`（"由 thread 推导"是 scope，不是 authorization）。

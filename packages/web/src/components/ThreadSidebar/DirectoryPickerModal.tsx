@@ -5,6 +5,8 @@ import { useIMEGuard } from '@/hooks/useIMEGuard';
 import { apiFetch } from '@/utils/api-client';
 import { CatSelector } from './CatSelector';
 import { DirectoryBrowser } from './DirectoryBrowser';
+import { SandboxCreateFields } from './SandboxCreateFields';
+import { planThreadCreate, type SandboxDraft } from './thread-create';
 import { projectDisplayName } from './thread-utils';
 
 /** F33: Session binding passed alongside thread creation */
@@ -22,6 +24,8 @@ export interface NewThreadOptions {
   title?: string;
   pinned?: boolean;
   backlogItemId?: string;
+  /** F247 AC-D1: sandbox-only fields — a sandbox is created with its thread, never after. */
+  sandbox?: SandboxDraft;
 }
 
 interface BacklogItemSummary {
@@ -79,6 +83,11 @@ export function DirectoryPickerModal({
   const [backlogItems, setBacklogItems] = useState<BacklogItemSummary[]>([]);
   const [selectedBacklogItemId, setSelectedBacklogItemId] = useState('');
 
+  // F247 AC-D1: sandbox draft + the reason the last submit was refused.
+  const [sandboxDraft, setSandboxDraft] = useState<SandboxDraft>({ goal: '' });
+  const [sandboxError, setSandboxError] = useState<string | null>(null);
+  const isSandboxMode = threadMode === 'sandbox';
+
   // Fetch active backlog items for feat dropdown
   useEffect(() => {
     (async () => {
@@ -106,7 +115,7 @@ export function DirectoryPickerModal({
           bindings.push({ catId, cliSessionId: trimmed });
         }
       }
-      onSelect({
+      const options: NewThreadOptions = {
         projectPath,
         mode: threadMode,
         preferredCats: selectedCats.length > 0 ? selectedCats : undefined,
@@ -114,15 +123,27 @@ export function DirectoryPickerModal({
         title: threadTitle.trim() || undefined,
         pinned: pinOnCreate || undefined,
         backlogItemId: threadMode === 'development' ? selectedBacklogItemId || undefined : undefined,
-      });
+        sandbox: threadMode === 'sandbox' ? sandboxDraft : undefined,
+      };
+
+      // Gate on the same rule that builds the request, so the modal cannot let through a
+      // draft the caller would then have to reject — and the operator hears what is
+      // missing here rather than from a 400 after the modal closed.
+      const plan = planThreadCreate(options);
+      if (!plan.ok) {
+        setSandboxError(plan.error);
+        return;
+      }
+      setSandboxError(null);
+      onSelect(options);
     },
-    [onSelect, selectedCats, sessionInputs, threadTitle, pinOnCreate, selectedBacklogItemId, threadMode],
+    [onSelect, selectedCats, sessionInputs, threadTitle, pinOnCreate, selectedBacklogItemId, threadMode, sandboxDraft],
   );
 
   // F068-R7: Confirm creation with currently selected project
   const confirmCreate = useCallback(() => {
     console.log('[DirectoryPicker] confirmCreate called, selectedPath=', selectedPath);
-    if (threadMode === 'casual' || threadMode === 'roundtable' || threadMode === 'sandbox') {
+    if (threadMode === 'casual' || threadMode === 'roundtable') {
       selectWithOptions(undefined);
       return;
     }
@@ -193,9 +214,18 @@ export function DirectoryPickerModal({
 
   const [catsExpanded, setCatsExpanded] = useState(false);
   const catSummary = selectedCats.length > 0 ? `已选 ${selectedCats.length} 位成员` : '';
-  const isLightweightMode = threadMode === 'casual' || threadMode === 'roundtable' || threadMode === 'sandbox';
+  // A sandbox is NOT lightweight: it thinks inside <projectPath>/.a2a-sandbox/, so it needs
+  // a real directory. Grouping it with casual/roundtable is what hid the project picker.
+  const isLightweightMode = threadMode === 'casual' || threadMode === 'roundtable';
   const createButtonLabel =
-    submitLabel ?? (threadMode === 'casual' ? '创建闲聊' : threadMode === 'roundtable' ? '创建圆桌' : threadMode === 'sandbox' ? '创建A2A沙盒' : '创建对话');
+    submitLabel ??
+    (threadMode === 'casual'
+      ? '创建闲聊'
+      : threadMode === 'roundtable'
+        ? '创建圆桌'
+        : threadMode === 'sandbox'
+          ? '创建A2A沙盒'
+          : '创建对话');
 
   useEffect(() => {
     if (!isLightweightMode) return;
@@ -239,7 +269,7 @@ export function DirectoryPickerModal({
             type="text"
             value={threadTitle}
             onChange={(e) => setThreadTitle(e.target.value)}
-            placeholder="对话标题（可选）"
+            placeholder={isSandboxMode ? '沙盒名称（必填）：目录和运行报告都用它命名' : '对话标题（可选）'}
             maxLength={200}
             className="w-full text-sm px-3 py-2 rounded-lg border border-cafe bg-cafe-surface focus:outline-none focus:ring-1 focus:ring-cafe-accent"
           />
@@ -256,7 +286,13 @@ export function DirectoryPickerModal({
                       : 'text-cafe-secondary hover:bg-[var(--console-hover-bg)]'
                   }`}
                 >
-                  {mode === 'development' ? '开发协作' : mode === 'casual' ? '闲聊' : mode === 'sandbox' ? 'A2A沙盒' : '圆桌会议'}
+                  {mode === 'development'
+                    ? '开发协作'
+                    : mode === 'casual'
+                      ? '闲聊'
+                      : mode === 'sandbox'
+                        ? 'A2A沙盒'
+                        : '圆桌会议'}
                 </button>
               ))}
             </div>
@@ -326,7 +362,7 @@ export function DirectoryPickerModal({
               </button>
             ))}
 
-            {allowLobby && (
+            {allowLobby && !isSandboxMode && (
               <button
                 type="button"
                 onClick={() => handleSelectPath('lobby')}
@@ -339,11 +375,30 @@ export function DirectoryPickerModal({
           </div>
         )}
 
+        {/* ── F247 AC-D1: the fields a sandbox cannot exist without ── */}
+        {isSandboxMode && !showBrowser && (
+          <div className="overflow-y-auto max-h-[40vh]">
+            <SandboxCreateFields
+              draft={sandboxDraft}
+              onChange={(patch) => {
+                setSandboxDraft((prev) => ({ ...prev, ...patch }));
+                setSandboxError(null);
+              }}
+              selectedCats={selectedCats}
+              onCatsChange={(ids) => {
+                setSelectedCats(ids);
+                setSandboxError(null);
+              }}
+              error={sandboxError}
+            />
+          </div>
+        )}
+
         {/* ── Options bar: feat + pin + cats toggle (hidden when browser is open) ── */}
         <div
           className={`px-5 py-2 border-t border-cafe-subtle flex items-center gap-3 flex-wrap ${showBrowser ? 'hidden' : ''}`}
         >
-          {backlogItems.length > 0 && !isLightweightMode && (
+          {backlogItems.length > 0 && !isLightweightMode && !isSandboxMode && (
             <div className="flex-1 min-w-[140px]">
               <select
                 value={selectedBacklogItemId}
@@ -368,7 +423,7 @@ export function DirectoryPickerModal({
             />
             <span>创建后置顶</span>
           </label>
-          {!isLightweightMode && (
+          {!isLightweightMode && !isSandboxMode && (
             <button
               type="button"
               onClick={() => setCatsExpanded((v) => !v)}
@@ -394,7 +449,7 @@ export function DirectoryPickerModal({
         </div>
 
         {/* ── Cat selector (collapsed by default, hidden when browser is open) ── */}
-        {catsExpanded && !showBrowser && !isLightweightMode && (
+        {catsExpanded && !showBrowser && !isLightweightMode && !isSandboxMode && (
           <div className="px-5 py-2 border-t border-cafe-subtle overflow-y-auto max-h-[40vh]">
             <CatSelector selectedCats={selectedCats} onSelectionChange={setSelectedCats} />
             {/* F33: Session binding */}
@@ -523,7 +578,10 @@ export function DirectoryPickerModal({
             <button
               type="button"
               onClick={confirmCreate}
-              disabled={!isLightweightMode && (selectedPath === null || (!allowLobby && selectedPath === 'lobby'))}
+              disabled={
+                !isLightweightMode &&
+                (selectedPath === null || ((!allowLobby || isSandboxMode) && selectedPath === 'lobby'))
+              }
               className="ml-auto px-5 py-2 rounded-lg bg-cafe-accent hover:bg-cafe-interactive text-[var(--cafe-surface)] text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {createButtonLabel}
