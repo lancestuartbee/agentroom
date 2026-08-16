@@ -12,7 +12,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { isWideRightPanelMode, type RightPanelMode } from '@/stores/chatStore';
+import { isWideRightPanelMode } from '@/components/right-panel-lifecycle';
+import type { RightPanelMode } from '@/stores/chatStore';
 
 const ALL_MODES: RightPanelMode[] = ['status', 'workspace', 'transcript', 'sandbox'];
 

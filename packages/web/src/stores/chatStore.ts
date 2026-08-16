@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isWideRightPanelMode } from '@/components/right-panel-lifecycle';
 import { getBubbleInvocationId } from '@/debug/bubbleIdentity';
 import { isBubbleInvariantStrictModeOn, recordBubbleInvariantViolation } from '@/debug/bubbleInvariantDiagnostics';
 import { recordDebugEvent } from '@/debug/invocationEventDebug';
@@ -640,18 +641,12 @@ function updateThreadMessage(
  */
 export type RightPanelMode = 'status' | 'workspace' | 'transcript' | 'sandbox';
 
-/**
- * True for modes that occupy the WIDE right panel rather than the narrow status rail.
- *
- * Every wide mode has to be listed in three places at once — the auto-open effect, the
- * close handler, and the chat-column flex basis — and F247 shipped a mode that was only
- * added to one of them: the pane could be opened but never closed, because closing set
- * statusPanelOpen=false and the auto-open effect immediately undid it. One predicate, so
- * the next mode cannot be half-registered.
- */
-export function isWideRightPanelMode(mode: RightPanelMode): boolean {
-  return mode !== 'status';
-}
+// `isWideRightPanelMode` used to live here. It is a pure predicate about panel modes and
+// holds no store state, but declaring it on the store module meant every test that mocks
+// `@/stores/chatStore` to render a component had to re-implement it — six suites broke the
+// day it was added. It now lives with the rest of the panel-lifecycle vocabulary in
+// components/right-panel-lifecycle.ts; mocking a store should never require stubbing pure
+// logic.
 
 export interface ChatState {
   // Per-thread state (flat — reflects the active thread for backward compat)

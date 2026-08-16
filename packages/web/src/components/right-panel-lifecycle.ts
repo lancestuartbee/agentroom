@@ -15,6 +15,19 @@ import type { RightPanelMode } from '@/stores/chatStore';
  * component. Pure functions, so the lifecycle is testable without mounting the tree.
  */
 
+/**
+ * True for modes that occupy the WIDE right panel rather than the narrow status rail.
+ *
+ * Every wide mode has to be listed in three places at once — the auto-open effect, the
+ * close handler, and the chat-column flex basis — and F247 shipped a mode that was only
+ * added to one of them: the pane could be opened but never closed, because closing set
+ * statusPanelOpen=false and the auto-open effect immediately undid it. One predicate, so
+ * the next mode cannot be half-registered.
+ */
+export function isWideRightPanelMode(mode: RightPanelMode): boolean {
+  return mode !== 'status';
+}
+
 export interface PanelThreadContext {
   /** null when the thread has no sandbox bound (ordinary thread, or not loaded yet). */
   sandboxThreadId: string | null;

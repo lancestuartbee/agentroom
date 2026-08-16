@@ -28,12 +28,7 @@ import { useVadInterrupt } from '@/hooks/useVadInterrupt';
 import { useVoiceAutoPlay } from '@/hooks/useVoiceAutoPlay';
 import { useVoiceStream } from '@/hooks/useVoiceStream';
 import { useWorkspaceNavigate } from '@/hooks/useWorkspaceNavigate';
-import {
-  type ChatMessage as ChatMessageData,
-  isWideRightPanelMode,
-  type Thread,
-  useChatStore,
-} from '@/stores/chatStore';
+import { type ChatMessage as ChatMessageData, type Thread, useChatStore } from '@/stores/chatStore';
 import { useGameStore } from '@/stores/gameStore';
 import { useGuideStore } from '@/stores/guideStore';
 import { useSidebarStore } from '@/stores/sidebarStore';
@@ -70,6 +65,7 @@ import { PendingMemberBubble } from './PendingMemberBubble';
 import { ProjectSetupCard } from './ProjectSetupCard';
 import { QueuePanel } from './QueuePanel';
 import { RightStatusPanel } from './RightStatusPanel';
+import { isWideRightPanelMode } from './right-panel-lifecycle';
 import { SandboxRunPane } from './SandboxRunPane';
 import { SandboxSpecBar } from './SandboxSpecBar';
 import { ScrollToBottomButton } from './ScrollToBottomButton';

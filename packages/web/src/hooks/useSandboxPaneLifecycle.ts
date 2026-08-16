@@ -30,9 +30,20 @@ export function useSandboxPaneLifecycle(threadId: string | null | undefined): Sa
 
   const autoOpenedForRef = useRef<string | null>(null);
 
+  // The effect needs the CURRENT panel mode but must not re-run when it changes: waking on
+  // every mode change is what made the pane fight the operator (it reopened itself the
+  // moment they switched away). Subscribe for the value, read it from a ref in the effect.
+  //
+  // Deliberately not `useChatStore.getState()`. Reaching past the hook binds this code to
+  // the store module's shape rather than its data, and every component test that mocks the
+  // store as a plain selector function then crashes on mount — six suites did.
+  const rightPanelMode = useChatStore((s) => s.rightPanelMode);
+  const rightPanelModeRef = useRef(rightPanelMode);
+  rightPanelModeRef.current = rightPanelMode;
+
   useEffect(() => {
     const result = reconcileRightPanelForThread({
-      currentMode: useChatStore.getState().rightPanelMode,
+      currentMode: rightPanelModeRef.current,
       ctx: { sandboxThreadId },
       autoOpenedFor: autoOpenedForRef.current,
     });
