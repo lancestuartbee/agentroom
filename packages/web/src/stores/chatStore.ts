@@ -971,7 +971,8 @@ export interface ChatState {
   ) => void;
 
   // ── F63: Workspace Explorer ──
-  rightPanelMode: 'status' | 'workspace' | 'transcript';
+  /** F247: 'sandbox' is the run pane — the right half of the A2A sandbox dual-pane view. */
+  rightPanelMode: 'status' | 'workspace' | 'transcript' | 'sandbox';
   workspaceWorktreeId: string | null;
   workspaceWorktreeAliases: WorktreeAliasMap;
   workspaceWorktreeAliasesProjectPath: string | null;
@@ -983,7 +984,7 @@ export interface ChatState {
   /** @internal Last workspace-file-set event context (timestamp + threadId).
    * Used by WorkspacePanel to distinguish fresh navigate from stale leftovers on mount. */
   _workspaceFileSetAt: { ts: number; threadId: string | null };
-  setRightPanelMode: (mode: 'status' | 'workspace' | 'transcript') => void;
+  setRightPanelMode: (mode: 'status' | 'workspace' | 'transcript' | 'sandbox') => void;
   /** 显式关闭右侧 panel 时退出 workspace/transcript mode（否则 ChatContainer auto-open effect 立即重开，关不掉）。 */
   closeRightPanel: () => void;
   setWorkspaceWorktreeId: (id: string | null) => void;

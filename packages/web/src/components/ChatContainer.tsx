@@ -79,6 +79,7 @@ import {
 import { getProjectPaths } from './ThreadSidebar/thread-utils';
 import { VoteActiveBar } from './VoteActiveBar';
 import { type VoteConfig, VoteConfigModal } from './VoteConfigModal';
+import { SandboxRunPane } from './SandboxRunPane';
 import { WorkspacePanel } from './WorkspacePanel';
 import { FloatingTranscriptContainer } from './workspace/FloatingTranscriptContainer';
 import { ResizeHandle } from './workspace/ResizeHandle';
@@ -256,10 +257,28 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
 
   // F063/F195: auto-open panel when workspace or transcript mode is set
   useEffect(() => {
-    if ((rightPanelMode === 'workspace' || rightPanelMode === 'transcript') && !statusPanelOpen) {
+    if (
+      (rightPanelMode === 'workspace' || rightPanelMode === 'transcript' || rightPanelMode === 'sandbox') &&
+      !statusPanelOpen
+    ) {
       setStatusPanelOpen(true);
     }
   }, [rightPanelMode, statusPanelOpen]);
+
+  // F247 Phase D: an A2A sandbox thread IS the dual-pane view — the conversation on the
+  // left shapes the spec, the run pane on the right shows what the sandbox did while
+  // nobody was watching. Opening it by default is the point: a run pane the operator has
+  // to go find would leave months of autonomous runs effectively invisible.
+  //
+  // Only on entering the thread, so a deliberate switch to another panel sticks.
+  const sandboxPaneThreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!threadId || sandboxPaneThreadRef.current === threadId) return;
+    const thread = useChatStore.getState().threads.find((t) => t.id === threadId);
+    if (thread?.mode !== 'sandbox' || !thread.sandboxId) return;
+    sandboxPaneThreadRef.current = threadId;
+    setRightPanelMode('sandbox');
+  }, [threadId, setRightPanelMode]);
 
   // F232 P2（云端 round 5）：显式关闭右侧 panel——先退出 workspace/transcript mode（否则上面的 auto-open
   // effect 立即重开，关不掉），再关闭。所有 close 入口（header toggle / ResizeHandle 折叠）统一走这里。
@@ -1359,6 +1378,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
               )}
               {rightPanelMode === 'workspace' && <WorkspacePanel />}
               {rightPanelMode === 'transcript' && <TranscriptPanel />}
+              {rightPanelMode === 'sandbox' && <SandboxRunPane />}
             </div>
           </div>
         </>

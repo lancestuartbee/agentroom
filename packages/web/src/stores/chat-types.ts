@@ -358,6 +358,12 @@ export interface Thread {
   createdAt: number;
   /** Professional collaboration mode. Legacy/missing threads behave as development. */
   mode?: ThreadMode;
+  /**
+   * F247: the A2A sandbox this thread is bound to (1:1). The backend has persisted this
+   * since Phase C, but the frontend type never picked it up — so the run pane had no way
+   * to find its sandbox.
+   */
+  sandboxId?: string;
   /** Default audience for lightweight chat modes. Legacy/missing threads behave as all. */
   audience?: ThreadAudience;
   pinned?: boolean;

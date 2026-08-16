@@ -209,6 +209,56 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
     return { sandbox: sanitizeSandboxForResponse(sandbox) };
   });
 
+  // GET /api/sandboxes/:id/runtime — everything the run pane shows, in one round-trip.
+  //
+  // Kept separate from GET /:id because this one touches the disk: it is the read side
+  // of the run loop, and the run pane polls it.
+  app.get('/api/sandboxes/:id/runtime', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = resolveUserId(request);
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required' };
+    }
+
+    const sandbox = await sandboxStore.get(id);
+    if (!sandbox) {
+      reply.status(404);
+      return { error: 'Sandbox not found' };
+    }
+
+    const thread = await threadStore.get(sandbox.threadId);
+    if (!thread || thread.createdBy !== userId) {
+      reply.status(403);
+      return { error: 'Sandbox does not belong to this user' };
+    }
+
+    const memory = await sandboxStore.getMemory(id);
+
+    // listRuns() throws on a real read fault by design — "the disk failed" must not be
+    // indistinguishable from "this sandbox has never run". The run pane needs the same
+    // distinction, so surface it as a degraded state rather than an empty history or a
+    // blank 500: the sandbox and its accumulated memory are still worth showing.
+    try {
+      const runs = await sandboxStore.listRuns(id);
+      return {
+        sandbox: sanitizeSandboxForResponse(sandbox),
+        memory,
+        runs: [...runs].reverse(), // newest first — the run pane reads top-down
+        runsAvailable: true,
+      };
+    } catch (err) {
+      log.warn({ err, sandboxId: id }, 'Failed to read sandbox runs for the run pane');
+      return {
+        sandbox: sanitizeSandboxForResponse(sandbox),
+        memory,
+        runs: [],
+        runsAvailable: false,
+        runsError: 'Run history is temporarily unreadable',
+      };
+    }
+  });
+
   // PATCH /api/sandboxes/:id/spec
   app.patch('/api/sandboxes/:id/spec', async (request, reply) => {
     const { id } = request.params as { id: string };
