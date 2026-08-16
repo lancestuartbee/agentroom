@@ -90,7 +90,7 @@ import {
   type StoredToolEvent,
   type StreamMetadataAugmentInput,
 } from '../../stores/ports/MessageStore.js';
-import type { Thread, ThreadRoutingPolicyV1 } from '../../stores/ports/ThreadStore.js';
+import type { MentionRoutingSuppressionReason, Thread, ThreadRoutingPolicyV1 } from '../../stores/ports/ThreadStore.js';
 import { classifyTool } from '../../tool-usage/classify.js';
 import { deriveResultSummary } from '../../tool-usage/derive-result-summary.js';
 import { normalizeMcpToolName } from '../../tool-usage/normalize-mcp-tool-name.js';
@@ -147,7 +147,7 @@ import {
   toStoredToolEvent,
   upsertMaxBoundary,
 } from './route-helpers.js';
-import { resolveRoutingDecisions } from './routing-decision.js';
+import { type RoutingDecision, resolveRoutingDecisions } from './routing-decision.js';
 import { appendThinkingChunk, renderThinkingChunks } from './thinking-chunks.js';
 import { detectMatchedVerdictKeyword, shouldWarnVerdictWithoutPass } from './verdict-detect.js';
 import { evaluateVoidHold } from './void-hold-detect.js';
@@ -467,6 +467,56 @@ function hasStreamMetadataPatch(patch: StreamMetadataAugmentInput): boolean {
   );
 }
 
+/**
+ * F064: Map a routing-decision suppression to the suppression-reason taxonomy
+ * stored in ThreadStore and surfaced via D9. Centralises the mapping so inline,
+ * deferred, abort-recovery and future paths stay consistent.
+ */
+function routingDecisionToFeedbackReason(
+  decision: Extract<RoutingDecision, { action: 'skip' } | { action: 'block_pingpong' }>,
+): MentionRoutingSuppressionReason {
+  if (decision.action === 'block_pingpong') return 'pingpong_terminated';
+  switch (decision.reason) {
+    case 'depth':
+      return 'depth_limit';
+    case 'dedup_active':
+      return 'dedup_active';
+    case 'aborted':
+      return 'signal_aborted';
+    case 'queue_pending':
+      return 'fairness_gate';
+    default: {
+      // Compile-time exhaustiveness guard. If this fires at runtime, a new skip
+      // reason was introduced without mapping it to a D9-facing reason.
+      const _exhaustive: never = decision.reason;
+      throw new Error(`Unexpected routing skip reason: ${_exhaustive as string}`);
+    }
+  }
+}
+
+/**
+ * F064: Best-effort persistence of why an @mention could not be routed.
+ * Fail-open: a feedback-write failure must never break the route.
+ * Returns true when persisted (or nothing to persist), false on write failure.
+ */
+async function recordMentionRoutingFeedback(
+  threadStore: NonNullable<RouteStrategyDeps['invocationDeps']['threadStore']>,
+  threadId: string,
+  catId: CatId,
+  items: { targetCatId: CatId; reason: MentionRoutingSuppressionReason }[],
+): Promise<boolean> {
+  if (items.length === 0) return true;
+  try {
+    await threadStore.setMentionRoutingFeedback(threadId, catId, {
+      sourceTimestamp: Date.now(),
+      items,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function* routeSerial(
   deps: RouteStrategyDeps,
   targetCats: CatId[],
@@ -609,6 +659,10 @@ export async function* routeSerial(
       const catId = worklist[index]!;
       let routingGuardAttempted = false;
       let routingGuardRemediated = false;
+      // F064: collect routing-feedback items for this cat's turn and write once at
+      // the end. Writing per-target in nested loops overwrites previous items because
+      // ThreadStore.setMentionRoutingFeedback is a full replace.
+      const routingFeedbackItems: Array<{ targetCatId: CatId; reason: MentionRoutingSuppressionReason }> = [];
       // F-parallel-cancel: per-cat signal — canceling one cat skips ONLY that cat, not the
       // whole worklist. force-reset/cancelAll aborts every cat's controller, so all entries
       // skip = equivalent to stopping. Using the shared primaryController.signal made
@@ -2193,19 +2247,16 @@ export async function* routeSerial(
           if (routedSetSkips > 0) inlineActionRoutedSetSkip.add(routedSetSkips, agentAttr);
 
           if (inlineHits.length > 0) {
-            try {
-              await deps.invocationDeps.threadStore.setMentionRoutingFeedback(threadId, catId, {
-                sourceTimestamp: Date.now(),
-                items: inlineHits.map((m) => ({ targetCatId: m.catId, reason: 'inline_action' as const })),
-              });
-              inlineActionFeedbackWritten.add(1, agentAttr);
-              log.info(
-                { catId: catId as string, threadId, targets: inlineHits.map((h) => h.catId) },
-                'Inline action @mention detected — wrote routing feedback',
-              );
-            } catch {
-              inlineActionFeedbackWriteFailed.add(1, agentAttr);
+            // F064: accumulate inline-action feedback; the single batched write at the
+            // end of the turn prevents multi-target overwrites.
+            for (const hit of inlineHits) {
+              routingFeedbackItems.push({ targetCatId: hit.catId, reason: 'inline_action' });
             }
+            inlineActionFeedbackWritten.add(1, agentAttr);
+            log.info(
+              { catId: catId as string, threadId, targets: inlineHits.map((h) => h.catId) },
+              'Inline action @mention detected — queued routing feedback',
+            );
             // #1062: User-visible system message when chain would break
             // (inline action detected but no line-start @ = no routing will happen)
             // F167 Phase H AC-H5: suppress this legacy hint when Phase H already emitted
@@ -2780,19 +2831,29 @@ export async function* routeSerial(
         }
 
         // Diagnostic: log when A2A text-scan gate blocks
+        let textScanBlockReason: MentionRoutingSuppressionReason | null = null;
         if (a2aMentions.length > 0) {
           if (queuedMessagesPending) {
+            textScanBlockReason = 'fairness_gate';
             log.info(
               { threadId, catId, a2aMentions, a2aCount: worklistEntry.a2aCount },
               'A2A text-scan blocked: non-agent messages pending in queue (fairness gate)',
             );
           } else if (worklistEntry.a2aCount >= maxDepth) {
+            textScanBlockReason = 'depth_limit';
             log.info(
               { threadId, catId, a2aMentions, a2aCount: worklistEntry.a2aCount, maxDepth },
               'A2A text-scan blocked: depth limit reached',
             );
           } else if (catSignal?.aborted) {
+            textScanBlockReason = 'signal_aborted';
             log.info({ threadId, catId, a2aMentions }, 'A2A text-scan blocked: signal aborted');
+          }
+          // F064: surface system-side rejection via D9 on the next turn.
+          if (textScanBlockReason) {
+            for (const targetCatId of a2aMentions) {
+              routingFeedbackItems.push({ targetCatId, reason: textScanBlockReason });
+            }
           }
         }
 
@@ -2843,6 +2904,11 @@ export async function* routeSerial(
                   'A2A text-scan dedup: cat actively processing in InvocationQueue, skipping',
                 );
               }
+              // F064: accumulate system-side rejection for end-of-turn batch write.
+              routingFeedbackItems.push({
+                targetCatId: nextCat,
+                reason: routingDecisionToFeedbackReason(decision),
+              });
               continue;
             }
             if (decision.action === 'mark_replyto') {
@@ -2865,6 +2931,8 @@ export async function* routeSerial(
                 { threadId, catId: nextCat, fromCat: catId, count: streak.count },
                 'F167 L1: A2A ping-pong terminated (streak >= 4)',
               );
+              // F064: accumulate ping-pong feedback for end-of-turn batch write.
+              routingFeedbackItems.push({ targetCatId: nextCat, reason: 'pingpong_terminated' });
               yield {
                 type: 'system_info' as AgentMessageType,
                 catId,
@@ -2940,6 +3008,8 @@ export async function* routeSerial(
                   { threadId, catId: nextCat, fromCat: catId, a2aCount: worklistEntry.a2aCount, maxDepth },
                   'A2A abort-recovery blocked: depth limit reached',
                 );
+                // F064: accumulate abort-recovery rejection for end-of-turn batch write.
+                routingFeedbackItems.push({ targetCatId: nextCat, reason: 'depth_limit' });
                 continue;
               }
               // P2: dedup — skip if target cat already has queued/active work
@@ -2951,6 +3021,8 @@ export async function* routeSerial(
                   { threadId, catId: nextCat, fromCat: catId },
                   '#813: A2A abort-recovery skipped — target already queued/active',
                 );
+                // F064: accumulate abort-recovery rejection for end-of-turn batch write.
+                routingFeedbackItems.push({ targetCatId: nextCat, reason: 'dedup_active' });
                 continue;
               }
               deferA2AEnqueue({
@@ -3015,6 +3087,11 @@ export async function* routeSerial(
                   'A2A text-scan dedup (deferred): cat actively processing, skipping',
                 );
               }
+              // F064: accumulate system-side rejection for end-of-turn batch write.
+              routingFeedbackItems.push({
+                targetCatId: nextCat,
+                reason: routingDecisionToFeedbackReason(decision),
+              });
               continue;
             }
             if (decision.action === 'mark_replyto') {
@@ -3034,6 +3111,8 @@ export async function* routeSerial(
                 { threadId, catId: nextCat, fromCat: catId, count: streakDeferred.count },
                 'F167 L1: A2A ping-pong terminated in deferred path (streak >= 4)',
               );
+              // F064: accumulate ping-pong feedback for end-of-turn batch write.
+              routingFeedbackItems.push({ targetCatId: nextCat, reason: 'pingpong_terminated' });
               yield {
                 type: 'system_info' as AgentMessageType,
                 catId,
@@ -3567,6 +3646,22 @@ export async function* routeSerial(
         activeTrackedA2ASlots.delete(catId);
         if (isFinal) yieldedFinalDone = true;
         if (ownInvocationId) completedCatInvocationIds.push([catId, ownInvocationId]);
+      }
+
+      // F064: write accumulated routing feedback once per turn. ThreadStore stores
+      // the payload as a full replace, so batching prevents later targets from
+      // silently overwriting earlier ones (including inline_action feedback).
+      // Fail-open: a feedback-write failure must never break the route.
+      if (routingFeedbackItems.length > 0 && deps.invocationDeps.threadStore) {
+        const feedbackWritten = await recordMentionRoutingFeedback(
+          deps.invocationDeps.threadStore,
+          threadId,
+          catId,
+          routingFeedbackItems,
+        );
+        if (!feedbackWritten) {
+          inlineActionFeedbackWriteFailed.add(1, { 'agent.id': catId as string });
+        }
       }
 
       // F27: Advance executedIndex so pushToWorklist knows which cats are done

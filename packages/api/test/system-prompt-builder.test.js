@@ -1140,6 +1140,27 @@ describe('SystemPromptBuilder', () => {
     assert.ok(ctx.includes('@opus'), 'Should mention the target cat');
   });
 
+  test('buildInvocationContext renders system-side suppression reason text (depth_limit)', async () => {
+    const { buildInvocationContext } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+    const ctx = buildInvocationContext({
+      catId: 'opus',
+      mode: 'independent',
+      teammates: ['codex'],
+      mcpAvailable: false,
+      a2aEnabled: true,
+      mentionRoutingFeedback: {
+        sourceTimestamp: Date.now(),
+        items: [{ targetCatId: 'codex', reason: 'depth_limit' }],
+      },
+    });
+    assert.ok(ctx.includes('[路由提醒]'), 'Should include routing feedback banner');
+    assert.ok(ctx.includes('@codex'), 'Should mention the target cat');
+    assert.ok(
+      ctx.includes('@codex: A2A 传球链已达到深度上限'),
+      'Should surface per-target human-readable depth_limit guidance',
+    );
+  });
+
   test('buildInvocationContext does not contain static identity or MCP tools', async () => {
     const { buildInvocationContext } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     const ctx = buildInvocationContext({

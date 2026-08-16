@@ -107,7 +107,17 @@ export function buildExternalRuntimeAnchorThreadId(runtime: ExternalRuntimeAncho
   return `external-runtime:${runtime}:${userId}`;
 }
 
-export type MentionRoutingSuppressionReason = 'no_action' | 'cross_paragraph' | 'inline_action';
+export type MentionRoutingSuppressionReason =
+  | 'no_action'
+  | 'cross_paragraph'
+  | 'inline_action'
+  // System-side rejection reasons (F064 P0): the @mention was syntactically valid
+  // but routing was blocked by a guard. Cats must see the reason on the next turn.
+  | 'depth_limit'
+  | 'pingpong_terminated'
+  | 'fairness_gate'
+  | 'signal_aborted'
+  | 'dedup_active';
 export type MentionActionabilityMode = 'strict' | 'relaxed';
 
 export interface ThreadMentionRoutingFeedbackItem {

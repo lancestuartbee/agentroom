@@ -1,3 +1,4 @@
+import './helpers/setup-cat-registry.js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -5,6 +6,15 @@ function createInlineMentionService(catId) {
   return {
     async *invoke() {
       yield { type: 'text', catId, content: 'Done. Ready for @codex review', timestamp: Date.now() };
+      yield { type: 'done', catId, timestamp: Date.now() };
+    },
+  };
+}
+
+function createLineStartMentionService(catId) {
+  return {
+    async *invoke() {
+      yield { type: 'text', catId, content: '@codex 请 review', timestamp: Date.now() };
       yield { type: 'done', catId, timestamp: Date.now() };
     },
   };
@@ -69,6 +79,7 @@ function createMockDeps(services, appendCalls, feedbackWrites, broadcasts) {
           extra: msg.extra,
         };
       },
+      getById: () => null,
       getRecent: () => [],
       getMentionsFor: () => [],
       getBefore: () => [],
@@ -119,5 +130,111 @@ describe('route-serial notice contract', () => {
     assert.ok(hintBroadcast, 'should broadcast the routing-syntax-hint in real-time');
     assert.equal(hintBroadcast.payload.message.source.meta.presentation, 'system_notice');
     assert.equal(hintBroadcast.payload.message.source.meta.noticeTone, 'warning');
+  });
+
+  it('writes depth_limit routing feedback when A2A chain reaches max depth', async () => {
+    const { routeSerial } = await import('../dist/domains/cats/services/agents/routing/route-serial.js');
+    const feedbackWrites = [];
+    const deps = createMockDeps({ opus: createLineStartMentionService('opus') }, [], feedbackWrites, []);
+
+    for await (const _msg of routeSerial(deps, ['opus'], 'go', 'user1', 'thread-1', { maxA2ADepth: 0 })) {
+    }
+
+    assert.equal(feedbackWrites.length, 1, 'should write routing feedback for blocked @mention');
+    assert.equal(feedbackWrites[0].catId, 'opus');
+    assert.deepEqual(feedbackWrites[0].payload.items, [{ targetCatId: 'codex', reason: 'depth_limit' }]);
+  });
+
+  it('writes fairness_gate routing feedback when non-agent messages are queued', async () => {
+    const { routeSerial } = await import('../dist/domains/cats/services/agents/routing/route-serial.js');
+    const feedbackWrites = [];
+    const deps = createMockDeps({ opus: createLineStartMentionService('opus') }, [], feedbackWrites, []);
+
+    for await (const _msg of routeSerial(deps, ['opus'], 'go', 'user1', 'thread-1', {
+      maxA2ADepth: 5,
+      queueHasQueuedMessages: () => true,
+    })) {
+    }
+
+    assert.equal(feedbackWrites.length, 1, 'should write routing feedback for fairness-gated @mention');
+    assert.equal(feedbackWrites[0].catId, 'opus');
+    assert.deepEqual(feedbackWrites[0].payload.items, [{ targetCatId: 'codex', reason: 'fairness_gate' }]);
+  });
+
+  it('writes pingpong_terminated routing feedback when streak >= 4', async () => {
+    const { routeSerial } = await import('../dist/domains/cats/services/agents/routing/route-serial.js');
+    const feedbackWrites = [];
+
+    function createPongService(catId, reply) {
+      return {
+        async *invoke() {
+          yield { type: 'text', catId, content: reply, timestamp: Date.now() };
+          yield { type: 'done', catId, timestamp: Date.now() };
+        },
+      };
+    }
+
+    const deps = createMockDeps(
+      {
+        opus: createPongService('opus', '@codex 请 review'),
+        codex: createPongService('codex', '@opus 请确认'),
+      },
+      [],
+      feedbackWrites,
+      [],
+    );
+
+    const events = [];
+    for await (const msg of routeSerial(deps, ['opus'], 'ping-pong', 'user1', 'thread-pp-feedback', {
+      maxA2ADepth: 10,
+    })) {
+      events.push(msg);
+    }
+
+    const terminated = events.some(
+      (m) => m.type === 'system_info' && typeof m.content === 'string' && m.content.includes('a2a_pingpong_terminated'),
+    );
+    assert.ok(terminated, 'should emit a2a_pingpong_terminated system_info');
+
+    const pingpongFeedback = feedbackWrites.find((w) =>
+      w.payload.items.some((i) => i.reason === 'pingpong_terminated'),
+    );
+    assert.ok(pingpongFeedback, 'should write pingpong_terminated routing feedback for next-turn D9');
+  });
+
+  it('writes feedback for all blocked targets in a single turn without overwriting', async () => {
+    const { routeSerial } = await import('../dist/domains/cats/services/agents/routing/route-serial.js');
+    const feedbackWrites = [];
+
+    function createMultiMentionService(catId) {
+      return {
+        async *invoke() {
+          yield {
+            type: 'text',
+            catId,
+            content: '@codex 请 review\n@gemini 请确认设计',
+            timestamp: Date.now(),
+          };
+          yield { type: 'done', catId, timestamp: Date.now() };
+        },
+      };
+    }
+
+    const deps = createMockDeps({ opus: createMultiMentionService('opus') }, [], feedbackWrites, []);
+
+    for await (const _msg of routeSerial(deps, ['opus'], 'multi', 'user1', 'thread-multi-feedback', {
+      maxA2ADepth: 0,
+    })) {
+    }
+
+    assert.equal(feedbackWrites.length, 1, 'should write exactly one feedback payload per turn');
+    assert.equal(feedbackWrites[0].catId, 'opus');
+    assert.equal(feedbackWrites[0].payload.items.length, 2, 'should include both blocked targets');
+    const targetIds = feedbackWrites[0].payload.items.map((i) => i.targetCatId).sort();
+    assert.deepEqual(targetIds, ['codex', 'gemini']);
+    assert.ok(
+      feedbackWrites[0].payload.items.every((i) => i.reason === 'depth_limit'),
+      'every blocked target should carry depth_limit reason',
+    );
   });
 });

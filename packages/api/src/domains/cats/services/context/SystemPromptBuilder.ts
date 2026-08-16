@@ -25,6 +25,7 @@ import { buildConciergePromptLines } from '../../../concierge/ConciergePromptSec
 import { buildGuidePromptLines } from '../../../guides/GuidePromptSection.js';
 import type {
   BootcampStateV1,
+  MentionRoutingSuppressionReason,
   ThreadMentionRoutingFeedback,
   ThreadParticipantActivity,
   ThreadRoutingPolicyV1,
@@ -733,6 +734,37 @@ export function buildStaticIdentityPackOnly(catId: CatId, options?: StaticIdenti
 }
 
 /**
+ * F064: Human-readable explanation for why an @mention was not routed.
+ * Kept alongside the D9 template so new suppression reasons automatically get a prompt message.
+ */
+function formatRoutingFeedbackReason(reason: MentionRoutingSuppressionReason): string {
+  switch (reason) {
+    case 'no_action':
+      return '请在 @句柄 同一段落里加上明确的动作请求（如“请 review”）。';
+    case 'cross_paragraph':
+      return '@句柄 与动作请求之间不要空行，系统只识别同一段落内的动作。';
+    case 'inline_action':
+      return '系统只识别独立一行的行首 @句柄；写在行中不会路由。';
+    case 'depth_limit':
+      return 'A2A 传球链已达到深度上限。请总结状态并用 hold_ball 等结构化回调等待，或升级 operator。';
+    case 'pingpong_terminated':
+      return '你与同一成员往返传球过多，已被熔断。请引入第三方或升级 operator。';
+    case 'fairness_gate':
+      return '队列中有用户/连接器消息等待处理，本次 @ 被延后。';
+    case 'signal_aborted':
+      return '当前调用被中断，@ 未被投递。';
+    case 'dedup_active':
+      return '目标成员已经在处理中，避免重复派发。';
+    default: {
+      // Compile-time exhaustiveness guard. If TS complains here, a new reason was
+      // added to the union without a corresponding prompt message.
+      const _exhaustive: never = reason;
+      return `如果需要对方行动，请在行首独立一行写 @句柄。（未识别原因：${_exhaustive as string}）`;
+    }
+  }
+}
+
+/**
  * Build dynamic invocation context — changes per call.
  * Includes: teammates, mode, chain position, prompt tags.
  * (MCP tools and co-creator reference moved to buildStaticIdentity for session-level injection.)
@@ -865,8 +897,15 @@ export function buildInvocationContext(context: InvocationContext): string {
 
   /* @segment D9 — 路由反馈 (template: d9-routing-feedback.md) */
   if (context.mentionRoutingFeedback && context.mentionRoutingFeedback.items?.length > 0) {
-    const items = context.mentionRoutingFeedback.items.slice(0, 2).map((it) => `@${it.targetCatId}`);
-    const d9 = renderSegment('D9', { UNROUTED_MENTIONS: items.join('、') });
+    const items = context.mentionRoutingFeedback.items.slice(0, 2);
+    const mentionLabels = items.map((it) => `@${it.targetCatId}`);
+    // F064: render per-target reason so a multi-target block doesn't mislabel every
+    // target with the first target's reason.
+    const reasonText = items.map((it) => `@${it.targetCatId}: ${formatRoutingFeedbackReason(it.reason)}`).join('\n');
+    const d9 = renderSegment('D9', {
+      UNROUTED_MENTIONS: mentionLabels.join('、'),
+      REASON_TEXT: reasonText,
+    });
     if (d9) lines.push(d9, '');
   }
 
