@@ -345,9 +345,11 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
 
     await chmod(runsDir, 0o000);
     try {
-      const afterFault = await store.listRuns(sandbox.id);
-      // Must NOT report an empty sandbox: either preserve what we knew, or throw.
-      assert.equal(afterFault.length, 1, 'a read fault must not masquerade as "no runs"');
+      // The contract is "never masquerade as no runs". This started out as a
+      // stale-cache fallback; re-review pointed out that made fresh data and a
+      // degraded fallback indistinguishable at the call site, so the fault now
+      // surfaces and the caller decides how to degrade.
+      await assert.rejects(() => store.listRuns(sandbox.id), 'a read fault must not masquerade as "no runs"');
     } finally {
       await chmod(runsDir, 0o755);
       await rm(tmpDir, { recursive: true, force: true });
@@ -414,5 +416,173 @@ describe('Sandbox provider effort — real resolver behaviour', () => {
         assert.notEqual(casual, configured, `${label}: casual must still be capped`);
       }
     }
+  });
+});
+
+describe('Sandbox run report — in-flight vs settled', () => {
+  const HEADER = (runId) => [
+    `# Sandbox Run ${runId}`,
+    '',
+    '- Trigger: scheduled',
+    '- Triggered At: 2026-01-01T00:00:00.000Z',
+    '- Spec Version: 1',
+    '',
+    '## Summary',
+    '',
+    '摘要',
+    '',
+  ];
+
+  // Re-review finding (luna P1). My previous guard checked whether `## Learned` had
+  // APPEARED, but the renderer writes the heading and only then the bullets. A scan
+  // landing in that gap saw a "complete" report, folded it, and marked it processed —
+  // so the durable learning written a moment later was lost for good.
+  test('a report caught between the ## Learned heading and its bullets is folded only once complete', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+    const { appendFile } = await import('node:fs/promises');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-inflight-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+    const file = join(runsDir, 'run-x.md');
+
+    // Mid-write: heading flushed, bullets not yet.
+    await writeFile(file, [...HEADER('run-x'), '## Learned', ''].join('\n'), 'utf-8');
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const firstScan = await store.listRuns(sandbox.id);
+    const firstFold = foldRunsIntoMemory(null, firstScan);
+    assert.deepEqual(firstFold.foldedRunIds, [], 'an in-flight report must not be folded or marked processed');
+
+    // The member finishes writing.
+    await appendFile(file, '- 真正学到的结论\n', 'utf-8');
+
+    const secondScan = await store.listRuns(sandbox.id);
+    const secondFold = foldRunsIntoMemory(firstFold.memory, secondScan);
+    assert.deepEqual(secondFold.foldedRunIds, ['run-x'], 'the completed report must fold on the next pass');
+    assert.equal(secondFold.memory.learnedItems.length, 1);
+    assert.match(secondFold.memory.learnedItems[0].content, /真正学到的结论/);
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  // The other half of the tradeoff: a member that never finishes the section must not
+  // have its run skipped forever. Once the file has stopped changing it is final,
+  // malformed or not — the run still happened and its summary is real.
+  test('a settled but malformed report is still recorded as a run', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { utimes } = await import('node:fs/promises');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-settled-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+    const file = join(runsDir, 'run-y.md');
+
+    // Member wrote a summary but never produced a Learned section at all.
+    await writeFile(file, HEADER('run-y').join('\n'), 'utf-8');
+    // Backdate so it is unambiguously settled, not mid-write.
+    const old = new Date(Date.now() - 60_000);
+    await utimes(file, old, old);
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const runs = await store.listRuns(sandbox.id);
+    assert.equal(runs.length, 1, 'a settled report must not be skipped forever just for being malformed');
+    assert.match(runs[0].summary, /摘要/);
+    assert.equal(runs[0].learned, undefined, 'no learnings parsed, but the run itself is recorded');
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  // Re-review finding (luna P2): stale-cache fallback made "fresh data" and "read
+  // failed, here is what I remember" indistinguishable at the call site.
+  test('listRuns throws on a real read fault instead of returning stale data', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { chmod } = await import('node:fs/promises');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-throw-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    await chmod(runsDir, 0o000);
+    try {
+      await assert.rejects(
+        () => store.listRuns(sandbox.id),
+        /EACCES|permission/i,
+        'a read fault must surface, not be smoothed into stale data',
+      );
+    } finally {
+      await chmod(runsDir, 0o755);
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// Regression for a bug I introduced while fixing the in-flight gate: judging
+// completeness on FILTERED learnings branded every "nothing durable today" report as
+// half-written. Most days look exactly like that, so the sandbox would have deferred
+// its ordinary runs forever. Completeness is judged on raw bullets.
+describe('Sandbox run report — a run with no durable learnings is still complete', () => {
+  test('the placeholder-only report is folded, not deferred as in-flight', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-noLearn-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+
+    // No `learned` — the renderer emits the placeholder bullet.
+    await writeReport(runsDir, 'run-quiet', { summary: '今天没跑出结论', triggeredAt: 1000 });
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const runs = await store.listRuns(sandbox.id);
+    assert.equal(runs.length, 1, 'a quiet day is a finished run, not a half-written one');
+
+    const folded = foldRunsIntoMemory(null, runs);
+    assert.deepEqual(folded.foldedRunIds, ['run-quiet']);
+    assert.equal(folded.memory.learnedItems.length, 0, 'no learnings, but the run is on the record');
+
+    await rm(tmpDir, { recursive: true, force: true });
   });
 });

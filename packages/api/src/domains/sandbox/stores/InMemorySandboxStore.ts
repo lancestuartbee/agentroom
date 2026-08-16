@@ -52,11 +52,24 @@ function sanitizeProjectPath(projectPath: string): string {
 const log = createModuleLogger('sandbox/store');
 
 /**
+ * How long a report must sit unchanged before an incomplete-looking one is accepted as
+ * final rather than assumed mid-write. Members finish writing in milliseconds and runs
+ * fire on a daily cadence, so this only ever affects a scan that overlaps a live write.
+ */
+const REPORT_QUIESCENCE_MS = 5_000;
+
+/**
  * Extract durable learnings from a run report's `## Learned` section.
  *
  * The template ships one placeholder line for the "nothing durable today" case;
  * treating it as a real learning would poison long-term memory with empty entries.
  */
+/** Raw bullet count in a `## Learned` section — used for the in-flight completeness gate. */
+function countBullets(section: string | undefined): number {
+  if (!section) return 0;
+  return section.split('\n').filter((line) => line.trim().startsWith('- ')).length;
+}
+
 function parseLearnedBullets(section: string | undefined): string[] {
   if (!section) return [];
   return (
@@ -275,23 +288,22 @@ export class InMemorySandboxStore implements ISandboxStore {
    * only a restart made progress visible. A cache that can diverge from the source of
    * truth is the bug, not an optimisation — this runs once per fire, so a readdir is
    * not worth the risk of being wrong.
+   *
+   * THROWS on a real read fault (anything but a missing runs directory). Returning a
+   * stale cache instead would make "here is the current state" and "the disk failed,
+   * here is what I remember" indistinguishable at the call site — and a caller that
+   * cannot tell the difference will happily conclude there is nothing to fold. The
+   * decision to degrade belongs to the caller: `foldPendingRuns()` catches this, keeps
+   * the previous memory and warns.
    */
   async listRuns(sandboxId: string, limit?: number): Promise<SandboxRunRecordV1[]> {
-    const cached = this.runs.get(sandboxId) ?? [];
     const sandbox = this.sandboxes.get(sandboxId);
-    if (!sandbox) return limit === undefined ? cached : cached.slice(-limit);
-
-    let fromDisk: SandboxRunRecordV1[];
-    try {
-      fromDisk = await this.listRunFiles(sandbox.projectPath);
-    } catch (err) {
-      // A permissions/IO fault is NOT "this sandbox has never run". Reporting an empty
-      // list here would let the caller conclude there is nothing to fold, and would
-      // also clobber the cache with that lie. Keep what we last knew and stay loud.
-      log.warn({ err, sandboxId }, 'Failed to read sandbox runs directory — serving last known runs');
+    if (!sandbox) {
+      const cached = this.runs.get(sandboxId) ?? [];
       return limit === undefined ? cached : cached.slice(-limit);
     }
 
+    const fromDisk = await this.listRunFiles(sandbox.projectPath);
     this.runs.set(sandboxId, fromDisk);
     return limit === undefined ? fromDisk : fromDisk.slice(-limit);
   }
@@ -452,23 +464,41 @@ export class InMemorySandboxStore implements ISandboxStore {
         const parsedTriggeredAt = triggeredAtMatch ? Date.parse(triggeredAtMatch[1].trim()) : Number.NaN;
         const triggeredAt = Number.isFinite(parsedTriggeredAt) ? parsedTriggeredAt : statResult.mtimeMs;
 
-        // COMPLETENESS GATE. listRuns() now reads the directory live, so a scan can
-        // catch a member mid-write. renderSandboxRunReport() ALWAYS emits `## Learned`
-        // last, so its absence means the file is still being written. Treating a
-        // truncated report as finished would fold a partial summary and mark the run
-        // processed — permanently losing that day's learnings. Skip it; the next fire
-        // picks up the completed file.
-        if (!content.includes('## Learned')) {
-          log.warn({ projectPath, file: name }, 'Sandbox run report looks incomplete — skipped until fully written');
-          continue;
-        }
-
         // `## Summary` runs until `## Learned`. Without this split the durable-learning
         // section would be swallowed back into the ephemeral summary, collapsing the
         // very distinction the run report exists to express.
         const afterSummary = content.split('## Summary')[1] ?? content;
         const [summaryPart, learnedPart] = afterSummary.split('## Learned');
         const learned = parseLearnedBullets(learnedPart);
+        // Completeness is judged on RAW bullets, before the placeholder is filtered out:
+        // "nothing durable today" is a normal, fully-written report, and most days look
+        // like that. Judging on filtered learnings would have branded every ordinary run
+        // as half-written and deferred it forever.
+        const hasAnyLearnedBullet = countBullets(learnedPart) > 0;
+
+        // IN-FLIGHT GATE. listRuns() reads the directory live, so a scan can land in the
+        // middle of a member writing its report. Folding a half-written file marks the
+        // run processed, so anything written a moment later is lost for good.
+        //
+        // An earlier version gated on "does `## Learned` appear", which was the wrong
+        // invariant: the renderer emits the heading and only THEN the bullets, so a scan
+        // in that gap still saw a "complete" report. What actually distinguishes
+        // mid-write from finished is whether the file is still changing — so freshness
+        // decides, and structure only gets a veto while the file is fresh.
+        //
+        // Deliberately NOT a completion sentinel the member must write: a member that
+        // forgets it would have its run skipped forever, trading one silent loss for
+        // another. This judgement stays with the system.
+        const looksComplete = content.includes('## Learned') && hasAnyLearnedBullet;
+        if (!looksComplete && Date.now() - statResult.mtimeMs < REPORT_QUIESCENCE_MS) {
+          log.warn({ projectPath, file: name }, 'Sandbox run report still being written — deferred to the next scan');
+          continue;
+        }
+        if (!looksComplete) {
+          // Settled but malformed: the run genuinely happened and its summary is real,
+          // so record it rather than skipping it forever. We just get no learnings.
+          log.warn({ projectPath, file: name }, 'Sandbox run report has settled without parseable learnings');
+        }
 
         results.push({
           v: 1,
