@@ -18,6 +18,7 @@ import { useIndexState } from '@/hooks/useIndexState';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { usePreviewAutoOpen } from '@/hooks/usePreviewAutoOpen';
+import { useSandboxPaneLifecycle } from '@/hooks/useSandboxPaneLifecycle';
 import { useSendMessage } from '@/hooks/useSendMessage';
 import { useSocket } from '@/hooks/useSocket';
 import { useSplitPaneKeys } from '@/hooks/useSplitPaneKeys';
@@ -67,10 +68,8 @@ import { MobileStatusSheet } from './MobileStatusSheet';
 import { ParallelStatusBar } from './ParallelStatusBar';
 import { PendingMemberBubble } from './PendingMemberBubble';
 import { ProjectSetupCard } from './ProjectSetupCard';
-
 import { QueuePanel } from './QueuePanel';
 import { RightStatusPanel } from './RightStatusPanel';
-import { defaultPanelModeForThread, reconcileRightPanelForThread } from './right-panel-lifecycle';
 import { SandboxRunPane } from './SandboxRunPane';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SplitPaneView } from './SplitPaneView';
@@ -274,26 +273,9 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   // to go find would leave months of autonomous runs effectively invisible.
   //
   // Only on entering the thread, so a deliberate switch to another panel sticks.
-  // F247: reconcile the GLOBAL panel mode against the thread now in view. ChatContainer
-  // stays mounted across thread switches, so entry, exit and re-entry all have to be
-  // handled explicitly — see right-panel-lifecycle.ts for why this is one decision
-  // rather than three conditions.
-  //
-  // Depends on the thread LIST, not just threadId: metadata arrives asynchronously, so
-  // a cold load would otherwise see no sandboxId and never open the run pane.
-  const sandboxPaneThreadRef = useRef<string | null>(null);
-  const sandboxThreadId = useChatStore(
-    (s) => s.threads.find((t) => t.id === threadId && t.mode === 'sandbox' && t.sandboxId)?.id ?? null,
-  );
-  useEffect(() => {
-    const result = reconcileRightPanelForThread({
-      currentMode: useChatStore.getState().rightPanelMode,
-      ctx: { sandboxThreadId },
-      autoOpenedFor: sandboxPaneThreadRef.current,
-    });
-    sandboxPaneThreadRef.current = result.autoOpenedFor;
-    if (result.nextMode) setRightPanelMode(result.nextMode);
-  }, [sandboxThreadId, setRightPanelMode]);
+  // F247: the sandbox run pane's entry/exit/re-entry lifecycle. Lives in a hook so the
+  // wiring itself is testable — see useSandboxPaneLifecycle.
+  const { reopenMode: sandboxAwareReopenMode } = useSandboxPaneLifecycle(threadId);
 
   // F232 P2（云端 round 5）：显式关闭右侧 panel——先退出 workspace/transcript mode（否则上面的 auto-open
   // effect 立即重开，关不掉），再关闭。所有 close 入口（header toggle / ResizeHandle 折叠）统一走这里。
@@ -1049,7 +1031,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
               // 默认面板（status/transcript 各有底部工具栏图标单独入口）。
               // F247: sandbox thread 必须回到运行态面板 —— header 是关闭后唯一的重开入口，
               // 固定进 workspace 会让运行态面板再也回不去。
-              setRightPanelMode(defaultPanelModeForThread({ sandboxThreadId }));
+              setRightPanelMode(sandboxAwareReopenMode());
               setStatusPanelOpen(true);
             }
           }}
