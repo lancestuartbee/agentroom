@@ -75,8 +75,7 @@ export function stripComments(content: string): string {
 export function loadDevProtocol(): string {
   const { path: filePath } = resolveWithOverlay('s6-dev-protocol.md', 's6-dev-protocol.local.md');
   if (!existsSync(filePath)) {
-    console.warn('[prompt-template] s6-dev-protocol.md not found, returning empty');
-    return '';
+    throw new Error(`[prompt-template] s6-dev-protocol.md not found at ${filePath}`);
   }
   return stripComments(readFileSync(filePath, 'utf-8'));
 }

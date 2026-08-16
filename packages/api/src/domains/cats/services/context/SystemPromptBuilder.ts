@@ -13,7 +13,7 @@ import type {
   ThreadMode,
   WorldContextEnvelope,
 } from '@cat-cafe/shared';
-import { catRegistry } from '@cat-cafe/shared';
+import { catRegistry, DEFAULT_THREAD_MODE } from '@cat-cafe/shared';
 import { getDossierRosterSummary, hasDossierEntry } from '@cat-cafe/shared/dossier';
 import {
   catHasRole,
@@ -668,18 +668,19 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
   /* @segment S6 — 工作流触发点 */
   // F064 P1: development-mode collaboration protocol is a mode-gated invariant,
   // not a per-breed choice. Per-breed entries are routing preferences only.
-  if (options?.threadMode === 'development') {
+  // Missing/legacy records default to development per ThreadStore contract.
+  const mode = options?.threadMode ?? DEFAULT_THREAD_MODE;
+  if (mode === 'development') {
     const devProtocol = loadDevProtocol();
     if (devProtocol) {
-      mark('S6', '工作流触发点');
+      mark('S6_base', '开发协作协议');
       lines.push(devProtocol, '');
     }
 
     const wfTriggers = getWorkflowTriggers();
     const triggers = wfTriggers[config.breedId ?? ''] ?? wfTriggers[catId as string];
     if (triggers) {
-      // Only mark S6 once; base protocol already marked it.
-      if (!devProtocol) mark('S6', '工作流触发点');
+      mark('S6', '工作流触发点');
       lines.push(triggers, '');
     }
   }

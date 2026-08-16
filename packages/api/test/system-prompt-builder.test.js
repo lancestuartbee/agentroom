@@ -12,7 +12,7 @@ import { catRegistry } from '@cat-cafe/shared';
 
 const REPO_ROOT_TEMPLATE = resolve(dirname(fileURLToPath(import.meta.url)), '../../..', 'cat-template.json');
 const CAT_TEMPLATE_PATH = REPO_ROOT_TEMPLATE;
-const FULL_RUNTIME_PROMPT_CHAR_BUDGET = 6700; // 6500→6700: gemini35 standalone breed adds ~78 chars to roster
+const FULL_RUNTIME_PROMPT_CHAR_BUDGET = 6900; // 6700→6900: S6 dev protocol now injected by default (legacy threads → development)
 
 function assertWithinFullRuntimePromptBudget(prompt) {
   assert.ok(
@@ -1796,8 +1796,8 @@ describe('SystemPromptBuilder', () => {
         featureId: 'F073',
       },
     });
-    // 6200→6500→6700→6800: decision funnel §17 + gemini35 standalone breed roster growth + F208 dossier l0RosterSummary
-    assert.ok(prompt.length < 6800, `Prompt with SOP hint is ${prompt.length} chars, expected < 6800`);
+    // 6200→6500→6700→6800→7000: S6 dev protocol now injected by default (legacy threads → development)
+    assert.ok(prompt.length < 7000, `Prompt with SOP hint is ${prompt.length} chars, expected < 7000`);
   });
 
   // --- F092: Voice Mode prompt injection ---
@@ -1844,8 +1844,8 @@ describe('SystemPromptBuilder', () => {
       },
       voiceMode: true,
     });
-    // 6200→6500→6700→6800: decision funnel §17 + gemini35 standalone breed roster growth + F208 dossier l0RosterSummary
-    assert.ok(prompt.length < 6800, `Prompt with voice mode + SOP hint is ${prompt.length} chars, expected < 6800`);
+    // 6200→6500→6700→6800→7000: S6 dev protocol now injected by default (legacy threads → development)
+    assert.ok(prompt.length < 7000, `Prompt with voice mode + SOP hint is ${prompt.length} chars, expected < 7000`);
   });
 
   test('buildInvocationContext injects bootcamp mode when bootcampState provided', async () => {
