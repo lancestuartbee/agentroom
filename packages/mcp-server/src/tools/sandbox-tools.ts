@@ -27,13 +27,18 @@ import { errorResult, successResult, type ToolResult } from './file-tools.js';
  * The natural request is "move it to 09:00": the member knows the new cron and has never
  * seen the stored prompt or timezone. Review found this schema once demanding the whole
  * object after the API had been relaxed — so the tool rejected the request locally and
- * never even reached the fixed endpoint. That is why the field rules now come from
- * `sandboxSchedulePatchSchema` in @cat-cafe/shared instead of a second hand-written copy:
- * two suites can prove today's copies agree, neither can stop tomorrow's edit to one side.
+ * never even reached the fixed endpoint.
  *
- * Only the prose is local — the model needs wording the server has no use for.
+ * EXTENDED from the shared object, not reassembled from its field shapes. The first
+ * attempt at removing the duplicate rebuilt a fresh `z.object()` out of
+ * `sandboxSchedulePatchSchema.shape`: the field rules came across but `.strict()` did not,
+ * so the tool quietly accepted and stripped `{cron, futureField}` while the API rejected
+ * it. Same divergence class, one layer down — found by probing key parity, which is
+ * something neither side's own tests could ever notice. Extending carries the unknown-key
+ * policy with it. Only the prose is local, because the model needs wording the server has
+ * no use for.
  */
-const scheduleSchema = z.object({
+const scheduleSchema = sandboxSchedulePatchSchema.extend({
   cron: sandboxSchedulePatchSchema.shape.cron.describe(
     'Cron expression, e.g. "0 9 * * *" for 09:00 daily. Required when no schedule exists yet.',
   ),

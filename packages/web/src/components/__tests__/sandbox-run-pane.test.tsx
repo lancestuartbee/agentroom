@@ -50,7 +50,7 @@ async function render(): Promise<{ container: HTMLDivElement; root: Root }> {
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<SandboxRunPane />);
+    root.render(<SandboxRunPane threadId="thread-1" />);
   });
   return { container, root };
 }
@@ -174,6 +174,96 @@ describe('SandboxRunPane', () => {
     const { container, root } = await render();
     expect(container.textContent).toBe('');
     expect(mockApiFetch).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+  });
+});
+
+/**
+ * The identity SOURCE, not the response race.
+ *
+ * ChatContainer syncs the thread it is rendering into the store from an effect, so during
+ * the render/effect window after a switch the global `currentThreadId` still says A while
+ * the parent is already rendering B. A pane that derives its sandbox from the global reads
+ * the wrong one — and worse, "立即运行" fires a POST at A. The response guard in
+ * useSandboxResource cannot help: the request was aimed wrong before it was sent.
+ */
+describe('SandboxRunPane follows the thread it was given', () => {
+  beforeEach(() => {
+    // The global still points at A — exactly the window the effect has not closed yet.
+    mockThreads = [
+      { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-A' },
+      { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-B' },
+    ];
+    mockApiFetch.mockReset();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  async function renderFor(threadId: string) {
+    const { SandboxRunPane } = await import('../SandboxRunPane');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SandboxRunPane threadId={threadId} />);
+    });
+    return { container, root };
+  }
+
+  it('reads the sandbox of the prop thread, not the globally current one', async () => {
+    mockApiFetch.mockResolvedValue(jsonResponse({ sandbox: SANDBOX, memory: null, runs: [], runsAvailable: true }));
+    const { root } = await renderFor('thread-2');
+
+    expect(mockApiFetch.mock.calls[0][0]).toContain('sb-B');
+    await act(async () => root.unmount());
+  });
+
+  it('never fires "run now" at the sandbox the operator has already left', async () => {
+    mockApiFetch.mockResolvedValue(jsonResponse({ sandbox: SANDBOX, memory: null, runs: [], runsAvailable: true }));
+    const { container, root } = await renderFor('thread-2');
+
+    mockApiFetch.mockClear();
+    const runBtn = container.querySelector('[data-testid="sandbox-run-now"]') as HTMLButtonElement;
+    expect(runBtn).toBeTruthy();
+    await act(async () => {
+      runBtn.click();
+    });
+
+    const posted = mockApiFetch.mock.calls.find((c) => (c[1] as { method?: string } | undefined)?.method === 'POST');
+    expect(posted, 'run-now must have been dispatched').toBeTruthy();
+    expect(posted?.[0]).toContain('sb-B');
+    expect(posted?.[0]).not.toContain('sb-A');
+
+    await act(async () => root.unmount());
+  });
+
+  // A trigger note is about one sandbox's run. Carrying it across a switch tells the
+  // operator something about B that only ever happened to A.
+  it("drops the previous sandbox's trigger note when the thread changes", async () => {
+    mockApiFetch.mockResolvedValue(jsonResponse({ sandbox: SANDBOX, memory: null, runs: [], runsAvailable: true }));
+    const { SandboxRunPane } = await import('../SandboxRunPane');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-1" />);
+    });
+
+    const runBtn = container.querySelector('[data-testid="sandbox-run-now"]') as HTMLButtonElement;
+    await act(async () => {
+      runBtn.click();
+    });
+    expect(container.querySelector('[data-testid="sandbox-trigger-note"]')).toBeTruthy();
+
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-2" />);
+    });
+    expect(container.querySelector('[data-testid="sandbox-trigger-note"]')).toBeNull();
 
     await act(async () => root.unmount());
   });

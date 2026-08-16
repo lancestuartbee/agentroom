@@ -47,6 +47,33 @@ describe('sandbox schedule contract is shared, not duplicated', () => {
       assert.equal(toolSchema.safeParse(bad).success, false, JSON.stringify(bad));
     }
   });
+
+  // Comparing known payloads is not enough, and review proved it: the first extraction
+  // rebuilt the tool's object from the shared FIELD shapes, which carried every field rule
+  // across and silently left `.strict()` behind. The tool then accepted an unknown key and
+  // stripped it while the API rejected the same request. Divergence lives in the shape of
+  // the object too, not only in its fields.
+  test('the two sides agree on the key set', async () => {
+    const { shared, mcp } = await load();
+    // The tool exposes the schedule as `.optional().describe(...)`, so peel the wrappers
+    // before comparing the object itself.
+    const unwrap = (schema) => (typeof schema.unwrap === 'function' ? unwrap(schema.unwrap()) : schema);
+    const sharedKeys = Object.keys(shared.sandboxSchedulePatchSchema.shape).sort();
+    const toolKeys = Object.keys(unwrap(mcp.sandboxUpdateSpecInputSchema.schedule).shape).sort();
+    assert.deepEqual(toolKeys, sharedKeys, 'a field added on one side must be added on the other');
+  });
+
+  test('both sides refuse an unknown field rather than one silently dropping it', async () => {
+    const { shared, mcp } = await load();
+    const withUnknown = { cron: '0 9 * * *', futureField: 'x' };
+
+    assert.equal(shared.sandboxSchedulePatchSchema.safeParse(withUnknown).success, false);
+    assert.equal(
+      mcp.sandboxUpdateSpecInputSchema.schedule.safeParse(withUnknown).success,
+      false,
+      'the tool must not accept-and-strip what the API would reject',
+    );
+  });
 });
 
 /**

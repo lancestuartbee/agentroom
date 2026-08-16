@@ -36,8 +36,14 @@ export type SandboxScheduleMergeResult = { ok: true; schedule: SandboxScheduleSh
 
 /**
  * Merge a schedule fragment onto what is stored, refusing anything that would persist an
- * invalid schedule. Both the operator route and the member callback resolve it here so the
- * "first one must be whole" rule cannot hold on one path and not the other.
+ * invalid schedule.
+ *
+ * This is the MEMBER path's rule. The operator route does not merge — its schema demands a
+ * complete schedule and replaces, because an operator holding the whole object may mean
+ * "and no timezone", while a member knows only the field they were asked to change. Both
+ * paths share the invariant that matters (nothing invalid is ever persisted) and reach it
+ * differently on purpose; an earlier comment here claimed both called this function, which
+ * was simply false.
  */
 export function mergeSandboxSchedule(
   existing: SandboxScheduleShape | undefined,

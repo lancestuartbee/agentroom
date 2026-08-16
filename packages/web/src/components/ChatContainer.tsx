@@ -1378,7 +1378,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
               )}
               {rightPanelMode === 'workspace' && <WorkspacePanel />}
               {rightPanelMode === 'transcript' && <TranscriptPanel />}
-              {rightPanelMode === 'sandbox' && <SandboxRunPane />}
+              {rightPanelMode === 'sandbox' && <SandboxRunPane threadId={threadId} />}
             </div>
           </div>
         </>

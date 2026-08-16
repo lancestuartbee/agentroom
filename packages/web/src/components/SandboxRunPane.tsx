@@ -2,7 +2,7 @@
 
 import type { Sandbox, SandboxMemoryV1, SandboxRunRecordV1 } from '@cat-cafe/shared';
 import type { JSX } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSandboxResource } from '@/hooks/useSandboxResource';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
@@ -44,20 +44,29 @@ function statusLabel(status: Sandbox['status']): string {
 
 const buildRuntimePath = (id: string) => `/api/sandboxes/${encodeURIComponent(id)}/runtime`;
 
-export function SandboxRunPane(): JSX.Element | null {
-  const currentThreadId = useChatStore((s) => s.currentThreadId);
-  const threads = useChatStore((s) => s.threads);
-  const sandboxId = threads.find((t) => t.id === currentThreadId)?.sandboxId;
+export function SandboxRunPane({ threadId }: { threadId: string | null | undefined }): JSX.Element | null {
+  // The thread comes from the parent, NOT from the global `currentThreadId`. ChatContainer
+  // syncs the thread it is rendering into the store from an effect, so for one render/effect
+  // window after a switch the global still says A while the pane belongs to B. Deriving the
+  // sandbox from the global there does not just paint the wrong history — it aims "立即运行"
+  // at a sandbox the operator has already left. useSandboxResource guards responses; it
+  // cannot rescue a request that was addressed wrongly before it was sent.
+  const sandboxId = useChatStore((s) => s.threads.find((t) => t.id === threadId)?.sandboxId);
 
   const [triggering, setTriggering] = useState(false);
   const [triggerNote, setTriggerNote] = useState<string | null>(null);
 
-  // Same identity guard as the spec bar: a thread switch mid-flight must not paint one
-  // sandbox's run history under another's, and "立即运行" must not act on a sandbox the
-  // operator is no longer looking at. A failed poll still leaves the last good snapshot on
-  // screen — an empty pane would be worse — but only labelled as stale, because silently
-  // showing old runs as current is the same class of lie the backend refuses to tell when
-  // it distinguishes "unreadable" from "never ran".
+  // A trigger note is about one sandbox's run; carrying it across a switch would tell the
+  // operator something about B that only ever happened to A.
+  useEffect(() => {
+    setTriggerNote(null);
+    setTriggering(false);
+  }, [sandboxId]);
+
+  // A failed poll still leaves the last good snapshot on screen — an empty pane would be
+  // worse — but only labelled as stale, because silently showing old runs as current is the
+  // same class of lie the backend refuses to tell when it distinguishes "unreadable" from
+  // "never ran".
   const {
     data: state,
     error,
@@ -102,7 +111,10 @@ export function SandboxRunPane(): JSX.Element | null {
       </div>
     );
   }
-  if (!state) {
+  // A 200 whose body has no sandbox in it is not data — destructuring it turned the whole
+  // pane into a white screen. "Cannot read it" is a state this pane already knows how to
+  // say, so say that instead of crashing.
+  if (!state?.sandbox) {
     return (
       <div className="p-4 text-sm text-[var(--console-text-muted)]" data-testid="sandbox-run-pane-loading">
         正在读取运行态…

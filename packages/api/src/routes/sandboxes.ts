@@ -335,6 +335,15 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
       return { error: 'Sandbox membership is fixed in v1 and cannot be changed through the spec' };
     }
 
+    // This path REPLACES the schedule; it does not merge. `updateSandboxSpecSchema` requires
+    // a complete `sandboxScheduleSchema` whenever `schedule` is present, so an invalid one
+    // cannot be persisted here either — the invariant both paths share.
+    //
+    // The asymmetry is deliberate, not an omission: an operator sending a schedule has the
+    // whole object in hand and may mean "and no timezone", while a member in conversation
+    // knows only the field they were asked to change. Merging here would make clearing a
+    // timezone impossible. Both semantics are pinned by tests.
+
     const updated = await sandboxStore.updateSpec(id, parseResult.data as UpdateSandboxSpecInput);
     // Editing the spec in the dev pane is how the schedule changes — converge it now so
     // a new/removed cron takes effect without the operator restarting anything.

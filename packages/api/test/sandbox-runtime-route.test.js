@@ -469,6 +469,43 @@ describe('callback auth is registered in the sandbox plugin scope', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
+  // The operator route and the member callback reach the same invariant differently, and
+  // review was right that a comment claiming otherwise is worse than no comment. Pin both.
+  test('the operator route replaces the schedule and refuses a fragment', async () => {
+    const { app, sandbox, sandboxStore, tmpDir } = await buildNoScheduleApp();
+
+    const fragment = await app.inject({
+      method: 'PATCH',
+      url: `/api/sandboxes/${sandbox.id}/spec`,
+      headers: AUTH,
+      payload: { spec: { schedule: { cron: '0 9 * * *' } } },
+    });
+    assert.equal(fragment.statusCode, 400, 'the operator path takes whole schedules, never fragments');
+    assert.equal((await sandboxStore.get(sandbox.id)).spec.schedule, undefined);
+
+    const whole = await app.inject({
+      method: 'PATCH',
+      url: `/api/sandboxes/${sandbox.id}/spec`,
+      headers: AUTH,
+      payload: { spec: { schedule: { cron: '0 9 * * *', prompt: '看一遍持仓', timezone: 'Asia/Shanghai' } } },
+    });
+    assert.equal(whole.statusCode, 200);
+
+    // Replace, not merge: omitting the timezone is how an operator clears it. A member
+    // could not express that, which is exactly why the two paths differ.
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: `/api/sandboxes/${sandbox.id}/spec`,
+      headers: AUTH,
+      payload: { spec: { schedule: { cron: '0 9 * * *', prompt: '看一遍持仓' } } },
+    });
+    assert.equal(cleared.statusCode, 200);
+    assert.equal((await sandboxStore.get(sandbox.id)).spec.schedule.timezone, undefined);
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
   test('the first schedule is accepted once it is whole', async () => {
     const { app, sandbox, sandboxStore, tmpDir, patch } = await buildNoScheduleApp();
 
