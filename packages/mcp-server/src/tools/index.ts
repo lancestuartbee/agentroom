@@ -157,6 +157,7 @@ export {
   richBlockRulesInputSchema,
   richBlockRulesTools,
 } from './rich-block-rules-tool.js';
+export { handleSandboxUpdateSpec, sandboxTools, sandboxUpdateSpecInputSchema } from './sandbox-tools.js';
 export {
   handleListScheduleTemplates,
   handlePreviewScheduledTask,

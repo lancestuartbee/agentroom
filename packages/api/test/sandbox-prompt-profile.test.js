@@ -45,9 +45,7 @@ describe('Sandbox prompt profile', () => {
   });
 
   test('identity addresses members formally — no pet/persona framing', async () => {
-    const { buildSandboxStaticIdentity } = await import(
-      '../dist/domains/cats/services/context/SystemPromptBuilder.js'
-    );
+    const { buildSandboxStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
 
     const identity = buildSandboxStaticIdentity('opus', { sandboxName: '股票模拟沙盘' });
     assert.ok(identity.length > 0, 'sandbox identity must be produced');
@@ -75,5 +73,18 @@ describe('Sandbox prompt profile', () => {
 
     assert.equal(fallbackCalled, false, 'sandbox must not fall through to the development identity');
     assert.doesNotMatch(identity, /FULL_DEVELOPMENT_IDENTITY/);
+  });
+
+  // AC-D4: the dev pane only works if the member knows the tool exists. Without this the
+  // member either refuses ("I cannot change the schedule") or edits spec.yaml by hand,
+  // which persists the change but never re-registers the cron — a schedule edit that
+  // silently does nothing. Pinning it here because a prompt line is exactly the kind of
+  // wiring that disappears in a refactor without any test noticing.
+  test('tells the member how to edit the spec, and not to edit the file', async () => {
+    const { buildSandboxStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+
+    const identity = buildSandboxStaticIdentity('opus', { sandboxName: 'S' });
+    assert.match(identity, /cat_cafe_sandbox_update_spec/);
+    assert.match(identity, /不要直接编辑 spec\.yaml/);
   });
 });

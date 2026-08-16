@@ -517,6 +517,12 @@ export function buildSandboxStaticIdentity(catId: CatId, options?: SandboxStatic
     '工作范围严格限定在本沙盒的 spec、成员和项目目录内；不要引入本沙盒之外的系统设定、团队约定、角色扮演或其他项目的上下文。',
     '保留工程判断力：需要时正常使用开发工具、写测试、自查质量；结论要基于可验证的证据，不确定就说不确定。',
     '与其他成员协作时使用各自的成员标识，保持专业、简洁的书面表达。',
+    // AC-D4: the operator shapes the project by talking here. Without naming the tool the
+    // member would either refuse ("I cannot change the schedule") or edit spec.yaml by
+    // hand — which persists the change but never re-registers the cron, so a schedule
+    // edit would silently do nothing.
+    '当 operator 要求调整本沙盒的目标、学习目标或运行时间时，用 `cat_cafe_sandbox_update_spec` 更新 spec；',
+    '不要直接编辑 spec.yaml —— 只有该工具会同时让调度重新生效。改动在下一次运行时生效。',
     projectPath ? `本沙盒的工作目录与长期记忆位于：${projectPath}` : '',
     '本沙盒的长期记忆只服务于本项目，不写入、不污染沙盒之外的系统记忆。',
   ]

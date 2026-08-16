@@ -19,6 +19,7 @@ import {
   publishVerdictTools,
   recentTools,
   richBlockRulesTools,
+  sandboxTools,
   scheduleTools,
   sessionChainTools,
   shellTools,
@@ -185,6 +186,7 @@ const COLLAB_TOOL_SOURCES: readonly ToolDef[] = [
   ...richBlockRulesTools,
   ...gameActionTools,
   ...scheduleTools,
+  ...sandboxTools, // F247 AC-D4: dev-pane spec editing
   ...shellTools,
 ];
 
