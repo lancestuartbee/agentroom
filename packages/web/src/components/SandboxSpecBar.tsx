@@ -1,7 +1,7 @@
 'use client';
 
 import type { Sandbox } from '@cat-cafe/shared';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSandboxResource } from '@/hooks/useSandboxResource';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
@@ -60,6 +60,17 @@ export function SandboxSpecBar({ threadId }: { threadId: string | null | undefin
   const [expanded, setExpanded] = useState(false);
   const error = mutationError ?? loadError;
 
+  // Both of these belong to one sandbox's mutation, so both are reset when the sandbox
+  // changes — the run pane already did this and the bar did not, which is how a guard meant
+  // to protect B ended up disabling it: `busy` was set for A's pause, and the `finally`
+  // that clears it is correctly skipped once A is no longer current, so nothing ever
+  // cleared it. An identity guard without a reset does not make the flag safe, it makes it
+  // permanent.
+  useEffect(() => {
+    setBusy(false);
+    setMutationError(null);
+  }, [sandboxId]);
+
   const setStatus = useCallback(
     async (status: 'active' | 'paused') => {
       // Capture the id this click belongs to: awaiting below can outlive the thread the
@@ -87,8 +98,14 @@ export function SandboxSpecBar({ threadId }: { threadId: string | null | undefin
         if (!isCurrent(targetId)) return;
         // Trust the server's answer over the status we asked for: a rejected or coerced
         // transition must not leave the bar claiming something the sandbox is not.
-        if (body.sandbox) apply({ sandbox: body.sandbox });
-        else await reload();
+        if (body.sandbox) {
+          apply({ sandbox: body.sandbox });
+        } else {
+          // reload() is another await, and the operator can leave during it. Clearing the
+          // error afterwards without re-checking wipes one B produced in the meantime.
+          await reload();
+          if (!isCurrent(targetId)) return;
+        }
         setMutationError(null);
       } catch {
         if (isCurrent(targetId)) setMutationError('暂停/恢复失败');

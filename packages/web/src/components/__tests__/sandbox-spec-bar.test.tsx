@@ -207,6 +207,120 @@ describe('SandboxSpecBar', () => {
     expect(container.textContent).not.toContain('暂停/恢复失败');
   });
 
+  // The liveness half of the same defect, and what my previous test failed to assert:
+  // "no A error on B" was true while B's controls were dead. `busy` was set for A's pause
+  // and the finally that clears it is guarded by isCurrent — correctly, since it belongs to
+  // A — so nothing ever cleared it, and B's pause/resume stayed disabled forever.
+  it('leaves B\'s controls usable when a pause started on A never comes back to A', async () => {
+    mockThreads = [
+      { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-A' },
+      { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-B' },
+    ];
+    let releasePatch: (v: unknown) => void = () => {};
+    const pending = new Promise((resolve) => {
+      releasePatch = resolve;
+    });
+    mockApiFetch.mockImplementation((_url: string, init?: { method?: string }) =>
+      init?.method === 'PATCH' ? pending : Promise.resolve(jsonResponse({ sandbox: SANDBOX })),
+    );
+
+    const { SandboxSpecBar } = await import('../SandboxSpecBar');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const r = createRoot(container);
+    root = r;
+    await act(async () => {
+      r.render(<SandboxSpecBar threadId="thread-1" />);
+    });
+    click(container, 'spec-bar-pause');
+
+    await act(async () => {
+      r.render(<SandboxSpecBar threadId="thread-2" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const btn = () => container.querySelector('[data-testid="spec-bar-pause"]') as HTMLButtonElement | null;
+    expect(btn(), "B's bar must be rendered").toBeTruthy();
+    expect(btn()?.disabled, "B's pause must not inherit A's in-flight busy flag").toBe(false);
+
+    await act(async () => {
+      releasePatch({ ok: false, status: 500, json: async () => ({}) });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(btn()?.disabled, "A settling must not disable B either").toBe(false);
+  });
+
+  // The one post-await point still unguarded: after `await reload()` the code cleared the
+  // error unconditionally, so A finishing wiped an error B had legitimately just produced.
+  it('does not clear B\'s own error when a reload started on A finishes', async () => {
+    mockThreads = [
+      { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-A' },
+      { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-B' },
+    ];
+    let releaseReloadA: (v: unknown) => void = () => {};
+    const pendingReloadA = new Promise((resolve) => {
+      releaseReloadA = resolve;
+    });
+    let aReloadStarted = false;
+    mockApiFetch.mockImplementation((url: string, init?: { method?: string }) => {
+      if (init?.method === 'PATCH') {
+        // A's pause succeeds but answers without a sandbox, which is what sends the code
+        // down the `await reload()` branch. B's pause fails, giving B an error of its own.
+        if (url.includes('sb-A')) return Promise.resolve(jsonResponse({}));
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+      }
+      if (url.includes('sb-A') && aReloadStarted) return pendingReloadA;
+      if (url.includes('sb-A')) {
+        aReloadStarted = true;
+        return Promise.resolve(jsonResponse({ sandbox: SANDBOX }));
+      }
+      return Promise.resolve(jsonResponse({ sandbox: SANDBOX }));
+    });
+
+    const { SandboxSpecBar } = await import('../SandboxSpecBar');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const r = createRoot(container);
+    root = r;
+    await act(async () => {
+      r.render(<SandboxSpecBar threadId="thread-1" />);
+    });
+
+    // A's pause resolves, falls into reload(), and that reload hangs.
+    click(container, 'spec-bar-pause');
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      r.render(<SandboxSpecBar threadId="thread-2" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    click(container, 'spec-bar-pause');
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent, "B's own failure must be on screen first").toContain('暂停/恢复失败');
+
+    await act(async () => {
+      releaseReloadA({ ok: true, status: 200, json: async () => ({ sandbox: SANDBOX }) });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent, "A finishing must not wipe B's error").toContain('暂停/恢复失败');
+  });
+
   // Same lie as the run pane's: a 200 the bar cannot read is not "still loading".
   it('calls a malformed response unreadable instead of pretending to still be loading', async () => {
     mockApiFetch.mockImplementation(() => Promise.resolve(jsonResponse({})));
