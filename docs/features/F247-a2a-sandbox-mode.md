@@ -167,6 +167,18 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 
 > **成员在 v1 固定，不可对话式修改**（KD-5）。成员同时存在于 `Sandbox.members`（授权依据）和 `spec.members`（调度器选 runner 的依据）；允许编辑会让两者分叉，出现"被唤醒的成员无权改 spec"的运行态。因此**创建时拒绝两者不一致，所有 spec mutation path 一律拒绝 members 编辑**。此前 Phase D 文本写过"可对话式修改成员"，以本条为准。
 
+> **Phase D 已通过 review（luna，2026-08-16）**，`f32591c9..0f3450ef`。
+
+#### 前端沙盒面板的身份契约（Phase D review 反复撞出来的同一个形状）
+
+两个面板都从"当前 thread"推出 sandboxId 再发请求，而 thread 是会切的。review 在四个不同位置撞到同一个错误：**显示的对象和写入的对象不是同一个**。修完后的契约是三层，缺任何一层都会复发：
+
+1. **身份来源**：`threadId` 由 `ChatContainer` 以 prop 传入，不读全局 `currentThreadId`。ChatContainer 是用 effect 把 thread 同步进 store 的，所以切换后有一个 render/effect 窗口全局仍指着上一个 thread——在那个窗口里「立即运行」会把 POST 发给操作者已经离开的沙盒。**请求地址在发出前就错了，任何响应侧守卫都救不回来。**
+2. **响应身份**（`useSandboxResource`）：generation 计数器丢弃被取代的在途响应；数据和它被取回时的 sandboxId 存在一起，id 不匹配就不交出去。切换瞬间数据置空——显示一拍空白是诚实的，显示上一个沙盒不是。
+3. **调用方状态**（`isCurrent(id)` + 切换重置）：mutation 自己写的状态（trigger note / error / busy）hook 看不见，必须在**每一个 await 之后**由调用方检查。且守卫必须配套重置：`busy` 是为 A 设的，清它的 `finally` 被守卫正确跳过后就再没人清，B 的按钮会永久 disabled——**身份守卫没有配套重置，不会让标志变安全，只会让它变永久。**
+
+> ⚠️ **已知覆盖缺口（luna 放行时记录，2026-08-16）**：`useSandboxResource.apply()` 的"切换后旧 mutation reply 不污染 B"**没有直接的 hook 回归测试**。当前安全性来自两个实现细节——调用方在 `apply` 前查 `isCurrent`，且 hook 的 sandboxId-tag getter 不会把旧数据当作 B 交出去。**新增任何 `apply` 调用方都必须沿用 `isCurrent` 守卫**，并应补上这条直测。
+
 ### Phase E（Backflow & Promotion）
 - [ ] AC-E1: 创建沙盒时可设置 `allowBackflow` 开关。
 - [ ] AC-E2: 当 `allowBackflow=true` 时，用户可在开发态把 learned item 提升为系统级知识。
