@@ -265,9 +265,24 @@ export class InMemorySandboxStore implements ISandboxStore {
     }
   }
 
+  /**
+   * List run reports, reading from DISK every time.
+   *
+   * The directory is the sandbox's source of truth, and reports are written there by
+   * the member mid-flight — not through this store. Serving a memory cache here meant
+   * that in a long-running process `listRuns()` never saw reports written after
+   * startup, so the fold found nothing and the sandbox silently stopped learning;
+   * only a restart made progress visible. A cache that can diverge from the source of
+   * truth is the bug, not an optimisation — this runs once per fire, so a readdir is
+   * not worth the risk of being wrong.
+   */
   async listRuns(sandboxId: string, limit = 50): Promise<SandboxRunRecordV1[]> {
-    const list = this.runs.get(sandboxId) ?? [];
-    return list.slice(-limit);
+    const sandbox = this.sandboxes.get(sandboxId);
+    if (!sandbox) return (this.runs.get(sandboxId) ?? []).slice(-limit);
+
+    const fromDisk = await this.listRunFiles(sandbox.projectPath);
+    this.runs.set(sandboxId, fromDisk);
+    return fromDisk.slice(-limit);
   }
 
   async readStateFile(projectPath: string): Promise<SandboxStateFileV1 | null> {
@@ -393,10 +408,21 @@ export class InMemorySandboxStore implements ISandboxStore {
     const { readdir, stat } = await import('node:fs/promises');
     const dir = getRunsDir(projectPath);
     const results: SandboxRunRecordV1[] = [];
+    let entries: string[];
     try {
-      const entries = await readdir(dir);
-      for (const name of entries) {
-        if (!name.endsWith('.md')) continue;
+      entries = await readdir(dir);
+    } catch {
+      // No runs directory yet (fresh sandbox) — not an error worth logging.
+      return results;
+    }
+
+    for (const name of entries) {
+      if (!name.endsWith('.md')) continue;
+      // Per-file isolation: a single unreadable/corrupt report must not abort the scan.
+      // The previous try wrapped the whole loop, so one transient read error silently
+      // hid every other run — i.e. a whole project's accumulated learning could vanish
+      // because of one bad file.
+      try {
         const path = join(dir, name);
         const content = await readFile(path, 'utf-8');
         const statResult = await stat(path);
@@ -427,9 +453,9 @@ export class InMemorySandboxStore implements ISandboxStore {
           summary: (summaryPart ?? content).trim(),
           ...(learned.length > 0 ? { learned } : {}),
         });
+      } catch (err) {
+        log.warn({ err, projectPath, file: name }, 'Failed to read sandbox run report — skipped this file only');
       }
-    } catch {
-      // best-effort
     }
     return results.sort((a, b) => a.triggeredAt - b.triggeredAt);
   }

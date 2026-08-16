@@ -62,17 +62,34 @@ function formatSummaryEntry(record: SandboxRunRecordV1): string {
 }
 
 /**
- * Fold every run newer than `memory.lastRunAt` into the memory.
+ * Fold every not-yet-processed run into the memory.
  *
- * Idempotent by construction: the cursor is what decides, so re-reading the whole runs
- * directory on every fire (which is what actually happens) cannot double-count.
+ * IDEMPOTENCE IS BY RUN ID, NOT BY TIMESTAMP. An earlier version used a
+ * `triggeredAt > lastRunAt` cursor, which silently and permanently dropped runs in
+ * three real situations (review found all three):
+ *
+ *  - two reports sharing a timestamp — the second is never folded;
+ *  - a system clock that steps backwards — everything before the old cursor is lost;
+ *  - concurrent folds — a stale whole-memory write rolls the cursor back.
+ *
+ * A months-long project cannot afford to lose days of learning silently, so membership
+ * in `processedRunIds` decides instead. Under a lost update the ids are re-derived from
+ * disk and those runs simply fold again; `learnedItems` dedupes by id, so the result
+ * converges rather than duplicating.
+ *
+ * `lastRunAt` is retained for display ("last run at ..."), never as the fold gate.
  */
 export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonly SandboxRunRecordV1[]): FoldResult {
   const base = memory ? { ...memory, learnedItems: [...(memory.learnedItems ?? [])] } : emptyMemory();
 
-  const cursor = base.lastRunAt ?? Number.NEGATIVE_INFINITY;
+  const processed = new Set(base.processedRunIds ?? []);
+
+  // Legacy memories predate processedRunIds: seed the set from the old cursor so an
+  // upgrade does not re-fold (and re-summarise) the sandbox's entire history at once.
+  const legacyCursor = processed.size === 0 ? (base.lastRunAt ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY;
+
   const fresh = runs
-    .filter((r) => r.triggeredAt > cursor)
+    .filter((r) => !processed.has(r.runId) && r.triggeredAt > legacyCursor)
     .slice()
     .sort((a, b) => a.triggeredAt - b.triggeredAt);
 
@@ -102,19 +119,27 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   const learnedItems = [...base.learnedItems, ...newLearnings.filter((item) => !seen.has(item.id))];
 
   const last = fresh[fresh.length - 1];
+  const foldedRunIds = fresh.map((r) => r.runId);
+  // Recording the id even for a run with no learnings is what stops that run from
+  // being replayed on every future fire.
+  const processedRunIds = [...processed, ...foldedRunIds];
+
+  // lastRunAt is display-only now, so take the max rather than "the last one folded" —
+  // a late report with an older timestamp must not drag the displayed time backwards.
+  const newestSeen = Math.max(base.lastRunAt ?? Number.NEGATIVE_INFINITY, last?.triggeredAt ?? 0);
+
   return {
     memory: {
       ...base,
       v: 1,
       summary,
       learnedItems,
+      processedRunIds,
       runsIncorporated: base.runsIncorporated + fresh.length,
-      // Advancing the cursor even for a run with no learnings is what stops that run
-      // from being replayed on every future fire.
-      lastRunAt: last?.triggeredAt ?? base.lastRunAt,
-      updatedAt: last?.triggeredAt ?? base.updatedAt,
+      lastRunAt: newestSeen,
+      updatedAt: newestSeen,
     },
     changed: true,
-    foldedRunIds: fresh.map((r) => r.runId),
+    foldedRunIds,
   };
 }

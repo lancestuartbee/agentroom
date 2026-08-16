@@ -78,6 +78,14 @@ export interface SandboxMemoryV1 {
   lastRunAt?: number;
   /** 学习条目 */
   learnedItems?: SandboxLearnedItemV1[];
+  /**
+   * 已折叠进本记忆的运行 ID 集合。
+   *
+   * 幂等判据用**集合成员**而不是 `lastRunAt` 时间戳游标：时间戳会在三种情况下
+   * 永久丢数据——同一时间戳的迟到报告、系统时钟回拨、并发折叠互相覆盖。
+   * 对一个要跑几个月的项目，"静默丢掉几天的学习"是不可接受的失败。
+   */
+  processedRunIds?: string[];
   /** 未解决的开放问题 */
   openQuestions?: string[];
   /** 关键决策 */

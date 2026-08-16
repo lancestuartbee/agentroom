@@ -32,6 +32,7 @@ import {
   type AgentMessage,
   type AgentService,
   type AgentServiceOptions,
+  isEffortCappedPromptProfile,
   isLightweightPromptProfile,
   type MessageMetadata,
 } from '../../types.js';
@@ -239,7 +240,10 @@ function withMessageSystemPrompt(prompt: string, options?: AgentServiceOptions):
 
 function resolveStreamJsonEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
   const configured = getCatEffort(catId, undefined, 'anthropic');
-  if (!isLightweightPromptProfile(options?.promptProfile)) return configured;
+  // Gate on the effort-capped set, not on "lightweight". F247: a sandbox is lightweight
+  // in worldview but does real project work, so it must keep its configured effort —
+  // capping is a cost decision that belongs to conversational modes only.
+  if (!isEffortCappedPromptProfile(options?.promptProfile)) return configured;
   return configured === 'low' ? 'low' : CASUAL_MAX_EFFORT;
 }
 
