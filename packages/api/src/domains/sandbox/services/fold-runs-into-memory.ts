@@ -163,12 +163,16 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   //    copy already published, so the divergence is logged instead of applied.
   const byId = new Map(base.learnedItems.map((item) => [item.id, item]));
   let learningsChanged = false;
+  /** Ids the currently visible reports still assert, so absence can be told from archival. */
+  const assertedIds = new Set<string>();
+  const visibleRunIds = new Set(runs.map((r) => r.runId));
 
   for (const record of runs) {
     for (const [index, content] of (record.learned ?? []).entries()) {
       const trimmed = content.trim();
       if (!trimmed) continue;
       const id = `${record.runId}-${index}`;
+      assertedIds.add(id);
       const existing = byId.get(id);
 
       if (!existing) {
@@ -176,14 +180,74 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
         learningsChanged = true;
         continue;
       }
-      if (existing.content === trimmed) continue;
-      if (existing.promoted) {
-        divergedPromotedIds.push(id);
+      if (existing.content === trimmed) {
+        // The report agrees again — a half-written bullet that finished, not a conflict.
+        // Clearing is what makes divergence self-healing rather than a permanent scar.
+        if (existing.divergence) {
+          byId.set(id, { ...existing, divergence: undefined });
+          learningsChanged = true;
+        }
         continue;
       }
-      byId.set(id, { ...existing, content: trimmed, sourceRunAt: record.triggeredAt });
+      if (existing.promoted) {
+        // Reported on EVERY fold — the disagreement is still true, and the scheduler's
+        // warning should not fall silent after the first time. But re-recording an
+        // identical divergence is not a change: treating it as one would rewrite memory on
+        // every single run for the rest of the sandbox's life, and `changed` would stop
+        // meaning anything.
+        divergedPromotedIds.push(id);
+        const already =
+          existing.divergence?.kind === 'rewritten' &&
+          existing.divergence.reportContent === trimmed &&
+          existing.divergence.observedAt === record.triggeredAt;
+        if (!already) {
+          byId.set(id, {
+            ...existing,
+            divergence: { kind: 'rewritten', reportContent: trimmed, observedAt: record.triggeredAt },
+          });
+          learningsChanged = true;
+        }
+        continue;
+      }
+      byId.set(id, { ...existing, content: trimmed, sourceRunAt: record.triggeredAt, divergence: undefined });
       learningsChanged = true;
     }
+  }
+
+  // A LEARNING THAT VANISHED FROM ITS REPORT (F247 Phase E prerequisite).
+  //
+  // The loop above only walks what the reports currently say, so a member who rewrites a
+  // report and drops a bullet used to be invisible: the stale id sat in memory forever and
+  // nothing warned. Absence means two different things and they must not be conflated:
+  //
+  //  - the report is STILL VISIBLE but no longer contains it → a retraction. The member
+  //    decided it was wrong. Learnings are injected into every future run's prompt, so
+  //    keeping one its own author withdrew is worse than losing it: the sandbox goes on
+  //    reasoning from a judgement that has been taken back.
+  //  - the whole report is GONE → archival, not retraction. Reports get pruned over a
+  //    months-long project and learnings are the accumulated asset; dropping them here
+  //    would turn routine cleanup into amnesia.
+  //
+  // Promoted items are exempt from removal either way, for the same reason a promoted
+  // rewrite is not applied: the content already left the sandbox, and silently dropping
+  // our copy desyncs it from the published one. Report it and let the operator decide.
+  for (const [id, item] of [...byId.entries()]) {
+    if (assertedIds.has(id)) continue;
+    const sourceRunId = id.slice(0, id.lastIndexOf('-'));
+    if (!visibleRunIds.has(sourceRunId)) continue;
+
+    if (item.promoted) {
+      // Same rule as a rewrite: keep reporting it, but only the first observation is a
+      // change to persist.
+      divergedPromotedIds.push(id);
+      if (item.divergence?.kind !== 'retracted') {
+        byId.set(id, { ...item, divergence: { kind: 'retracted', observedAt: item.sourceRunAt } });
+        learningsChanged = true;
+      }
+      continue;
+    }
+    byId.delete(id);
+    learningsChanged = true;
   }
 
   const learnedItems = [...byId.values()];

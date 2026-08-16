@@ -105,6 +105,28 @@ export interface SandboxLearnedItemV1 {
   promoted: boolean;
   /** 提升时间 */
   promotedAt?: number;
+  /**
+   * 已 promoted 条目与其来源报告不再一致时的记录（F247 Phase E 前置）。
+   *
+   * promoted 条目是冻结的——内容已导出到沙盒外，静默改写本地副本会让两边不一致。
+   * 但"只打日志"支撑不了 operator 侧的 UX：进程重启后分歧就消失了。所以分歧连同
+   * **来源指纹**（报告现在说什么）一起持久化在条目上，由 operator 决定是否撤回已发布的副本。
+   */
+  divergence?: SandboxLearningDivergenceV1;
+}
+
+export interface SandboxLearningDivergenceV1 {
+  /** `rewritten` = 报告改了这条内容；`retracted` = 报告还在，但这条被删掉了。 */
+  kind: 'rewritten' | 'retracted';
+  /** 报告现在说什么。retracted 时不存在——正是"它不再说了"。 */
+  reportContent?: string;
+  /**
+   * 观察到分歧时那份报告的 `triggeredAt`。
+   *
+   * 刻意用运行时间而不是墙上时钟：折叠是纯函数，同样的报告折叠多少次都必须得到
+   * 同样的记忆，否则幂等性就没了。
+   */
+  observedAt: number;
 }
 
 /**

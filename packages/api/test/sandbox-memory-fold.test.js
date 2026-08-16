@@ -136,3 +136,152 @@ describe('Sandbox memory fold', () => {
     assert.match(prompt, /还有\s*\d+\s*条/, 'must disclose that older learnings exist rather than hide them');
   });
 });
+
+/**
+ * F247 Phase E prerequisite — what it means for a learning to disappear from its report.
+ *
+ * The projection model made memory converge to what the reports SAY, but the loop only ever
+ * walked what the reports currently contain. A member who rewrites a report and drops a
+ * bullet was therefore invisible: the old `runId-index` stayed in memory forever, no
+ * divergence was raised, and the scheduler never warned.
+ *
+ * The semantics this pins down, and why:
+ *
+ *  - A bullet removed from a report that is STILL THERE is a retraction. The member decided
+ *    it was wrong. Learnings are injected into every future run's prompt, so keeping a
+ *    retracted one is worse than losing it — it actively reasons from something its own
+ *    author withdrew.
+ *  - A learning whose whole report is GONE is not retracted, it is archived. Reports get
+ *    pruned over a months-long project; learnings are the accumulated asset. Keep it.
+ *  - A PROMOTED learning is never removed either way. It has been exported out of the
+ *    sandbox, and silently dropping the local copy desyncs it from the published one — the
+ *    same reason a promoted rewrite is reported rather than applied. Report the divergence
+ *    and let the operator decide.
+ *
+ * And the divergence has to survive the process: log-only cannot drive an operator-facing
+ * UX, so it is recorded on the item itself with what the report says now.
+ */
+describe('a learning that vanishes from its report', () => {
+  const load = () => import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+
+  async function seed(learned) {
+    const { foldRunsIntoMemory } = await load();
+    return foldRunsIntoMemory(null, [run('r1', 1000, '第一天', learned)]).memory;
+  }
+
+  test('a bullet deleted from a still-visible report is retracted, not kept', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const memory = await seed(['第一条', '第二条']);
+    assert.equal(memory.learnedItems.length, 2);
+
+    // The member rewrites the report keeping only the first bullet.
+    const result = foldRunsIntoMemory(memory, [run('r1', 1000, '第一天', ['第一条'])]);
+
+    assert.ok(result.changed, 'a retraction is a real change worth persisting');
+    assert.deepEqual(
+      result.memory.learnedItems.map((i) => i.content),
+      ['第一条'],
+    );
+  });
+
+  test('a learning whose whole report is gone is archived, not retracted', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const memory = await seed(['第一条', '第二条']);
+
+    // The report itself was pruned — no runs visible at all.
+    const result = foldRunsIntoMemory(memory, []);
+
+    assert.equal(result.memory.learnedItems.length, 2, 'pruning reports must not cause amnesia');
+  });
+
+  test('a promoted learning is reported as retracted rather than removed', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const memory = await seed(['第一条', '第二条']);
+    memory.learnedItems[1].promoted = true;
+
+    const result = foldRunsIntoMemory(memory, [run('r1', 1000, '第一天', ['第一条'])]);
+
+    assert.deepEqual(result.divergedPromotedIds, ['r1-1']);
+    const kept = result.memory.learnedItems.find((i) => i.id === 'r1-1');
+    assert.ok(kept, 'the exported copy still exists outside the sandbox — do not drop ours');
+    assert.equal(kept.content, '第二条', 'the published content must not be silently altered');
+    assert.equal(kept.divergence.kind, 'retracted');
+  });
+
+  test('divergence is persisted on the item, not merely logged', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const memory = await seed(['原始内容']);
+    memory.learnedItems[0].promoted = true;
+
+    const result = foldRunsIntoMemory(memory, [run('r1', 1000, '第一天', ['改写后的内容'])]);
+
+    const item = result.memory.learnedItems[0];
+    assert.equal(item.content, '原始内容', 'a promoted item is frozen');
+    assert.equal(item.divergence.kind, 'rewritten');
+    assert.equal(item.divergence.reportContent, '改写后的内容', 'record what the report says now');
+    assert.equal(item.divergence.observedAt, 1000);
+  });
+
+  test('divergence clears itself when the report agrees again', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const memory = await seed(['原始内容']);
+    memory.learnedItems[0].promoted = true;
+
+    const diverged = foldRunsIntoMemory(memory, [run('r1', 1000, '第一天', ['改写后的内容'])]).memory;
+    assert.ok(diverged.learnedItems[0].divergence);
+
+    // The member puts it back — a half-written report that completed, not a real conflict.
+    const healed = foldRunsIntoMemory(diverged, [run('r1', 1000, '第一天', ['原始内容'])]);
+    assert.equal(healed.memory.learnedItems[0].divergence, undefined);
+  });
+
+  test('an unrelated run being folded does not retract another run\'s learnings', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const memory = await seed(['第一天学到的']);
+
+    const result = foldRunsIntoMemory(memory, [
+      run('r1', 1000, '第一天', ['第一天学到的']),
+      run('r2', 2000, '第二天', ['第二天学到的']),
+    ]);
+
+    assert.deepEqual(
+      result.memory.learnedItems.map((i) => i.content).sort(),
+      ['第一天学到的', '第二天学到的'],
+    );
+  });
+});
+
+/**
+ * Divergence must be IDEMPOTENT. A promoted item that disagrees with its report disagrees
+ * on every future fold, so re-recording an identical divergence must not count as a change
+ * — otherwise `changed` stops meaning anything and memory is rewritten on every single run
+ * for the rest of the sandbox's life.
+ */
+describe('recording a divergence is idempotent', () => {
+  const load = () => import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+
+  test('re-folding an unchanged rewrite reports it again but rewrites nothing', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [run('r1', 1000, '第一天', ['原始内容'])]).memory;
+    seeded.learnedItems[0].promoted = true;
+
+    const first = foldRunsIntoMemory(seeded, [run('r1', 1000, '第一天', ['改写后的内容'])]);
+    assert.ok(first.changed);
+
+    const second = foldRunsIntoMemory(first.memory, [run('r1', 1000, '第一天', ['改写后的内容'])]);
+    assert.equal(second.changed, false, 'the same disagreement is not a new change');
+    assert.deepEqual(second.divergedPromotedIds, ['r1-0'], 'but it is still reported every fold');
+  });
+
+  test('re-folding an unchanged retraction rewrites nothing either', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [run('r1', 1000, '第一天', ['甲', '乙'])]).memory;
+    seeded.learnedItems[1].promoted = true;
+
+    const first = foldRunsIntoMemory(seeded, [run('r1', 1000, '第一天', ['甲'])]);
+    assert.ok(first.changed);
+
+    const second = foldRunsIntoMemory(first.memory, [run('r1', 1000, '第一天', ['甲'])]);
+    assert.equal(second.changed, false);
+  });
+});
