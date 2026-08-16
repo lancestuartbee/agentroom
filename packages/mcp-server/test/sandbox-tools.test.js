@@ -116,4 +116,28 @@ describe('cat_cafe_sandbox_update_spec', () => {
     assert.equal(result.isError, true);
     assert.equal(calls.length, 0);
   });
+
+  // Review finding: the API was relaxed to nested-partial but this schema still demanded
+  // the whole schedule object, so "move it to 09:00" was rejected LOCALLY and never
+  // reached the fixed endpoint. Two schemas for one contract drifted the moment only one
+  // was updated.
+  it('sends a cron-only schedule edit instead of rejecting it locally', async () => {
+    const { handleSandboxUpdateSpec } = await import('../dist/tools/sandbox-tools.js');
+
+    const result = await handleSandboxUpdateSpec({ schedule: { cron: '0 9 * * *' } });
+
+    assert.equal(result.isError, undefined, '"move it to 09:00" must not fail before leaving the tool');
+    assert.equal(calls.length, 1, 'the request must actually reach the API');
+    const body = JSON.parse(calls[0].init.body);
+    assert.deepEqual(body.spec.schedule, { cron: '0 9 * * *' });
+    assert.equal(body.spec.schedule.timezone, undefined, 'the tool must not invent a timezone it never saw');
+  });
+
+  it('accepts a timezone-only edit too', async () => {
+    const { handleSandboxUpdateSpec } = await import('../dist/tools/sandbox-tools.js');
+
+    await handleSandboxUpdateSpec({ schedule: { timezone: 'Asia/Shanghai' } });
+    const body = JSON.parse(calls[0].init.body);
+    assert.deepEqual(body.spec.schedule, { timezone: 'Asia/Shanghai' });
+  });
 });

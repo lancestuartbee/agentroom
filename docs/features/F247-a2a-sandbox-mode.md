@@ -156,7 +156,9 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 - [ ] AC-D1: 创建会话 modal 可选择"A2A 沙盒"。
 - [ ] AC-D2: 沙盒会话顶部显示 mode、schedule 状态、回流开关。
 - [ ] AC-D3: 沙盒会话渲染左右双栏，左栏可编辑 spec，右栏展示运行态。
-- [ ] AC-D4: 开发态对话修改 spec 后，目录中 `spec.yaml` 和 `spec/` 历史同步更新。
+- [x] AC-D4: 开发态对话修改 spec 后，目录中 `spec.yaml` 和 `spec/` 历史同步更新。成员通过 `cat_cafe_sandbox_update_spec` 走 `PATCH /api/callback/sandbox/spec`；**不接受 sandboxId**（由 invocation 的 threadId 推导），且要求调用者 ∈ `sandbox.members`（"由 thread 推导"是 scope，不是 authorization）。
+
+> **成员在 v1 固定，不可对话式修改**（KD-5）。成员同时存在于 `Sandbox.members`（授权依据）和 `spec.members`（调度器选 runner 的依据）；允许编辑会让两者分叉，出现"被唤醒的成员无权改 spec"的运行态。因此**创建时拒绝两者不一致，所有 spec mutation path 一律拒绝 members 编辑**。此前 Phase D 文本写过"可对话式修改成员"，以本条为准。
 
 ### Phase E（Backflow & Promotion）
 - [ ] AC-E1: 创建沙盒时可设置 `allowBackflow` 开关。

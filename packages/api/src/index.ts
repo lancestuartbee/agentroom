@@ -171,8 +171,8 @@ import { gameRoutes } from './routes/games.js';
 import {
   accountsRoutes,
   agentHooksRoutes,
-  artifactStoreRoutes,
   approvalHubRoutes,
+  artifactStoreRoutes,
   audioProxyRoutes,
   auditRoutes,
   authorizationRoutes,
@@ -242,6 +242,7 @@ import {
   registerProfileUpdateDecisionRoutes,
   resolutionRoutes,
   rulesRoutes,
+  sandboxesRoutes,
   servicesRoutes,
   sessionChainRoutes,
   sessionHandoffApproveRoutes,
@@ -260,7 +261,6 @@ import {
   threadBranchRoutes,
   threadCatsRoutes,
   threadsRoutes,
-  sandboxesRoutes,
   toolUsageRoutes,
   ttsRoutes,
   uploadsRoutes,
@@ -2554,6 +2554,10 @@ async function main(): Promise<void> {
   await app.register(sandboxesRoutes, {
     threadStore,
     sandboxStore,
+    // F247 AC-D4: Fastify hooks are encapsulated per plugin, so the sibling
+    // callbackAuthRoutes registration does NOT reach this one — the dev-pane write path
+    // needs the registry here or it 401s every real MCP call.
+    callbackRegistry: registry,
     // F247 Phase C: sandbox cron tasks reuse the existing dynamic-task machinery.
     scheduleDeps: {
       dynamicTaskStore: {

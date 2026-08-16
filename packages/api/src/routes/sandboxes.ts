@@ -24,6 +24,7 @@ import { syncSandboxSchedule, triggerSandboxRunNow } from '../domains/sandbox/se
 import { createModuleLogger } from '../infrastructure/logger.js';
 import { validateProjectPath } from '../utils/project-path.js';
 import { resolveUserId } from '../utils/request-identity.js';
+import { type CallbackAuthRegistry, registerCallbackAuthHook } from './callback-auth-prehandler.js';
 
 const log = createModuleLogger('routes/sandboxes');
 
@@ -35,6 +36,14 @@ export interface SandboxesRoutesOptions {
    * without a live task runner — a sandbox without it simply never fires on cron.
    */
   scheduleDeps?: SandboxScheduleDeps;
+  /**
+   * Callback auth registry. REQUIRED for the dev-pane write path: Fastify hooks are
+   * encapsulated per plugin, so registering callbackAuthRoutes as a sibling does NOT
+   * give this plugin `request.callbackAuth` — review found the route returning 401 to
+   * every real MCP call while its tests passed, because the tests hand-decorated the
+   * field instead of registering the real hook.
+   */
+  callbackRegistry: CallbackAuthRegistry;
 }
 
 /**
@@ -100,6 +109,30 @@ const updateSandboxSpecSchema = z
   })
   .strict();
 
+/**
+ * The dev pane's schema. Unlike the operator-facing PATCH, the schedule is NESTED-partial:
+ * a member told "move it to 09:00" knows the new cron but has never seen the stored
+ * prompt or timezone. Demanding the whole object would make that ordinary request fail,
+ * or silently drop the timezone — so accept the fragment and merge it server-side.
+ */
+const callbackUpdateSpecSchema = z
+  .object({
+    spec: sandboxSpecSchema
+      .partial()
+      .extend({
+        schedule: z
+          .object({
+            cron: z.string().trim().min(1).max(100),
+            prompt: z.string().trim().min(1).max(2000),
+            timezone: z.string().trim().max(100).optional(),
+          })
+          .partial()
+          .optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
 const updateSandboxSettingsSchema = z
   .object({
     settings: z
@@ -123,7 +156,16 @@ function sanitizeSandboxForResponse(sandbox: Sandbox): Sandbox {
 }
 
 export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async (app, opts) => {
-  const { threadStore, sandboxStore, scheduleDeps } = opts;
+  const { threadStore, sandboxStore, scheduleDeps, callbackRegistry } = opts;
+  // Fail FAST rather than degrading. When this was optional, a missing registry silently
+  // turned the whole dev-pane write path into a 401 — production was broken for a wiring
+  // omission no startup check would surface. Crashing at boot is the cheap failure.
+  if (!callbackRegistry) {
+    throw new Error(
+      'sandboxesRoutes requires callbackRegistry — the dev-pane write path cannot authenticate without it',
+    );
+  }
+  registerCallbackAuthHook(app, callbackRegistry);
 
   // POST /api/sandboxes - 创建沙盒（同时创建绑定 Thread）
   app.post('/api/sandboxes', async (request, reply) => {
@@ -138,6 +180,19 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
     if (!userId) {
       reply.status(401);
       return { error: 'Identity required (session cookie or X-Cat-Cafe-User header)' };
+    }
+
+    // Membership is fixed for the life of a v1 sandbox (KD-5) and is stored TWICE:
+    // Sandbox.members drives authorization, spec.members drives the scheduler's runner
+    // choice. Letting them differ at creation bakes in a state where the member that gets
+    // woken is not the one allowed to edit the spec — so refuse rather than silently
+    // picking one as authoritative.
+    const membersMatch = members.length === spec.members.length && members.every((m, i) => m === spec.members[i]);
+    if (!membersMatch) {
+      reply.status(400);
+      return {
+        error: 'members and spec.members must be identical — sandbox membership is a single fixed list in v1',
+      };
     }
 
     const validatedProjectPath = await validateProjectPath(projectPath);
@@ -286,6 +341,13 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
       return { error: 'Sandbox does not belong to this user' };
     }
 
+    // Same fixed-membership rule as the callback path. Enforcing it in only ONE mutation
+    // path is exactly how the two member lists drift apart.
+    if (parseResult.data.spec.members) {
+      reply.status(400);
+      return { error: 'Sandbox membership is fixed in v1 and cannot be changed through the spec' };
+    }
+
     const updated = await sandboxStore.updateSpec(id, parseResult.data as UpdateSandboxSpecInput);
     // Editing the spec in the dev pane is how the schedule changes — converge it now so
     // a new/removed cron takes effect without the operator restarting anything.
@@ -313,7 +375,7 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
       return { error: 'Callback authentication required' };
     }
 
-    const parseResult = updateSandboxSpecSchema.safeParse(request.body);
+    const parseResult = callbackUpdateSpecSchema.safeParse(request.body);
     if (!parseResult.success) {
       reply.status(400);
       return { error: 'Invalid request body', details: parseResult.error.issues };
@@ -325,8 +387,44 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
       return { error: 'This thread is not bound to an A2A sandbox' };
     }
 
+    // Deriving the target from the thread is SCOPE, not authorization — review's point.
+    // A scheduler/connector trigger carries an explicit catId, so a member that is not
+    // part of this sandbox can still be routed into its thread. Rewriting the project's
+    // spec is the most consequential thing in the mode; require actual membership.
+    if (!sandbox.members.includes(auth.catId as CatId)) {
+      log.warn(
+        { sandboxId: sandbox.id, catId: auth.catId, members: sandbox.members },
+        'Rejected sandbox spec update from a non-member',
+      );
+      reply.status(403);
+      return { error: 'Only a member of this sandbox may edit its spec' };
+    }
+
+    // v1 keeps membership fixed (F247 KD-5), and members live in BOTH Sandbox.members and
+    // spec.members. Accepting an edit here would fork them and silently desync routing
+    // from the spec, so the write path refuses rather than half-applying it.
+    if (parseResult.data.spec.members) {
+      reply.status(400);
+      return { error: 'Sandbox membership is fixed in v1 and cannot be changed through the spec' };
+    }
+
+    // A member told "move it to 09:00" knows the new cron but not the old prompt or
+    // timezone. Requiring the whole schedule object would make that ordinary request
+    // fail, or silently drop the timezone — so merge onto what is already stored.
+    const patch = { ...parseResult.data.spec };
+    if (patch.schedule) {
+      if (sandbox.spec.schedule) {
+        patch.schedule = { ...sandbox.spec.schedule, ...patch.schedule };
+      } else if (!patch.schedule.cron) {
+        // Nothing to merge onto: a fragment here would persist a schedule with no cron,
+        // which the scheduler would then quietly default. Make the member say when.
+        reply.status(400);
+        return { error: 'This sandbox has no schedule yet — provide a cron expression to create one' };
+      }
+    }
+
     try {
-      const updated = await sandboxStore.updateSpec(sandbox.id, parseResult.data as UpdateSandboxSpecInput);
+      const updated = await sandboxStore.updateSpec(sandbox.id, { spec: patch } as UpdateSandboxSpecInput);
       if (!updated) {
         reply.status(404);
         return { error: 'Sandbox not found' };

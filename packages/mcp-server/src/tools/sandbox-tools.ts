@@ -20,18 +20,33 @@ import { errorResult, successResult, type ToolResult } from './file-tools.js';
  *    now, applies on the next run" true rather than aspirational.
  */
 
+/**
+ * NESTED-PARTIAL, and it must stay that way.
+ *
+ * The natural request is "move it to 09:00": the member knows the new cron and has never
+ * seen the stored prompt or timezone. Review found this schema still demanding the whole
+ * object after the API had been relaxed — so the tool rejected the request locally and
+ * never even reached the fixed endpoint. Every field is optional here; the server merges
+ * the fragment onto what is stored and rejects a first-time schedule without a cron.
+ */
 const scheduleSchema = z.object({
   cron: z
     .string()
     .min(1)
     .max(100)
-    .describe('Cron expression, e.g. "0 9 * * *" for 09:00 daily. Omit the schedule field to leave it unchanged.'),
-  prompt: z.string().min(1).max(2000).describe('Kept for compatibility; the run instruction is built from the spec.'),
+    .optional()
+    .describe('Cron expression, e.g. "0 9 * * *" for 09:00 daily. Required only when no schedule exists yet.'),
+  prompt: z
+    .string()
+    .min(1)
+    .max(2000)
+    .optional()
+    .describe('Optional; omit to keep the stored value. The run instruction is built from the spec, not this.'),
   timezone: z
     .string()
     .max(100)
     .optional()
-    .describe('IANA timezone such as Asia/Shanghai. Strongly recommended: "09:00" is meaningless without it.'),
+    .describe('IANA timezone such as Asia/Shanghai. Omit to keep the stored one — never guess it.'),
 });
 
 export const sandboxUpdateSpecInputSchema = {
@@ -49,7 +64,9 @@ export const sandboxUpdateSpecInputSchema = {
     .max(2000)
     .optional()
     .describe('What the sandbox should accumulate over time, as opposed to what it does each run.'),
-  schedule: scheduleSchema.optional().describe('Run cadence. Editing this re-registers the scheduled task.'),
+  schedule: scheduleSchema
+    .optional()
+    .describe('Run cadence. Send only the fields you are changing; editing this re-registers the scheduled task.'),
 };
 
 const inputObject = z.object(sandboxUpdateSpecInputSchema);
