@@ -19,7 +19,10 @@ const log = createModuleLogger('scheduler/sandbox-run');
 async function foldPendingRuns(store: ISandboxStore, sandboxId: string): Promise<SandboxMemoryV1 | null> {
   const memory = await store.getMemory(sandboxId);
   try {
-    const runs = await store.listRuns(sandboxId, 500);
+    // No limit: processedRunIds cannot rescue a report that was never read. With a
+    // tail-500 window, sandbox #501 onwards would make the OLDEST unprocessed report
+    // permanently invisible — it would sit on disk forever, never folded.
+    const runs = await store.listRuns(sandboxId);
     const folded = foldRunsIntoMemory(memory, runs);
     if (!folded.changed) return memory;
     await store.updateMemory(sandboxId, folded.memory);

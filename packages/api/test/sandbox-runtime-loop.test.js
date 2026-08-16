@@ -221,3 +221,198 @@ describe('Sandbox provider effort', () => {
     );
   });
 });
+
+describe('Sandbox fold — legacy migration and long-run bounds', () => {
+  // Re-review finding (luna P1). My previous "legacy seed" only FILTERED by the old
+  // cursor without putting those ids into processedRunIds. So the second fold saw a
+  // non-empty set, dropped the cursor, and replayed the whole pre-migration history.
+  // My test asserted only the FIRST fold — the same mistake shape as the last round
+  // (assert step one, never step two), so it certified the bug as fixed.
+  test('legacy memory does not replay history on the SECOND fold either', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+    const legacy = { v: 1, summary: 'old', runsIncorporated: 3, lastRunAt: 5000, learnedItems: [], updatedAt: 5000 };
+    const runs = [
+      { v: 1, runId: 'old1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary: 'x', learned: ['X'] },
+      { v: 1, runId: 'new1', trigger: 'scheduled', triggeredAt: 6000, specVersion: '1', summary: 'y', learned: ['Y'] },
+    ];
+
+    const first = foldRunsIntoMemory(legacy, runs);
+    assert.deepEqual(first.foldedRunIds, ['new1']);
+    assert.equal(first.memory.runsIncorporated, 4);
+
+    const second = foldRunsIntoMemory(first.memory, runs);
+    assert.deepEqual(second.foldedRunIds, [], 'pre-migration history must never be replayed');
+    assert.equal(second.memory.runsIncorporated, 4, 'run count must not inflate');
+    assert.equal(second.changed, false);
+
+    // And a third, for good measure — convergence, not oscillation.
+    const third = foldRunsIntoMemory(second.memory, runs);
+    assert.deepEqual(third.foldedRunIds, []);
+    assert.equal(third.memory.runsIncorporated, 4);
+  });
+
+  // Re-review finding (luna P2): the scheduler asked for the last 500 reports, so past
+  // 500 the OLDEST unprocessed report becomes permanently invisible — processedRunIds
+  // cannot help with a run that is never even read.
+  test('a sandbox with more than 500 reports still folds the oldest one', async () => {
+    const { foldRunsIntoMemory } = await import(
+      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
+    );
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { renderSandboxRunReport } = await import(
+      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
+    );
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-500-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+
+    for (let i = 0; i < 501; i++) {
+      await writeFile(
+        join(runsDir, `run-${String(i).padStart(4, '0')}.md`),
+        renderSandboxRunReport({
+          runId: `run-${String(i).padStart(4, '0')}`,
+          trigger: 'scheduled',
+          specVersion: '1',
+          summary: `day ${i}`,
+          learned: [`learned-${i}`],
+          triggeredAt: 1_000_000 + i * 1000,
+        }),
+        'utf-8',
+      );
+    }
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const runs = await store.listRuns(sandbox.id);
+    assert.equal(runs.length, 501, 'every report on disk must be readable');
+
+    const folded = foldRunsIntoMemory(null, runs);
+    assert.ok(folded.foldedRunIds.includes('run-0000'), 'the oldest report must not be permanently invisible');
+    assert.equal(folded.memory.runsIncorporated, 501);
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  // Re-review finding (luna P2): every readdir error collapsed to "no runs", and
+  // listRuns then overwrote the cache with that empty result. A permissions or I/O
+  // fault would read as "this sandbox has never run".
+  test('a directory read fault is not reported as an empty sandbox', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+    const { renderSandboxRunReport } = await import(
+      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
+    );
+    const { chmod } = await import('node:fs/promises');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-eacces-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+    await writeFile(
+      join(runsDir, 'run-1.md'),
+      renderSandboxRunReport({
+        runId: 'run-1',
+        trigger: 'scheduled',
+        specVersion: '1',
+        summary: 's',
+        learned: ['L'],
+        triggeredAt: 1000,
+      }),
+      'utf-8',
+    );
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const warm = await store.listRuns(sandbox.id);
+    assert.equal(warm.length, 1);
+
+    await chmod(runsDir, 0o000);
+    try {
+      const afterFault = await store.listRuns(sandbox.id);
+      // Must NOT report an empty sandbox: either preserve what we knew, or throw.
+      assert.equal(afterFault.length, 1, 'a read fault must not masquerade as "no runs"');
+    } finally {
+      await chmod(runsDir, 0o755);
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  // Newly load-bearing after listRuns started reading disk live: the scan can now catch
+  // a member mid-write. A half-written report parsed as complete would be folded and
+  // marked processed, permanently losing that run's learnings.
+  test('a half-written report is skipped, not folded and marked processed', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-partial-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+
+    // Truncated mid-write: header and summary present, `## Learned` never reached.
+    await writeFile(
+      join(runsDir, 'run-partial.md'),
+      ['# Sandbox Run run-partial', '', '- Trigger: scheduled', '- Triggered At: 2026-01-01T00:00:00.000Z', '- Spec Version: 1', '', '## Summary', '', '写到一半就断了'].join('\n'),
+      'utf-8',
+    );
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const runs = await store.listRuns(sandbox.id);
+    assert.equal(runs.length, 0, 'an incomplete report must not be treated as a finished run');
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+});
+
+describe('Sandbox provider effort — real resolver behaviour', () => {
+  // Re-review finding (luna): the source-regex guard proves no effort function MENTIONS
+  // the wrong predicate, but it cannot prove a CALLER picked the right gate — an arrow
+  // function, a method, or an aliased import would slip past it. Assert the actual
+  // resolved value instead; the regex stays as defense-in-depth.
+  test('sandbox keeps its configured effort on both providers; chat modes stay capped', async () => {
+    const { resolveStreamJsonEffort } = await import(
+      '../dist/domains/cats/services/agents/providers/ClaudeStreamJsonCarrierService.js'
+    );
+    const { resolveCodexEffort } = await import(
+      '../dist/domains/cats/services/agents/providers/CodexAgentService.js'
+    );
+
+    for (const [label, resolve, catId] of [
+      ['claude-stream-json', resolveStreamJsonEffort, 'opus'],
+      ['codex', resolveCodexEffort, 'codex'],
+    ]) {
+      const configured = resolve(catId, { promptProfile: 'development' });
+      const sandbox = resolve(catId, { promptProfile: 'sandbox' });
+      const casual = resolve(catId, { promptProfile: 'casual' });
+
+      assert.equal(sandbox, configured, `${label}: sandbox must keep the configured effort, not be capped`);
+      if (configured !== 'low') {
+        assert.notEqual(casual, configured, `${label}: casual must still be capped`);
+      }
+    }
+  });
+});

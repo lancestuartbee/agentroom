@@ -276,13 +276,24 @@ export class InMemorySandboxStore implements ISandboxStore {
    * truth is the bug, not an optimisation — this runs once per fire, so a readdir is
    * not worth the risk of being wrong.
    */
-  async listRuns(sandboxId: string, limit = 50): Promise<SandboxRunRecordV1[]> {
+  async listRuns(sandboxId: string, limit?: number): Promise<SandboxRunRecordV1[]> {
+    const cached = this.runs.get(sandboxId) ?? [];
     const sandbox = this.sandboxes.get(sandboxId);
-    if (!sandbox) return (this.runs.get(sandboxId) ?? []).slice(-limit);
+    if (!sandbox) return limit === undefined ? cached : cached.slice(-limit);
 
-    const fromDisk = await this.listRunFiles(sandbox.projectPath);
+    let fromDisk: SandboxRunRecordV1[];
+    try {
+      fromDisk = await this.listRunFiles(sandbox.projectPath);
+    } catch (err) {
+      // A permissions/IO fault is NOT "this sandbox has never run". Reporting an empty
+      // list here would let the caller conclude there is nothing to fold, and would
+      // also clobber the cache with that lie. Keep what we last knew and stay loud.
+      log.warn({ err, sandboxId }, 'Failed to read sandbox runs directory — serving last known runs');
+      return limit === undefined ? cached : cached.slice(-limit);
+    }
+
     this.runs.set(sandboxId, fromDisk);
-    return fromDisk.slice(-limit);
+    return limit === undefined ? fromDisk : fromDisk.slice(-limit);
   }
 
   async readStateFile(projectPath: string): Promise<SandboxStateFileV1 | null> {
@@ -411,9 +422,13 @@ export class InMemorySandboxStore implements ISandboxStore {
     let entries: string[];
     try {
       entries = await readdir(dir);
-    } catch {
-      // No runs directory yet (fresh sandbox) — not an error worth logging.
-      return results;
+    } catch (err) {
+      // ONLY a missing directory is normal (fresh sandbox with no runs yet). Every
+      // other fault — EACCES, EIO — must propagate: silently returning [] would make a
+      // broken disk indistinguishable from "this sandbox has never run", which is the
+      // difference between an alert and months of learning quietly disappearing.
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return results;
+      throw err;
     }
 
     for (const name of entries) {
@@ -437,9 +452,20 @@ export class InMemorySandboxStore implements ISandboxStore {
         const parsedTriggeredAt = triggeredAtMatch ? Date.parse(triggeredAtMatch[1].trim()) : Number.NaN;
         const triggeredAt = Number.isFinite(parsedTriggeredAt) ? parsedTriggeredAt : statResult.mtimeMs;
 
-        // `## Summary` runs until `## Learned` (when present). Without this split the
-        // durable-learning section would be swallowed back into the ephemeral summary,
-        // collapsing the very distinction the run report exists to express.
+        // COMPLETENESS GATE. listRuns() now reads the directory live, so a scan can
+        // catch a member mid-write. renderSandboxRunReport() ALWAYS emits `## Learned`
+        // last, so its absence means the file is still being written. Treating a
+        // truncated report as finished would fold a partial summary and mark the run
+        // processed — permanently losing that day's learnings. Skip it; the next fire
+        // picks up the completed file.
+        if (!content.includes('## Learned')) {
+          log.warn({ projectPath, file: name }, 'Sandbox run report looks incomplete — skipped until fully written');
+          continue;
+        }
+
+        // `## Summary` runs until `## Learned`. Without this split the durable-learning
+        // section would be swallowed back into the ephemeral summary, collapsing the
+        // very distinction the run report exists to express.
         const afterSummary = content.split('## Summary')[1] ?? content;
         const [summaryPart, learnedPart] = afterSummary.split('## Learned');
         const learned = parseLearnedBullets(learnedPart);

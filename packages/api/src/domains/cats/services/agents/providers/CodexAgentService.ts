@@ -118,7 +118,8 @@ const MAX_STREAM_ERROR_LENGTH = 240;
 const CASUAL_MAX_EFFORT: CliEffortLevel = 'medium';
 const VOLATILE_CALLBACK_ENV_KEYS = ['CAT_CAFE_INVOCATION_ID', 'CAT_CAFE_CALLBACK_TOKEN'] as const;
 
-function resolveCodexEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
+/** Exported for tests: the regex guard cannot prove the CALLER picked the right gate. */
+export function resolveCodexEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
   const configured = getCatEffort(catId, undefined, 'openai');
   // Gate on the effort-capped set, not on "lightweight": a sandbox is lightweight in
   // worldview but does real project work, so it keeps its configured effort.

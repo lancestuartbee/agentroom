@@ -51,6 +51,8 @@ export interface ISandboxStore {
   addRun(sandboxId: string, run: SandboxRunRecordV1): Promise<void>;
 
   /** 列出运行记录 */
+  /** Omit `limit` to get every report. The fold MUST omit it — an unread report can
+   * never be folded, so a tail window would permanently strand the oldest ones. */
   listRuns(sandboxId: string, limit?: number): Promise<SandboxRunRecordV1[]>;
 
   /** 读取沙盒状态文件（用于目录持久化） */

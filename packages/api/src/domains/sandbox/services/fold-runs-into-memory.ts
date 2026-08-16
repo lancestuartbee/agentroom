@@ -84,12 +84,21 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
 
   const processed = new Set(base.processedRunIds ?? []);
 
-  // Legacy memories predate processedRunIds: seed the set from the old cursor so an
-  // upgrade does not re-fold (and re-summarise) the sandbox's entire history at once.
-  const legacyCursor = processed.size === 0 ? (base.lastRunAt ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY;
+  // Legacy memories predate processedRunIds. MIGRATE by actually adding the
+  // already-incorporated ids to the set — an earlier version merely FILTERED by the old
+  // cursor without recording anything, so the second fold saw a non-empty set, dropped
+  // the cursor, and replayed the entire pre-migration history.
+  //
+  // Recomputing this seed on every fold is harmless: it is derived from the same
+  // lastRunAt and the same disk state, so it converges to the same set.
+  if (processed.size === 0 && base.lastRunAt !== undefined) {
+    for (const record of runs) {
+      if (record.triggeredAt <= base.lastRunAt) processed.add(record.runId);
+    }
+  }
 
   const fresh = runs
-    .filter((r) => !processed.has(r.runId) && r.triggeredAt > legacyCursor)
+    .filter((r) => !processed.has(r.runId))
     .slice()
     .sort((a, b) => a.triggeredAt - b.triggeredAt);
 

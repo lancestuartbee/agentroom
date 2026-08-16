@@ -238,7 +238,8 @@ function withMessageSystemPrompt(prompt: string, options?: AgentServiceOptions):
   return `${systemPrompt}\n\n---\n\n${prompt}`;
 }
 
-function resolveStreamJsonEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
+/** Exported for tests: the regex guard cannot prove the CALLER picked the right gate. */
+export function resolveStreamJsonEffort(catId: string, options?: AgentServiceOptions): CliEffortLevel {
   const configured = getCatEffort(catId, undefined, 'anthropic');
   // Gate on the effort-capped set, not on "lightweight". F247: a sandbox is lightweight
   // in worldview but does real project work, so it must keep its configured effort —
