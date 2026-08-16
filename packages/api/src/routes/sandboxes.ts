@@ -294,6 +294,53 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
     return { sandbox: sanitizeSandboxForResponse(updated!) };
   });
 
+  // PATCH /api/callback/sandbox/spec — the DEV PANE's write path (F247 AC-D4).
+  //
+  // The operator shapes the spec by talking to a member, so the member needs to write
+  // it. Two properties make this a separate route rather than a shared one:
+  //
+  //  - No sandboxId parameter. The target is derived from the invocation's own thread,
+  //    so a member editing another sandbox's spec is structurally impossible rather
+  //    than merely checked.
+  //  - It goes through updateSpec() + syncSchedule() like every other mutation. A member
+  //    writing spec.yaml directly would persist the change but never reconverge the cron,
+  //    so editing the schedule would silently do nothing until a restart — the exact
+  //    "writes fine, never connects" failure this feature keeps producing.
+  app.patch('/api/callback/sandbox/spec', async (request, reply) => {
+    const auth = request.callbackAuth;
+    if (!auth) {
+      reply.status(401);
+      return { error: 'Callback authentication required' };
+    }
+
+    const parseResult = updateSandboxSpecSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      reply.status(400);
+      return { error: 'Invalid request body', details: parseResult.error.issues };
+    }
+
+    const sandbox = await sandboxStore.getByThreadId(auth.threadId);
+    if (!sandbox) {
+      reply.status(404);
+      return { error: 'This thread is not bound to an A2A sandbox' };
+    }
+
+    try {
+      const updated = await sandboxStore.updateSpec(sandbox.id, parseResult.data as UpdateSandboxSpecInput);
+      if (!updated) {
+        reply.status(404);
+        return { error: 'Sandbox not found' };
+      }
+      await syncSchedule(updated, scheduleDeps);
+      reply.status(200);
+      return { sandbox: sanitizeSandboxForResponse(updated) };
+    } catch (err) {
+      log.error({ err, sandboxId: sandbox.id, threadId: auth.threadId }, 'Failed to update sandbox spec via callback');
+      reply.status(500);
+      return { error: 'Failed to update sandbox spec' };
+    }
+  });
+
   // PATCH /api/sandboxes/:id/settings
   app.patch('/api/sandboxes/:id/settings', async (request, reply) => {
     const { id } = request.params as { id: string };

@@ -118,3 +118,116 @@ describe('GET /api/sandboxes/:id/runtime', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 });
+
+describe('PATCH /api/callback/sandbox/spec (dev pane write path)', () => {
+  /** Registers the routes with a callbackAuth decoration standing in for the prehandler. */
+  async function buildCallbackApp(authThreadId) {
+    const Fastify = (await import('fastify')).default;
+    const { sandboxesRoutes } = await import('../dist/routes/sandboxes.js');
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-cb-'));
+    const projectPath = join(tmpDir, 'project');
+    await mkdir(join(projectPath, '.a2a-sandbox', 'runs'), { recursive: true });
+
+    const sandboxStore = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await sandboxStore.create(
+      {
+        title: 'S',
+        projectPath,
+        members: ['opus'],
+        spec: { ...SPEC, schedule: { cron: '0 9 * * *', prompt: 'r' } },
+      },
+      'user-1',
+    );
+    await sandboxStore.bindThread(sandbox.id, 'thread-1');
+
+    // Record what the schedule layer was asked to do.
+    const registered = [];
+    const scheduleDeps = {
+      dynamicTaskStore: { insert: (d) => registered.push(d), remove: () => {}, getById: () => null },
+      taskRunner: { registerDynamic: () => {}, unregister: () => {}, triggerNow: async () => {} },
+    };
+
+    const thread = { id: 'thread-1', createdBy: 'user-1', projectPath, mode: 'sandbox' };
+    const app = Fastify();
+    app.decorateRequest('callbackAuth', undefined);
+    app.addHook('preHandler', async (req) => {
+      if (authThreadId) req.callbackAuth = { threadId: authThreadId, userId: 'user-1', catId: 'opus' };
+    });
+    await app.register(sandboxesRoutes, { threadStore: fakeThreadStore(thread), sandboxStore, scheduleDeps });
+
+    return { app, sandboxStore, sandbox, tmpDir, registered };
+  }
+
+  // A schedule change written straight to spec.yaml would persist but never reconverge
+  // the cron — the dev pane's whole promise ("edit now, applies next run") would
+  // silently fail. Going through the route is what keeps that promise.
+  test('a cron edit reconverges the registered schedule', async () => {
+    const { app, sandbox, sandboxStore, tmpDir, registered } = await buildCallbackApp('thread-1');
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/callback/sandbox/spec',
+      payload: { spec: { schedule: { cron: '30 16 * * *', prompt: 'r', timezone: 'Asia/Shanghai' } } },
+    });
+
+    assert.equal(res.statusCode, 200);
+    const stored = await sandboxStore.get(sandbox.id);
+    assert.equal(stored.spec.schedule.cron, '30 16 * * *');
+    assert.ok(
+      registered.some((d) => d.trigger?.expression === '30 16 * * *'),
+      'the cron task must be re-registered with the edited expression',
+    );
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('edits the goal without touching unrelated spec fields', async () => {
+    const { app, sandbox, sandboxStore, tmpDir } = await buildCallbackApp('thread-1');
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/callback/sandbox/spec',
+      payload: { spec: { goal: '改为只做日线复盘' } },
+    });
+
+    assert.equal(res.statusCode, 200);
+    const stored = await sandboxStore.get(sandbox.id);
+    assert.equal(stored.spec.goal, '改为只做日线复盘');
+    assert.equal(stored.spec.schedule.cron, '0 9 * * *', 'an unrelated field must survive a partial edit');
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  // The target is derived from the invocation's thread, so there is no sandboxId to
+  // forge — a member on an unrelated thread simply has no sandbox to edit.
+  test('a member on a thread with no sandbox cannot edit anything', async () => {
+    const { app, tmpDir } = await buildCallbackApp('thread-elsewhere');
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/callback/sandbox/spec',
+      payload: { spec: { goal: 'hijack' } },
+    });
+    assert.equal(res.statusCode, 404);
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('requires callback authentication', async () => {
+    const { app, tmpDir } = await buildCallbackApp(null);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/callback/sandbox/spec',
+      payload: { spec: { goal: 'x' } },
+    });
+    assert.equal(res.statusCode, 401);
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+});
