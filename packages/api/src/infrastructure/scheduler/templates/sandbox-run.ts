@@ -3,8 +3,11 @@ import { SCHEDULER_TRIGGER_PREFIX } from '@cat-cafe/shared';
 import type { ISandboxStore } from '../../../domains/sandbox/ports/SandboxStore.js';
 import { foldRunsIntoMemory } from '../../../domains/sandbox/services/fold-runs-into-memory.js';
 import { buildSandboxRunPrompt } from '../../../domains/sandbox/services/sandbox-run-prompt.js';
+import { createModuleLogger } from '../../logger.js';
 import type { TaskSpec_P1 } from '../types.js';
 import type { DynamicTaskParams, TaskTemplate } from './types.js';
+
+const log = createModuleLogger('scheduler/sandbox-run');
 
 /**
  * Fold any run reports written since the last fold into the sandbox's rolling memory,
@@ -21,7 +24,11 @@ async function foldPendingRuns(store: ISandboxStore, sandboxId: string): Promise
     if (!folded.changed) return memory;
     await store.updateMemory(sandboxId, folded.memory);
     return folded.memory;
-  } catch {
+  } catch (err) {
+    // Degrade, don't die: this run proceeds on the previous memory and the fold retries
+    // next fire (the cursor makes it idempotent). But log it — a fold that keeps failing
+    // looks exactly like a sandbox that has quietly stopped learning.
+    log.warn({ err, sandboxId }, 'Failed to fold pending sandbox runs into memory — using previous memory');
     return memory;
   }
 }
@@ -114,11 +121,13 @@ export const sandboxRunTemplate: TaskTemplate = {
           // cannot double-count.
           const memory = await foldPendingRuns(ctx.sandboxStore, sid);
           const runId = mintRunId(Date.now());
+          const triggeredAt = Date.now();
           const prompt = buildSandboxRunPrompt({
             spec: sandbox.spec,
             memory,
             runId,
             trigger: 'scheduled',
+            triggeredAt,
           });
 
           const content = `${SCHEDULER_TRIGGER_PREFIX} ${prompt}`;
@@ -134,7 +143,14 @@ export const sandboxRunTemplate: TaskTemplate = {
           // v1: members are fixed and a single runner executes the day's work. Waking all
           // members daily would multiply cost and produce N competing reports for one run
           // record. Multi-member run policy is a spec-level decision deferred to v2.
-          const runner = sandbox.spec.members[0] ?? sandbox.members[0] ?? ctx.assignedCatId ?? 'opus';
+          //
+          // No hardcoded member fallback: the sandbox declares its own members, and if a
+          // deployment has none of them, waking some unrelated default is worse than
+          // failing loudly — the run would execute under an identity the spec never chose.
+          const runner = sandbox.spec.members[0] ?? sandbox.members[0] ?? ctx.assignedCatId;
+          if (!runner) {
+            throw new Error(`sandbox ${sid} has no runnable member (spec.members and sandbox.members are empty)`);
+          }
 
           if (ctx.invokeTrigger) {
             try {
@@ -142,9 +158,14 @@ export const sandboxRunTemplate: TaskTemplate = {
                 ctx.invokeTrigger.trigger(tid, runner, triggerUserId, content, messageId, undefined, {
                   sourceCategory: 'scheduled',
                 }),
-              ).catch(() => {});
-            } catch {
-              // Best-effort: a sync throw from the trigger must not fail the whole run.
+              ).catch((err: unknown) => {
+                // Dispatch is fire-and-forget, so this is the ONLY place a failed wake-up
+                // can surface. Swallowing it silently means a sandbox that looks scheduled
+                // but never actually runs.
+                log.warn({ err, sandboxId: sid, runner, threadId: tid }, 'Sandbox run dispatch failed');
+              });
+            } catch (err) {
+              log.warn({ err, sandboxId: sid, runner, threadId: tid }, 'Sandbox run trigger threw synchronously');
             }
           }
         },

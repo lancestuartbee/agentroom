@@ -191,3 +191,93 @@ describe('Sandbox run prompt', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 });
+
+// Review finding (Kimi P1-1): the run report has TWO writers — the member follows
+// renderSandboxRunReport(), while persistRun() hand-rolled its own layout. The original
+// contract test only pinned the member's path, so the programmatic writer drifted
+// unnoticed: it emits no `## Learned`, silently dropping every durable learning.
+// Pin BOTH writers against the same parser.
+describe('Sandbox run report — programmatic writer', () => {
+  test('persistRun output parses back with learnings intact', async () => {
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-persistrun-'));
+    const projectPath = join(tmpDir, 'project');
+    await mkdir(projectPath, { recursive: true });
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    await store.addRun(sandbox.id, {
+      v: 1,
+      runId: 'run-prog-1',
+      trigger: 'manual',
+      triggeredAt: 1770000000000,
+      specVersion: '1',
+      summary: '程序化写入的运行摘要',
+      learned: ['程序化写入也必须保住的结论'],
+    });
+
+    const store2 = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    await store2.rehydrate();
+    const found = (await store2.listRuns(sandbox.id)).find((r) => r.runId === 'run-prog-1');
+
+    assert.ok(found, 'programmatically recorded run must be readable');
+    assert.match(found.summary, /程序化写入的运行摘要/);
+    assert.deepEqual(found.learned, ['程序化写入也必须保住的结论']);
+    // Review finding (Kimi P2-5): the cursor must come from the report, not file mtime —
+    // copying a sandbox directory (the stated migration path) rewrites mtimes and would
+    // otherwise re-fold or skip runs.
+    assert.equal(found.triggeredAt, 1770000000000, 'triggeredAt must survive a round-trip');
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('only the exact placeholder is discarded — real parenthesised conclusions survive', async () => {
+    const { renderSandboxRunReport } = await import(
+      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
+    );
+    const { InMemorySandboxStore } = await import(
+      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
+    );
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-placeholder-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    await mkdir(runsDir, { recursive: true });
+
+    await writeFile(
+      join(runsDir, 'run-p.md'),
+      renderSandboxRunReport({
+        runId: 'run-p',
+        trigger: 'manual',
+        specVersion: '1',
+        summary: 's',
+        learned: ['（低换手+放量突破是强信号）', '(fully parenthesised but real)'],
+      }),
+      'utf-8',
+    );
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const store2 = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    await store2.rehydrate();
+    const found = (await store2.listRuns(sandbox.id)).find((r) => r.runId === 'run-p');
+
+    assert.ok(found);
+    assert.deepEqual(found.learned, ['（低换手+放量突破是强信号）', '(fully parenthesised but real)']);
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+});

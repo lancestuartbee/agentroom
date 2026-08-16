@@ -16,11 +16,16 @@ import type { SandboxMemoryV1, SandboxSpecV1 } from '@cat-cafe/shared';
  * is also the completion channel.
  *
  * CONTRACT WARNING: `renderSandboxRunReport()` below and `listRunFiles()` in
- * InMemorySandboxStore parse/emit the same three markers (`- Trigger:`,
- * `- Spec Version:`, `## Summary`). If they ever drift, every run is dropped
- * silently — no error, no log, just a sandbox that stops learning. The contract is
- * pinned by `test/sandbox-run-prompt.test.js`, which round-trips a rendered report
- * back through the real store. Change one side and that test goes red.
+ * InMemorySandboxStore emit/parse the same markers (`- Trigger:`, `- Triggered At:`,
+ * `- Spec Version:`, `## Summary`, `## Learned`). If they ever drift, every run is
+ * dropped silently — no error, no log, just a sandbox that stops learning.
+ *
+ * There are TWO writers, and both must go through the renderer below: the member
+ * follows it as a template, and `persistRun()` calls it directly. Review caught
+ * persistRun hand-rolling its own layout without `## Learned`, which silently dropped
+ * every durable learning it recorded — a hole the original contract test missed
+ * because it only pinned the member's path. `test/sandbox-run-prompt.test.js` now
+ * round-trips BOTH writers through the real store; change any side and it goes red.
  */
 
 /** Location of run reports, relative to the sandbox project directory. */
@@ -33,6 +38,14 @@ export const SANDBOX_RUNS_RELATIVE_DIR = '.a2a-sandbox/runs';
  */
 const MAX_INJECTED_LEARNINGS = 20;
 
+/**
+ * The one placeholder the template offers when a run has nothing durable to add.
+ * The parser drops exactly this string and nothing else — an earlier version matched
+ * any fully-parenthesised line, which would have silently discarded real conclusions
+ * that happen to be written inside brackets.
+ */
+export const SANDBOX_NO_LEARNING_PLACEHOLDER = '（本次没有可沉淀的新结论）';
+
 export interface SandboxRunReportInput {
   runId: string;
   trigger: 'scheduled' | 'manual';
@@ -40,11 +53,21 @@ export interface SandboxRunReportInput {
   summary: string;
   /** Durable conclusions — these, and only these, become accumulated knowledge. */
   learned?: string[];
+  /**
+   * When the run was triggered. Emitted into the report so the fold cursor comes from
+   * the report itself rather than file mtime — copying a sandbox directory (the stated
+   * migration path) rewrites mtimes and would otherwise re-fold or skip runs.
+   */
+  triggeredAt?: number;
 }
 
 /**
  * Render a run report in the exact shape `listRunFiles()` parses.
- * Also used verbatim in the prompt as the template the cat must follow.
+ *
+ * SINGLE SOURCE OF FORMAT: both writers go through here — the member follows this
+ * template, and `InMemorySandboxStore.persistRun()` calls it directly. An earlier
+ * version had persistRun hand-roll its own layout without `## Learned`, so any
+ * programmatically recorded run silently lost every durable learning.
  */
 export function renderSandboxRunReport(input: SandboxRunReportInput): string {
   const learned = (input.learned ?? []).filter((line) => line.trim().length > 0);
@@ -52,6 +75,7 @@ export function renderSandboxRunReport(input: SandboxRunReportInput): string {
     `# Sandbox Run ${input.runId}`,
     '',
     `- Trigger: ${input.trigger}`,
+    `- Triggered At: ${new Date(input.triggeredAt ?? 0).toISOString()}`,
     `- Spec Version: ${input.specVersion}`,
     '',
     '## Summary',
@@ -60,7 +84,7 @@ export function renderSandboxRunReport(input: SandboxRunReportInput): string {
     '',
     '## Learned',
     '',
-    ...(learned.length > 0 ? learned.map((line) => `- ${line.trim()}`) : ['- （本次没有可沉淀的新结论）']),
+    ...(learned.length > 0 ? learned.map((line) => `- ${line.trim()}`) : [`- ${SANDBOX_NO_LEARNING_PLACEHOLDER}`]),
     '',
   ].join('\n');
 }
@@ -70,6 +94,8 @@ export interface SandboxRunPromptInput {
   memory: SandboxMemoryV1 | null;
   runId: string;
   trigger: 'scheduled' | 'manual';
+  /** Dispatch time, pre-filled into the report template so the cursor is authoritative. */
+  triggeredAt?: number;
 }
 
 /**
@@ -159,8 +185,9 @@ export function buildSandboxRunPrompt(input: SandboxRunPromptInput): string {
       runId,
       trigger,
       specVersion: spec.specVersion,
+      triggeredAt: input.triggeredAt,
       summary: '（今天做了什么、观察到什么，写在这里）',
-      learned: ['（一条可长期复用的结论；没有就删掉这行，留空即可）'],
+      learned: [`（一条可长期复用的结论；本次没有就写「${SANDBOX_NO_LEARNING_PLACEHOLDER}」）`],
     }).trimEnd(),
   );
   lines.push('```');

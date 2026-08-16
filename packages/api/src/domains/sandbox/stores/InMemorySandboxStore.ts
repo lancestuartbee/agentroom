@@ -23,7 +23,9 @@ import type {
   UpdateSandboxSpecInput,
   UpdateSandboxStatusInput,
 } from '@cat-cafe/shared';
+import { createModuleLogger } from '../../../infrastructure/logger.js';
 import type { ISandboxStore } from '../ports/SandboxStore.js';
+import { renderSandboxRunReport, SANDBOX_NO_LEARNING_PLACEHOLDER } from '../services/sandbox-run-prompt.js';
 
 const DEFAULT_SETTINGS: SandboxSettingsV1 = {
   allowBackflow: false,
@@ -47,21 +49,27 @@ function sanitizeProjectPath(projectPath: string): string {
   return projectPath.replace(/\.\./g, '');
 }
 
+const log = createModuleLogger('sandbox/store');
+
 /**
  * Extract durable learnings from a run report's `## Learned` section.
  *
- * The rendered template ships a parenthesised placeholder line for the "nothing to
- * add today" case; treating that as a real learning would poison long-term memory
- * with empty entries, so placeholder-shaped bullets are dropped.
+ * The template ships one placeholder line for the "nothing durable today" case;
+ * treating it as a real learning would poison long-term memory with empty entries.
  */
 function parseLearnedBullets(section: string | undefined): string[] {
   if (!section) return [];
-  return section
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('- '))
-    .map((line) => line.slice(2).trim())
-    .filter((line) => line.length > 0 && !/^[（(].*[）)]$/.test(line));
+  return (
+    section
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('- '))
+      .map((line) => line.slice(2).trim())
+      // Drop ONLY the exact template placeholder. An earlier version matched any
+      // fully-parenthesised line, which would have silently discarded genuine
+      // conclusions that happen to be written inside brackets.
+      .filter((line) => line.length > 0 && line !== SANDBOX_NO_LEARNING_PLACEHOLDER)
+  );
 }
 
 function getSandboxDir(projectPath: string): string {
@@ -343,8 +351,11 @@ export class InMemorySandboxStore implements ISandboxStore {
         }
 
         this.runs.set(sandbox.id, await this.listRunFiles(entry.projectPath));
-      } catch {
-        // Skip malformed entries best-effort
+      } catch (err) {
+        // Best-effort, but never silent: a skipped entry means a sandbox vanishes from
+        // the runtime while its data still sits on disk. For a project meant to run for
+        // months, that failure has to be visible or it reads as "the sandbox is gone".
+        log.warn({ err, line: line.slice(0, 200) }, 'Failed to rehydrate sandbox index entry — skipped');
       }
     }
   }
@@ -393,6 +404,13 @@ export class InMemorySandboxStore implements ISandboxStore {
         const triggerMatch = /- Trigger: (\w+)/.exec(content);
         const specVersionMatch = /- Spec Version: (.+)/.exec(content);
 
+        // Prefer the timestamp recorded IN the report over the file's mtime. The fold
+        // cursor is derived from this, and copying a sandbox directory — the stated
+        // migration path — rewrites mtimes, which would re-fold or skip runs.
+        const triggeredAtMatch = /- Triggered At: (.+)/.exec(content);
+        const parsedTriggeredAt = triggeredAtMatch ? Date.parse(triggeredAtMatch[1].trim()) : Number.NaN;
+        const triggeredAt = Number.isFinite(parsedTriggeredAt) ? parsedTriggeredAt : statResult.mtimeMs;
+
         // `## Summary` runs until `## Learned` (when present). Without this split the
         // durable-learning section would be swallowed back into the ephemeral summary,
         // collapsing the very distinction the run report exists to express.
@@ -404,7 +422,7 @@ export class InMemorySandboxStore implements ISandboxStore {
           v: 1,
           runId,
           trigger: (triggerMatch?.[1] as 'scheduled' | 'manual') ?? 'manual',
-          triggeredAt: statResult.mtimeMs,
+          triggeredAt,
           specVersion: specVersionMatch?.[1] ?? 'unknown',
           summary: (summaryPart ?? content).trim(),
           ...(learned.length > 0 ? { learned } : {}),
@@ -459,21 +477,28 @@ export class InMemorySandboxStore implements ISandboxStore {
     await writeFile(path, JSON.stringify(memory, null, 2));
   }
 
+  /**
+   * Write a run report programmatically.
+   *
+   * Goes through `renderSandboxRunReport()` — the SAME renderer the member's prompt
+   * documents — so the two writers cannot drift. A previous hand-rolled layout here
+   * omitted `## Learned`, which meant every programmatically recorded run silently
+   * lost its durable learnings on the way back through the parser.
+   */
   private async persistRun(projectPath: string, run: SandboxRunRecordV1): Promise<void> {
     const dir = getRunsDir(projectPath);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${run.runId}.md`);
-    const content = [
-      `# Run ${run.runId}`,
-      ``,
-      `- Trigger: ${run.trigger}`,
-      `- Triggered At: ${new Date(run.triggeredAt).toISOString()}`,
-      `- Spec Version: ${run.specVersion}`,
-      ``,
-      `## Summary`,
-      ``,
-      run.summary,
-    ].join('\n');
-    await writeFile(path, content);
+    await writeFile(
+      path,
+      renderSandboxRunReport({
+        runId: run.runId,
+        trigger: run.trigger,
+        specVersion: run.specVersion,
+        summary: run.summary,
+        ...(run.learned ? { learned: run.learned } : {}),
+        triggeredAt: run.triggeredAt,
+      }),
+    );
   }
 }
