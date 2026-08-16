@@ -24,10 +24,19 @@ import type { SandboxLearnedItemV1, SandboxMemoryV1, SandboxRunRecordV1 } from '
  * 3. NEVER REQUIRE PROOF THAT AN EXTERNAL WRITER FINISHED. Reports are written by the
  *    member, not by us, so "the file is complete" is unknowable — every candidate
  *    signal is either the member's cooperation (which it may forget) or a timing
- *    heuristic (which only moves the race). Instead, summary folding and learning
- *    extraction are decoupled: the summary is gated by processedRunIds because it is
- *    append-once, while learnings are re-derived from every report on every pass and
- *    deduped by stable id, so a late append is absorbed whenever it lands.
+ *    heuristic (which only moves the race). So memory is a PROJECTION of the reports:
+ *    both the rolling summary and the learnings are re-derived from the currently
+ *    visible reports on every pass, and converge to whatever they now say. A late
+ *    append or a correction is absorbed whenever it lands, with no completion protocol.
+ *
+ *    Two deliberate exceptions to pure projection, both because losing accumulated
+ *    knowledge is worse than being stale: learnings are never REMOVED when their report
+ *    disappears (reports get archived; learnings are the asset), and promoted learnings
+ *    are frozen (their content already lives outside the sandbox, so a silent local
+ *    rewrite would desync the published copy — reported via `divergedPromotedIds`).
+ *
+ * `processedRunIds` therefore gates only "have we counted this run before"
+ * (`runsIncorporated` / `foldedRunIds`) — NOT what the summary or learnings contain.
  */
 
 /** How many recent run summaries the rolling summary keeps verbatim. */
@@ -59,6 +68,10 @@ function emptyMemory(): SandboxMemoryV1 & { learnedItems: SandboxLearnedItemV1[]
  * Keep the rolling summary readable and bounded: newest entries win, oldest age out.
  * Dropping the tail is safe here precisely because durable learnings live elsewhere —
  * ageing out "what happened on day 3" loses nothing that was worth keeping.
+ *
+ * Note this window is over the VISIBLE reports, so archiving old reports shortens the
+ * recent-context summary. That is intended: the summary is ephemeral context, and the
+ * learnings it leaves behind are what actually accumulate.
  */
 function boundSummary(entries: string[]): string {
   let kept = entries.slice(-MAX_SUMMARY_ENTRIES);
@@ -76,9 +89,9 @@ function formatSummaryEntry(record: SandboxRunRecordV1): string {
 }
 
 /**
- * Fold every not-yet-processed run into the memory.
+ * Reconcile the memory against the currently visible run reports.
  *
- * IDEMPOTENCE IS BY RUN ID, NOT BY TIMESTAMP. An earlier version used a
+ * RUN COUNTING IS BY RUN ID, NOT BY TIMESTAMP. An earlier version used a
  * `triggeredAt > lastRunAt` cursor, which silently and permanently dropped runs in
  * three real situations (review found all three):
  *

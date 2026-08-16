@@ -133,13 +133,24 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 - [x] AC-C3: 支持手动触发运行和暂停/恢复 schedule。`POST /api/sandboxes/:id/run`（无 cron 也可手动跑，便于新 spec 冒烟）；暂停通过 status 收敛，paused 沙盒不再触发。
 - [x] AC-C4: 每次运行生成运行记录并更新 `SandboxMemoryV1`。
   - [x] 运行记录闭环：调度器是 fire-and-forget（`trigger()` 在派发时就 resolve，没有完成回调），因此闭环走文件系统——猫把运行报告写进 `.a2a-sandbox/runs/`，store 读回。目录既是大脑也是完成通道，不需要新增完成 hook 或 MCP 工具。
-  - [x] 记忆折叠：每次 fire 前先把上次以来的新报告折进滚动记忆，因此**本次运行就能读到上次学到的东西**。放在运行链路里（而非单独的蒸馏任务）使闭环自愈——无论报告是定时跑、手动跑还是猫迟到写的，下一次运行都会捡起来；靠 `lastRunAt` 游标保证幂等，重复读目录不会重复计数。
+  - [x] 记忆折叠：每次 fire 前先把新报告折进记忆，因此**本次运行就能读到上次学到的东西**。放在运行链路里（而非单独的蒸馏任务）使闭环自愈——无论报告是定时跑、手动跑还是成员迟到写的，下一次运行都会捡起来。
+
+> **Phase C 已通过 review（luna，2026-08-16）**，`a3e795a1..295a75ac`。
 
 **durable vs ephemeral（这条是月级记忆的成败关键）**：运行报告分两段——`## Summary` 是"今天发生了什么"（会过期），`## Learned` 是"从此以后都成立的判断"（要积累）。只有后者进入 `learnedItems`。两者混在一起，几个月后记忆就退化成读不动的日志。
 
-**边界策略：限制注入，不限制存储**。滚动摘要有上限（否则会撑爆 prompt 预算，被 SessionBootstrap 整段丢弃）；durable 学习条目在磁盘上永不丢弃——它们就是积累下来的资产。封顶发生在注入 prompt 时，且 prompt 会**明说还有多少条没展开**，而不是静默截断。
+**记忆是报告的投影**：报告由成员写、随时可能被追加或改写，而"文件写完了"在系统这边**不可知**——任何完成协议要么依赖成员配合（可能忘），要么是把启发式当保证（只会把竞态推迟）。所以摘要和学习条目**每次都从当前可见报告重新推导**，向报告当前内容收敛；半截内容会在报告写完后被自动纠正。
 
-> ⚠️ 契约警告：`renderSandboxRunReport()`（我们让猫写的格式）与 `InMemorySandboxStore.listRunFiles()`（系统解析的格式）共用 `- Trigger:` / `- Spec Version:` / `## Summary` 三个标记。两边一旦漂移，**每次运行都会被静默丢弃**——不报错、不打日志，只是沙盒突然不再学习。该契约由 `test/sandbox-run-prompt.test.js` 的 round-trip 测试钉死，改任一侧都会让它变红。
+两个刻意的非投影例外（都是因为"丢掉积累"比"陈旧"更糟）：
+- **报告被归档/删除时，学习条目不删**——报告会被清理，而学习是攒下来的资产。
+- **已 promoted 的条目冻结**——内容已导出到沙盒外，静默改写本地副本会让两边不一致；分歧通过 `divergedPromotedIds` 上报而不是直接应用。
+
+**边界策略：限制注入，不限制存储**。滚动摘要有上限（否则会撑爆 prompt 预算，被 SessionBootstrap 整段丢弃）；durable 学习条目在磁盘上永不丢弃。封顶发生在注入 prompt 时，且 prompt 会**明说还有多少条没展开**，而不是静默截断。
+
+> ⚠️ 契约警告：`renderSandboxRunReport()`（我们让成员写的格式）与 `InMemorySandboxStore.listRunFiles()`（系统解析的格式）共用 `- Trigger:` / `- Triggered At:` / `- Spec Version:` / `## Summary` / `## Learned` 标记，且**有两个写入者**（成员按模板写、`persistRun()` 调同一渲染器）。任一侧漂移，**每次运行都会被静默丢弃**——不报错、不打日志，只是沙盒突然不再学习。该契约由 `test/sandbox-run-prompt.test.js` 的 round-trip 测试对**两个写入者**分别钉死。
+
+> 🚧 **Phase E 前置阻塞（luna review P2，2026-08-16）**：promoted 条目的分歧检测目前只覆盖"内容被改写"，**不覆盖"条目被删除/置空"**——报告删掉最后一条学习时，旧 `runId-index` 会永久留在记忆里且不产生 `divergedPromotedIds`，调度器不会告警。
+> Phase E 开工前必须先定义**删除语义**（删除是撤回该学习，还是保留？已 promoted 的能否撤回？），并把 divergence 状态**持久化或记录来源指纹**，不能只靠日志——log-only 不足以支撑 operator 侧的 UX。
 
 ### Phase D（Frontend Dual-Pane UX v1）
 - [ ] AC-D1: 创建会话 modal 可选择"A2A 沙盒"。
