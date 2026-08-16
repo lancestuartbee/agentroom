@@ -405,6 +405,82 @@ describe('callback auth is registered in the sandbox plugin scope', () => {
     await app.close();
     await rm(tmpDir, { recursive: true, force: true });
   });
+
+  // Merging is what makes a cron-only edit safe: there is a stored prompt to keep. With no
+  // stored schedule there is nothing to merge onto, so the same fragment persists a
+  // schedule with no prompt at all — an object that does not satisfy SandboxScheduleV1,
+  // handed to the scheduler as if it were valid.
+  async function buildNoScheduleApp() {
+    const Fastify = (await import('fastify')).default;
+    const { sandboxesRoutes } = await import('../dist/routes/sandboxes.js');
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-first-sched-'));
+    const projectPath = join(tmpDir, 'project');
+    await mkdir(join(projectPath, '.a2a-sandbox', 'runs'), { recursive: true });
+    const sandboxStore = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    // SPEC deliberately has no schedule.
+    const sandbox = await sandboxStore.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
+    await sandboxStore.bindThread(sandbox.id, 'thread-1');
+
+    const app = Fastify();
+    await app.register(sandboxesRoutes, {
+      threadStore: fakeThreadStore({ id: 'thread-1', createdBy: 'user-1', projectPath, mode: 'sandbox' }),
+      sandboxStore,
+      callbackRegistry: {
+        verify: async () => ({
+          ok: true,
+          record: { invocationId: 'i', threadId: 'thread-1', userId: 'user-1', catId: 'opus' },
+        }),
+      },
+    });
+    const patch = (spec) =>
+      app.inject({
+        method: 'PATCH',
+        url: '/api/callback/sandbox/spec',
+        headers: { 'x-invocation-id': 'i', 'x-callback-token': 't' },
+        payload: { spec },
+      });
+    return { app, sandbox, sandboxStore, tmpDir, patch };
+  }
+
+  test('the first schedule refuses a cron with no run instruction', async () => {
+    const { app, sandbox, sandboxStore, tmpDir, patch } = await buildNoScheduleApp();
+
+    const res = await patch({ schedule: { cron: '0 9 * * *' } });
+
+    assert.equal(res.statusCode, 400);
+    assert.match(res.json().error, /prompt|做什么|instruction/i);
+    assert.equal((await sandboxStore.get(sandbox.id)).spec.schedule, undefined, 'nothing may be persisted');
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('the first schedule refuses a run instruction with no cron', async () => {
+    const { app, sandbox, sandboxStore, tmpDir, patch } = await buildNoScheduleApp();
+
+    const res = await patch({ schedule: { prompt: '看一遍持仓' } });
+
+    assert.equal(res.statusCode, 400);
+    assert.equal((await sandboxStore.get(sandbox.id)).spec.schedule, undefined);
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('the first schedule is accepted once it is whole', async () => {
+    const { app, sandbox, sandboxStore, tmpDir, patch } = await buildNoScheduleApp();
+
+    const res = await patch({ schedule: { cron: '0 9 * * *', prompt: '看一遍持仓', timezone: 'Asia/Shanghai' } });
+
+    assert.equal(res.statusCode, 200);
+    const stored = await sandboxStore.get(sandbox.id);
+    assert.deepEqual(stored.spec.schedule, { cron: '0 9 * * *', prompt: '看一遍持仓', timezone: 'Asia/Shanghai' });
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
 });
 
 describe('sandbox membership is a single fixed list', () => {

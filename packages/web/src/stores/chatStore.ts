@@ -1,10 +1,10 @@
 import { create } from 'zustand';
-import { isWideRightPanelMode } from '@/components/right-panel-lifecycle';
 import { getBubbleInvocationId } from '@/debug/bubbleIdentity';
 import { isBubbleInvariantStrictModeOn, recordBubbleInvariantViolation } from '@/debug/bubbleInvariantDiagnostics';
 import { recordDebugEvent } from '@/debug/invocationEventDebug';
 import { getCachedCats } from '@/hooks/useCatData';
 import { inferFileKind, inferRenderMode } from '@/lib/file-kind';
+import { isWideRightPanelMode, type RightPanelMode } from '@/lib/right-panel-mode';
 import {
   resolveNavigateTargetWorktreeId,
   scopeWorktreeAliases,
@@ -635,18 +635,9 @@ function updateThreadMessage(
 
 // ── Store interface ──
 
-/**
- * Right-hand panel modes. `status` is the narrow default; everything else takes over the
- * wide right half. F247 added `sandbox` (the A2A sandbox run pane).
- */
-export type RightPanelMode = 'status' | 'workspace' | 'transcript' | 'sandbox';
-
-// `isWideRightPanelMode` used to live here. It is a pure predicate about panel modes and
-// holds no store state, but declaring it on the store module meant every test that mocks
-// `@/stores/chatStore` to render a component had to re-implement it — six suites broke the
-// day it was added. It now lives with the rest of the panel-lifecycle vocabulary in
-// components/right-panel-lifecycle.ts; mocking a store should never require stubbing pure
-// logic.
+/** Re-exported so the many existing `from '@/stores/chatStore'` imports keep working;
+ *  the definition lives in @/lib/right-panel-mode, which neither layer owns. */
+export type { RightPanelMode };
 
 export interface ChatState {
   // Per-thread state (flat — reflects the active thread for backward compat)

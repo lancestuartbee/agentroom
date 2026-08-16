@@ -57,7 +57,7 @@ async function render(): Promise<{ container: HTMLDivElement; root: Root }> {
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<SandboxSpecBar />);
+    root.render(<SandboxSpecBar threadId="thread-1" />);
   });
   return { container, root };
 }
@@ -162,12 +162,32 @@ describe('SandboxSpecBar', () => {
     expect(r.container.querySelector('[data-testid="spec-bar-error"]')).toBeTruthy();
   });
 
+  // Review: reading the globally-current thread let the bar describe one sandbox while its
+  // buttons acted on another. It now follows the thread the parent is rendering, so a
+  // global that has already moved on cannot pull it away.
+  it('follows the thread it was given, not whatever is globally current', async () => {
+    mockThreads = [
+      { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-1' },
+      { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-2' },
+    ];
+    const { SandboxSpecBar } = await import('../SandboxSpecBar');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const r = createRoot(container);
+    root = r;
+    await act(async () => {
+      r.render(<SandboxSpecBar threadId="thread-2" />);
+    });
+
+    expect(mockApiFetch.mock.calls[0][0]).toContain('sb-2');
+  });
+
   // Twice in this feature I have written a component that worked and was never mounted,
   // and the suite could not tell. A component that renders itself away when irrelevant
   // needs no mode branch at the call site — but it does need the call site to exist.
   it('is actually mounted in the chat area', () => {
     const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'ChatContainer.tsx'), 'utf8');
-    expect(src).toMatch(/<SandboxSpecBar\s*\/>/);
+    expect(src).toMatch(/<SandboxSpecBar threadId=\{threadId\} \/>/);
     expect(src).toMatch(/import \{ SandboxSpecBar \}/);
   });
 });

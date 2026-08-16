@@ -51,6 +51,12 @@ export {
   WorkflowActionSchema,
 } from './pack.js';
 export type {
+  SandboxScheduleMergeResult,
+  SandboxSchedulePatch,
+  SandboxScheduleShape,
+} from './sandbox.schema.js';
+export { mergeSandboxSchedule, sandboxSchedulePatchSchema, sandboxScheduleSchema } from './sandbox.schema.js';
+export type {
   SignalArticleInput,
   SignalArticleUpdateInput,
   SignalSourceInput,

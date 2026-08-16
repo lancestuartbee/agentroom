@@ -1,7 +1,8 @@
 'use client';
 
 import type { Sandbox } from '@cat-cafe/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useSandboxResource } from '@/hooks/useSandboxResource';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
 
@@ -19,8 +20,17 @@ import { apiFetch } from '@/utils/api-client';
  * Polling rather than pushing: a spec edit lands through an MCP callback on the server, so
  * there is no client-side event to react to. The server stays the single truth; this is
  * one view of it that re-reads, and the run pane is another.
+ *
+ * The thread comes in as a prop rather than from the global `currentThreadId`. Review
+ * found the global read made a switch mid-flight able to render sandbox A's title and goal
+ * while every button acted on B — reading the id the parent is rendering removes the
+ * disagreement at the source, and useSandboxResource guards what is left.
  */
 const REFRESH_MS = 30_000;
+
+interface SandboxResponse {
+  sandbox: Sandbox;
+}
 
 function statusLabel(status: Sandbox['status']): string {
   if (status === 'active') return '运行中';
@@ -28,66 +38,58 @@ function statusLabel(status: Sandbox['status']): string {
   return '已归档';
 }
 
-export function SandboxSpecBar(): JSX.Element | null {
-  const currentThreadId = useChatStore((s) => s.currentThreadId);
-  const threads = useChatStore((s) => s.threads);
-  const sandboxId = threads.find((t) => t.id === currentThreadId)?.sandboxId;
+const buildSandboxPath = (id: string) => `/api/sandboxes/${encodeURIComponent(id)}`;
 
-  const [sandbox, setSandbox] = useState<Sandbox | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export function SandboxSpecBar({ threadId }: { threadId: string | null | undefined }): JSX.Element | null {
+  const sandboxId = useChatStore((s) => s.threads.find((t) => t.id === threadId)?.sandboxId);
+
+  const {
+    data,
+    error: loadError,
+    reload,
+    apply,
+  } = useSandboxResource<SandboxResponse>(sandboxId, buildSandboxPath, {
+    intervalMs: REFRESH_MS,
+    errorMessage: '无法读取沙盒设置',
+  });
+  const sandbox = data?.sandbox ?? null;
+
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!sandboxId) return;
-    try {
-      const res = await apiFetch(`/api/sandboxes/${encodeURIComponent(sandboxId)}`);
-      if (!res.ok) {
-        setError(`无法读取沙盒设置（HTTP ${res.status}）`);
-        return;
-      }
-      const body = (await res.json()) as { sandbox: Sandbox };
-      setSandbox(body.sandbox);
-      setError(null);
-    } catch {
-      setError('无法读取沙盒设置');
-    }
-  }, [sandboxId]);
-
-  useEffect(() => {
-    if (!sandboxId) return;
-    void load();
-    const timer = setInterval(() => void load(), REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [sandboxId, load]);
+  const error = mutationError ?? loadError;
 
   const setStatus = useCallback(
     async (status: 'active' | 'paused') => {
-      if (!sandboxId || busy) return;
+      // Capture the id this click belongs to: awaiting below can outlive the thread the
+      // operator was looking at, and a status write must never land on a sandbox they
+      // never saw.
+      const targetId = sandboxId;
+      if (!targetId || busy) return;
       setBusy(true);
       try {
-        const res = await apiFetch(`/api/sandboxes/${encodeURIComponent(sandboxId)}/status`, {
+        const res = await apiFetch(`${buildSandboxPath(targetId)}/status`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status }),
         });
         if (!res.ok) {
-          setError(`暂停/恢复失败（HTTP ${res.status}）`);
+          setMutationError(`暂停/恢复失败（HTTP ${res.status}）`);
           return;
         }
         const body = (await res.json()) as { sandbox?: Sandbox };
         // Trust the server's answer over the status we asked for: a rejected or coerced
         // transition must not leave the bar claiming something the sandbox is not.
-        if (body.sandbox) setSandbox(body.sandbox);
-        else await load();
-        setError(null);
+        if (body.sandbox) apply({ sandbox: body.sandbox });
+        else await reload();
+        setMutationError(null);
       } catch {
-        setError('暂停/恢复失败');
+        setMutationError('暂停/恢复失败');
       } finally {
         setBusy(false);
       }
     },
-    [sandboxId, busy, load],
+    [sandboxId, busy, reload, apply],
   );
 
   if (!sandboxId) return null;

@@ -2,7 +2,8 @@
 
 import type { Sandbox, SandboxMemoryV1, SandboxRunRecordV1 } from '@cat-cafe/shared';
 import type { JSX } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useSandboxResource } from '@/hooks/useSandboxResource';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
 
@@ -41,51 +42,41 @@ function statusLabel(status: Sandbox['status']): string {
   return '已归档';
 }
 
+const buildRuntimePath = (id: string) => `/api/sandboxes/${encodeURIComponent(id)}/runtime`;
+
 export function SandboxRunPane(): JSX.Element | null {
   const currentThreadId = useChatStore((s) => s.currentThreadId);
   const threads = useChatStore((s) => s.threads);
   const sandboxId = threads.find((t) => t.id === currentThreadId)?.sandboxId;
 
-  const [state, setState] = useState<RuntimeState | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [triggerNote, setTriggerNote] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!sandboxId) return;
-    try {
-      const res = await apiFetch(`/api/sandboxes/${encodeURIComponent(sandboxId)}/runtime`);
-      if (!res.ok) {
-        setError(`无法读取沙盒运行态（HTTP ${res.status}）`);
-        return;
-      }
-      setState((await res.json()) as RuntimeState);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '无法读取沙盒运行态');
-    }
-  }, [sandboxId]);
-
-  // A failed poll leaves the last good snapshot on screen. That is the right call — an
-  // empty pane would be worse — but only if the operator can tell it is frozen. Silently
-  // showing stale runs as current is the same class of lie the backend refuses to tell
-  // when it distinguishes "unreadable" from "never ran".
-  const isStale = state !== null && error !== null;
-
-  useEffect(() => {
-    void load();
-    // The run loop fires on a daily cadence, so this poll only needs to catch a manual
-    // run or a report the member wrote mid-conversation.
-    const timer = setInterval(() => void load(), POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [load]);
+  // Same identity guard as the spec bar: a thread switch mid-flight must not paint one
+  // sandbox's run history under another's, and "立即运行" must not act on a sandbox the
+  // operator is no longer looking at. A failed poll still leaves the last good snapshot on
+  // screen — an empty pane would be worse — but only labelled as stale, because silently
+  // showing old runs as current is the same class of lie the backend refuses to tell when
+  // it distinguishes "unreadable" from "never ran".
+  const {
+    data: state,
+    error,
+    isStale,
+    reload: load,
+  } = useSandboxResource<RuntimeState>(sandboxId, buildRuntimePath, {
+    // The run loop fires on a daily cadence, so this poll only needs to catch a manual run
+    // or a report the member wrote mid-conversation.
+    intervalMs: POLL_INTERVAL_MS,
+    errorMessage: '无法读取沙盒运行态',
+  });
 
   const runNow = useCallback(async () => {
-    if (!sandboxId || triggering) return;
+    const targetId = sandboxId;
+    if (!targetId || triggering) return;
     setTriggering(true);
     setTriggerNote(null);
     try {
-      const res = await apiFetch(`/api/sandboxes/${encodeURIComponent(sandboxId)}/run`, { method: 'POST' });
+      const res = await apiFetch(`/api/sandboxes/${encodeURIComponent(targetId)}/run`, { method: 'POST' });
       if (res.ok) {
         // Dispatch is fire-and-forget: the member has been woken, but its report will
         // not exist for a while. Say so, rather than implying the run has finished.

@@ -1,3 +1,4 @@
+import { sandboxSchedulePatchSchema } from '@cat-cafe/shared';
 import { z } from 'zod';
 import { buildAuthHeaders, getCallbackConfig, NO_CONFIG_ERROR } from './callback-tools.js';
 import { errorResult, successResult, type ToolResult } from './file-tools.js';
@@ -24,29 +25,24 @@ import { errorResult, successResult, type ToolResult } from './file-tools.js';
  * NESTED-PARTIAL, and it must stay that way.
  *
  * The natural request is "move it to 09:00": the member knows the new cron and has never
- * seen the stored prompt or timezone. Review found this schema still demanding the whole
+ * seen the stored prompt or timezone. Review found this schema once demanding the whole
  * object after the API had been relaxed — so the tool rejected the request locally and
- * never even reached the fixed endpoint. Every field is optional here; the server merges
- * the fragment onto what is stored and rejects a first-time schedule without a cron.
+ * never even reached the fixed endpoint. That is why the field rules now come from
+ * `sandboxSchedulePatchSchema` in @cat-cafe/shared instead of a second hand-written copy:
+ * two suites can prove today's copies agree, neither can stop tomorrow's edit to one side.
+ *
+ * Only the prose is local — the model needs wording the server has no use for.
  */
 const scheduleSchema = z.object({
-  cron: z
-    .string()
-    .min(1)
-    .max(100)
-    .optional()
-    .describe('Cron expression, e.g. "0 9 * * *" for 09:00 daily. Required only when no schedule exists yet.'),
-  prompt: z
-    .string()
-    .min(1)
-    .max(2000)
-    .optional()
-    .describe('Optional; omit to keep the stored value. The run instruction is built from the spec, not this.'),
-  timezone: z
-    .string()
-    .max(100)
-    .optional()
-    .describe('IANA timezone such as Asia/Shanghai. Omit to keep the stored one — never guess it.'),
+  cron: sandboxSchedulePatchSchema.shape.cron.describe(
+    'Cron expression, e.g. "0 9 * * *" for 09:00 daily. Required when no schedule exists yet.',
+  ),
+  prompt: sandboxSchedulePatchSchema.shape.prompt.describe(
+    'What to do when it fires. Omit to keep the stored value; required when creating the first schedule.',
+  ),
+  timezone: sandboxSchedulePatchSchema.shape.timezone.describe(
+    'IANA timezone such as Asia/Shanghai. Omit to keep the stored one — never guess it.',
+  ),
 });
 
 export const sandboxUpdateSpecInputSchema = {

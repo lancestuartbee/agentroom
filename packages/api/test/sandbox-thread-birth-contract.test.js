@@ -87,6 +87,50 @@ describe('sandbox threads are born only with a sandbox', () => {
     await app.close();
   });
 
+  // The invariant is an equivalence, not an implication. Guarding only one direction left
+  // the other half open: a real sandbox thread could be demoted to casual and keep its
+  // sandboxId, so the router, the panes and the scheduler would each read a different
+  // answer about what this thread is.
+  test('PATCH /api/threads/:id refuses to demote a thread that owns a sandbox', async () => {
+    const { app, threadStore } = await buildApp();
+    const thread = threadStore.create('user-1', 'Real sandbox');
+    threadStore.updateSandboxId(thread.id, 'sbx-1');
+    threadStore.updateThreadMode(thread.id, 'sandbox');
+
+    for (const mode of ['casual', 'roundtable', 'development']) {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/threads/${thread.id}`,
+        headers: { 'x-cat-cafe-user': 'user-1' },
+        payload: { mode },
+      });
+      assert.equal(res.statusCode, 400, `${mode} must not silently unbind the sandbox`);
+      assert.equal(res.json().code, 'SANDBOX_THREAD_CANNOT_BE_DEMOTED');
+      assert.equal(threadStore.get(thread.id).mode, 'sandbox', 'mode must not have moved');
+    }
+
+    await app.close();
+  });
+
+  test('a sandbox thread can still be renamed and pinned — only its mode is frozen', async () => {
+    const { app, threadStore } = await buildApp();
+    const thread = threadStore.create('user-1', 'Real sandbox');
+    threadStore.updateSandboxId(thread.id, 'sbx-1');
+    threadStore.updateThreadMode(thread.id, 'sandbox');
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/threads/${thread.id}`,
+      headers: { 'x-cat-cafe-user': 'user-1' },
+      payload: { title: '改个名字', pinned: true },
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(threadStore.get(thread.id).title, '改个名字');
+
+    await app.close();
+  });
+
   test('the other modes are untouched by the guard', async () => {
     const { app } = await buildApp();
 

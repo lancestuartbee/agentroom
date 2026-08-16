@@ -240,19 +240,33 @@ function threadModeLabel(mode: ThreadMode): string {
  * sandbox in every surface and has nothing behind it.
  *
  * Creating a sandbox here instead would only invent the goal the caller never gave. So the
- * rule is: refuse, and name the one door that creates both together. Threads that already
- * own a sandbox are exempt — that path is repair, not birth.
+ * rule is: refuse, and name the one door that creates both together.
+ *
+ * The claim is an EQUIVALENCE, and review caught the first version guarding only one
+ * direction: a real sandbox thread could be demoted to casual and keep its sandboxId, so
+ * the router, the panes and the scheduler would each read a different answer about what
+ * that thread is. Unbinding a sandbox is a real operation — it just is not a side effect
+ * of a generic mode field, and it does not exist yet.
  */
 const SANDBOX_THREAD_GUARD_CODE = 'SANDBOX_THREAD_REQUIRES_SANDBOX';
+const SANDBOX_THREAD_DEMOTE_CODE = 'SANDBOX_THREAD_CANNOT_BE_DEMOTED';
 
 function checkSandboxThreadMode(
   mode: ThreadMode | undefined,
   existingSandboxId: string | undefined,
 ): { error: string; code: string } | null {
-  if (mode !== 'sandbox' || existingSandboxId) return null;
+  if (mode === undefined) return null;
+  if (mode === 'sandbox') {
+    if (existingSandboxId) return null;
+    return {
+      error: 'A2A sandbox threads are created together with their sandbox — use POST /api/sandboxes',
+      code: SANDBOX_THREAD_GUARD_CODE,
+    };
+  }
+  if (!existingSandboxId) return null;
   return {
-    error: 'A2A sandbox threads are created together with their sandbox — use POST /api/sandboxes',
-    code: SANDBOX_THREAD_GUARD_CODE,
+    error: 'This thread owns an A2A sandbox — its mode cannot be changed while the sandbox is bound',
+    code: SANDBOX_THREAD_DEMOTE_CODE,
   };
 }
 

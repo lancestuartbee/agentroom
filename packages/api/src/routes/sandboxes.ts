@@ -14,7 +14,12 @@ import type {
   UpdateSandboxSpecInput,
   UpdateSandboxStatusInput,
 } from '@cat-cafe/shared';
-import { isThreadMode } from '@cat-cafe/shared';
+import {
+  isThreadMode,
+  mergeSandboxSchedule,
+  sandboxSchedulePatchSchema,
+  sandboxScheduleSchema,
+} from '@cat-cafe/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { IThreadStore, Thread } from '../domains/cats/services/stores/ports/ThreadStore.js';
@@ -66,13 +71,7 @@ const sandboxSpecSchema = z
     name: z.string().trim().min(1).max(200),
     goal: z.string().trim().min(1).max(2000),
     learningGoal: z.string().trim().max(2000).optional(),
-    schedule: z
-      .object({
-        cron: z.string().trim().min(1).max(100),
-        prompt: z.string().trim().min(1).max(2000),
-        timezone: z.string().trim().max(100).optional(),
-      })
-      .optional(),
+    schedule: sandboxScheduleSchema.optional(),
     members: z.array(z.string().min(1).max(100)).min(1).max(10),
     dataSources: z
       .array(
@@ -117,19 +116,7 @@ const updateSandboxSpecSchema = z
  */
 const callbackUpdateSpecSchema = z
   .object({
-    spec: sandboxSpecSchema
-      .partial()
-      .extend({
-        schedule: z
-          .object({
-            cron: z.string().trim().min(1).max(100),
-            prompt: z.string().trim().min(1).max(2000),
-            timezone: z.string().trim().max(100).optional(),
-          })
-          .partial()
-          .optional(),
-      })
-      .strict(),
+    spec: sandboxSpecSchema.partial().extend({ schedule: sandboxSchedulePatchSchema.optional() }).strict(),
   })
   .strict();
 
@@ -408,19 +395,18 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
       return { error: 'Sandbox membership is fixed in v1 and cannot be changed through the spec' };
     }
 
-    // A member told "move it to 09:00" knows the new cron but not the old prompt or
-    // timezone. Requiring the whole schedule object would make that ordinary request
-    // fail, or silently drop the timezone — so merge onto what is already stored.
+    // Editing takes a fragment; creating the first one does not. Both rules live in
+    // mergeSandboxSchedule so the member callback and the operator route cannot disagree
+    // about what counts as a complete schedule — review found the earlier version checking
+    // only for a cron, which let a schedule with no prompt reach the scheduler.
     const patch = { ...parseResult.data.spec };
     if (patch.schedule) {
-      if (sandbox.spec.schedule) {
-        patch.schedule = { ...sandbox.spec.schedule, ...patch.schedule };
-      } else if (!patch.schedule.cron) {
-        // Nothing to merge onto: a fragment here would persist a schedule with no cron,
-        // which the scheduler would then quietly default. Make the member say when.
+      const merged = mergeSandboxSchedule(sandbox.spec.schedule, patch.schedule);
+      if (!merged.ok) {
         reply.status(400);
-        return { error: 'This sandbox has no schedule yet — provide a cron expression to create one' };
+        return { error: merged.error };
       }
+      patch.schedule = merged.schedule;
     }
 
     try {

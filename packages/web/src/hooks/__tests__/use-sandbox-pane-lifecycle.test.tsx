@@ -45,11 +45,12 @@ let Probe: (props: { id: string | null }) => null;
 async function mountAt(threadId: string | null) {
   if (!Probe) {
     const { useSandboxPaneLifecycle } = await import('../useSandboxPaneLifecycle');
-    Probe = ({ id }: { id: string | null }) => {
+    function SandboxLifecycleProbe({ id }: { id: string | null }) {
       const { reopenMode } = useSandboxPaneLifecycle(id);
       lastReopenMode = reopenMode as () => string;
       return null;
-    };
+    }
+    Probe = SandboxLifecycleProbe;
   }
   if (!root) {
     container = document.createElement('div');

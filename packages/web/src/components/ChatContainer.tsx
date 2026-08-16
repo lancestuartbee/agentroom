@@ -28,6 +28,7 @@ import { useVadInterrupt } from '@/hooks/useVadInterrupt';
 import { useVoiceAutoPlay } from '@/hooks/useVoiceAutoPlay';
 import { useVoiceStream } from '@/hooks/useVoiceStream';
 import { useWorkspaceNavigate } from '@/hooks/useWorkspaceNavigate';
+import { isWideRightPanelMode } from '@/lib/right-panel-mode';
 import { type ChatMessage as ChatMessageData, type Thread, useChatStore } from '@/stores/chatStore';
 import { useGameStore } from '@/stores/gameStore';
 import { useGuideStore } from '@/stores/guideStore';
@@ -65,7 +66,6 @@ import { PendingMemberBubble } from './PendingMemberBubble';
 import { ProjectSetupCard } from './ProjectSetupCard';
 import { QueuePanel } from './QueuePanel';
 import { RightStatusPanel } from './RightStatusPanel';
-import { isWideRightPanelMode } from './right-panel-lifecycle';
 import { SandboxRunPane } from './SandboxRunPane';
 import { SandboxSpecBar } from './SandboxSpecBar';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
@@ -1051,7 +1051,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
 
         {/* F247 AC-D2/AC-D3: the sandbox this conversation is shaping. Renders nothing for
             an ordinary thread, so it needs no mode branch here. */}
-        <SandboxSpecBar />
+        <SandboxSpecBar threadId={threadId} />
 
         {intentMode === 'ideate' && <ParallelStatusBar onStop={handleStop} threadId={threadId} />}
         {showThinkingIndicator && <ThinkingIndicator onCancel={cancelInvocation} threadId={threadId} />}
