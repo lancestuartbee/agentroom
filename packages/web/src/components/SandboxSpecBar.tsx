@@ -48,6 +48,7 @@ export function SandboxSpecBar({ threadId }: { threadId: string | null | undefin
     error: loadError,
     reload,
     apply,
+    isCurrent,
   } = useSandboxResource<SandboxResponse>(sandboxId, buildSandboxPath, {
     intervalMs: REFRESH_MS,
     errorMessage: '无法读取沙盒设置',
@@ -73,34 +74,45 @@ export function SandboxSpecBar({ threadId }: { threadId: string | null | undefin
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status }),
         });
+        // Past this await the reply belongs to the sandbox the click started on. The
+        // resource guard keeps A's DATA from rendering as B's, but it cannot see the state
+        // this callback owns: an error message, the busy flag, or the act of clearing an
+        // error B legitimately has.
+        if (!isCurrent(targetId)) return;
         if (!res.ok) {
           setMutationError(`暂停/恢复失败（HTTP ${res.status}）`);
           return;
         }
         const body = (await res.json()) as { sandbox?: Sandbox };
+        if (!isCurrent(targetId)) return;
         // Trust the server's answer over the status we asked for: a rejected or coerced
         // transition must not leave the bar claiming something the sandbox is not.
         if (body.sandbox) apply({ sandbox: body.sandbox });
         else await reload();
         setMutationError(null);
       } catch {
-        setMutationError('暂停/恢复失败');
+        if (isCurrent(targetId)) setMutationError('暂停/恢复失败');
       } finally {
-        setBusy(false);
+        if (isCurrent(targetId)) setBusy(false);
       }
     },
-    [sandboxId, busy, reload, apply],
+    [sandboxId, busy, reload, apply, isCurrent],
   );
 
   if (!sandboxId) return null;
 
   if (!sandbox) {
+    // A 200 whose body carries no sandbox is unreadable, not pending — "正在读取沙盒设置…"
+    // would leave the operator waiting for a shape the response will never take. Same lie
+    // the run pane had to stop telling.
+    const unreadableBody = data !== null;
+    const message = error ?? (unreadableBody ? '沙盒设置响应格式不对，读不出这个沙盒。' : '正在读取沙盒设置…');
     return (
       <div
         className="px-4 py-2 text-xs text-[var(--console-text-muted)] border-b border-cafe-subtle"
-        data-testid={error ? 'spec-bar-error' : 'spec-bar-loading'}
+        data-testid={error || unreadableBody ? 'spec-bar-error' : 'spec-bar-loading'}
       >
-        {error ?? '正在读取沙盒设置…'}
+        {message}
       </div>
     );
   }

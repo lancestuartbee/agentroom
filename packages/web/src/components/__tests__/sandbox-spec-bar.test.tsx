@@ -162,6 +162,60 @@ describe('SandboxSpecBar', () => {
     expect(r.container.querySelector('[data-testid="spec-bar-error"]')).toBeTruthy();
   });
 
+  // The mutation's own callback writes state the resource guard cannot see: an error, a
+  // busy flag. Those writes happen after an await, so a pause that failed on A must not
+  // surface as B's error, and must not clear an error B legitimately has.
+  it('does not report a pause failure from the sandbox the operator has left', async () => {
+    mockThreads = [
+      { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-A' },
+      { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-B' },
+    ];
+    let releasePatch: (v: unknown) => void = () => {};
+    const pending = new Promise((resolve) => {
+      releasePatch = resolve;
+    });
+    mockApiFetch.mockImplementation((_url: string, init?: { method?: string }) => {
+      if (init?.method === 'PATCH') return pending;
+      return Promise.resolve(jsonResponse({ sandbox: SANDBOX }));
+    });
+
+    const { SandboxSpecBar } = await import('../SandboxSpecBar');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const r = createRoot(container);
+    root = r;
+    await act(async () => {
+      r.render(<SandboxSpecBar threadId="thread-1" />);
+    });
+    click(container, 'spec-bar-pause');
+
+    await act(async () => {
+      r.render(<SandboxSpecBar threadId="thread-2" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      releasePatch({ ok: false, status: 500, json: async () => ({}) });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-testid="sandbox-spec-bar"]'), "B's bar must be rendered").toBeTruthy();
+    expect(container.textContent).not.toContain('暂停/恢复失败');
+  });
+
+  // Same lie as the run pane's: a 200 the bar cannot read is not "still loading".
+  it('calls a malformed response unreadable instead of pretending to still be loading', async () => {
+    mockApiFetch.mockImplementation(() => Promise.resolve(jsonResponse({})));
+    const r = await render();
+    root = r.root;
+    expect(r.container.querySelector('[data-testid="spec-bar-loading"]')).toBeNull();
+    expect(r.container.querySelector('[data-testid="spec-bar-error"]')).toBeTruthy();
+  });
+
   // Review: reading the globally-current thread let the bar describe one sandbox while its
   // buttons acted on another. It now follows the thread the parent is rendering, so a
   // global that has already moved on cannot pull it away.

@@ -44,6 +44,15 @@ vi.mock('@/utils/api-client', () => ({
 
 const jsonResponse = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 
+/** A response that resolves only when told to — controlling the ORDER is the whole point. */
+function deferred() {
+  let release: (value: unknown) => void = () => {};
+  const promise = new Promise((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
 async function render(): Promise<{ container: HTMLDivElement; root: Root }> {
   const { SandboxRunPane } = await import('../SandboxRunPane');
   const container = document.createElement('div');
@@ -238,6 +247,99 @@ describe('SandboxRunPane follows the thread it was given', () => {
     expect(posted, 'run-now must have been dispatched').toBeTruthy();
     expect(posted?.[0]).toContain('sb-B');
     expect(posted?.[0]).not.toContain('sb-A');
+
+    await act(async () => root.unmount());
+  });
+
+  // Review: clearing the note on switch only clears the value that exists AT the switch.
+  // A POST still in flight resurrects it afterwards — B's panel then reports a run that
+  // happened to A. The source fix cannot reach this; the callback has to check for itself.
+  it('does not resurrect A\'s trigger note after the operator has moved to B', async () => {
+    const slowPost = deferred();
+    mockApiFetch.mockImplementation((_path: string, init?: { method?: string }) => {
+      if (init?.method === 'POST') return slowPost.promise;
+      return Promise.resolve(jsonResponse({ sandbox: SANDBOX, memory: null, runs: [], runsAvailable: true }));
+    });
+
+    const { SandboxRunPane } = await import('../SandboxRunPane');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-1" />);
+    });
+
+    const runBtn = container.querySelector('[data-testid="sandbox-run-now"]') as HTMLButtonElement;
+    act(() => {
+      runBtn.click();
+    });
+
+    // Operator leaves while the trigger is still in flight.
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-2" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      slowPost.release({ ok: true, status: 202, json: async () => ({}) });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Assert B's pane is actually rendered, or "no note" would pass vacuously on a
+    // still-loading panel — a green test proving nothing.
+    expect(container.querySelector('[data-testid="sandbox-run-now"]'), "B's pane must be rendered").toBeTruthy();
+    expect(container.querySelector('[data-testid="sandbox-trigger-note"]')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it('does not report A\'s trigger failure on B either', async () => {
+    const slowPost = deferred();
+    mockApiFetch.mockImplementation((_path: string, init?: { method?: string }) => {
+      if (init?.method === 'POST') return slowPost.promise;
+      return Promise.resolve(jsonResponse({ sandbox: SANDBOX, memory: null, runs: [], runsAvailable: true }));
+    });
+
+    const { SandboxRunPane } = await import('../SandboxRunPane');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-1" />);
+    });
+    act(() => {
+      (container.querySelector('[data-testid="sandbox-run-now"]') as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-2" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      slowPost.release({ ok: false, status: 500, json: async () => ({ error: 'A 触发失败' }) });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).not.toContain('A 触发失败');
+    await act(async () => root.unmount());
+  });
+
+  // A 200 the pane cannot read is not "still loading" — saying so leaves the operator
+  // waiting forever for data that will never take that shape.
+  it('calls a malformed response unreadable instead of pretending to still be loading', async () => {
+    mockApiFetch.mockResolvedValue(jsonResponse({}));
+    const { root } = await renderFor('thread-2');
+
+    const container = document.body.lastElementChild as HTMLElement;
+    expect(container.querySelector('[data-testid="sandbox-run-pane-loading"]')).toBeNull();
+    expect(container.querySelector('[data-testid="sandbox-run-pane-error"]')).toBeTruthy();
 
     await act(async () => root.unmount());
   });

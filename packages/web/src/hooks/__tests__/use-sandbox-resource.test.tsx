@@ -22,6 +22,7 @@ let seen: {
   isStale: boolean;
   reload: () => Promise<void>;
   apply: (data: { name: string }) => void;
+  isCurrent: (id: string | undefined) => boolean;
 } | null = null;
 
 const buildPath = (sid: string) => `/api/sandboxes/${sid}`;
@@ -149,6 +150,30 @@ describe('useSandboxResource', () => {
     });
     expect(mockApiFetch).not.toHaveBeenCalled();
     expect(seen?.data).toBeNull();
+  });
+
+  // Review: the response guard protects the DATA, but a mutation's own callback writes
+  // caller-local state (a trigger note, an error, a busy flag) that no data guard can see.
+  // `isCurrent` is what a caller checks before touching that state after an await.
+  it('tells a caller whether the sandbox it started on is still the current one', async () => {
+    mockApiFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ name: 'A' }) });
+    const m = await mount('sbx-a');
+    root = m.root;
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(seen?.isCurrent('sbx-a')).toBe(true);
+
+    await m.rerender('sbx-b');
+    expect(seen?.isCurrent('sbx-a'), 'a mutation started on A must know it is stale').toBe(false);
+    expect(seen?.isCurrent('sbx-b')).toBe(true);
+  });
+
+  it('reports nothing as current once there is no sandbox at all', async () => {
+    const m = await mount(undefined);
+    root = m.root;
+    expect(seen?.isCurrent('sbx-a')).toBe(false);
+    expect(seen?.isCurrent(undefined)).toBe(false);
   });
 
   // A mutation reply is fresher than the next poll; it must also be identity-checked.

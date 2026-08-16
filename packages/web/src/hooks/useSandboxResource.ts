@@ -31,6 +31,16 @@ export interface SandboxResource<T> {
   reload: () => Promise<void>;
   /** Apply a fresh payload obtained outside the poll (e.g. the reply to a mutation). */
   apply: (data: T) => void;
+  /**
+   * Whether the sandbox a caller started work on is still the one on screen.
+   *
+   * The guards above protect the DATA this hook owns. A mutation writes state the hook
+   * cannot see — a trigger note, an error, a busy flag — and those writes happen after an
+   * await, so they can land under a sandbox the operator has already left: B's panel
+   * reporting "已触发运行" for a run that happened to A. Callers check this before touching
+   * their own state on the far side of an await.
+   */
+  isCurrent: (id: string | undefined) => boolean;
 }
 
 export function useSandboxResource<T>(
@@ -86,6 +96,12 @@ export function useSandboxResource<T>(
     [sandboxId],
   );
 
+  // Read through a ref, not the closed-over `sandboxId`: a mutation callback captured the
+  // value it started with, and asking "is that still current" has to see the value NOW.
+  const currentIdRef = useRef(sandboxId);
+  currentIdRef.current = sandboxId;
+  const isCurrent = useCallback((id: string | undefined) => id !== undefined && id === currentIdRef.current, []);
+
   const data = held && held.sandboxId === sandboxId ? held.data : null;
-  return { data, error, isStale: data !== null && error !== null, reload: load, apply };
+  return { data, error, isStale: data !== null && error !== null, reload: load, apply, isCurrent };
 }

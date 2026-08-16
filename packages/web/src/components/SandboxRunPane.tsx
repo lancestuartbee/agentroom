@@ -72,6 +72,7 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
     error,
     isStale,
     reload: load,
+    isCurrent,
   } = useSandboxResource<RuntimeState>(sandboxId, buildRuntimePath, {
     // The run loop fires on a daily cadence, so this poll only needs to catch a manual run
     // or a report the member wrote mid-conversation.
@@ -86,6 +87,13 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
     setTriggerNote(null);
     try {
       const res = await apiFetch(`/api/sandboxes/${encodeURIComponent(targetId)}/run`, { method: 'POST' });
+      // Everything past this await belongs to the sandbox the click started on. Clearing
+      // the note when the thread changes only clears the value that exists AT the switch;
+      // a reply still in flight puts it back. Worse than a wrong note: the success branch
+      // calls load(), and that closure was captured on A — it refetches A and its
+      // generation bump blanks B's pane. Writing another sandbox's outcome is the visible
+      // symptom; stealing the current one's data is the expensive one.
+      if (!isCurrent(targetId)) return;
       if (res.ok) {
         // Dispatch is fire-and-forget: the member has been woken, but its report will
         // not exist for a while. Say so, rather than implying the run has finished.
@@ -93,14 +101,15 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
         void load();
       } else {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!isCurrent(targetId)) return;
         setTriggerNote(body.error ?? `触发失败（HTTP ${res.status}）`);
       }
     } catch (err) {
-      setTriggerNote(err instanceof Error ? err.message : '触发失败');
+      if (isCurrent(targetId)) setTriggerNote(err instanceof Error ? err.message : '触发失败');
     } finally {
-      setTriggering(false);
+      if (isCurrent(targetId)) setTriggering(false);
     }
-  }, [sandboxId, triggering, load]);
+  }, [sandboxId, triggering, load, isCurrent]);
 
   if (!sandboxId) return null;
 
@@ -111,10 +120,18 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
       </div>
     );
   }
-  // A 200 whose body has no sandbox in it is not data — destructuring it turned the whole
-  // pane into a white screen. "Cannot read it" is a state this pane already knows how to
-  // say, so say that instead of crashing.
-  if (!state?.sandbox) {
+  // A 200 whose body has no sandbox in it is not data. Destructuring it used to white-screen
+  // the pane; calling it "正在读取运行态…" instead was barely better — the operator waits
+  // forever for a shape the response is never going to take. It is unreadable, which is a
+  // state this pane already knows how to say.
+  if (state && !state.sandbox) {
+    return (
+      <div className="p-4 text-sm text-[var(--console-text-muted)]" data-testid="sandbox-run-pane-error">
+        运行态响应格式不对，读不出这个沙盒。
+      </div>
+    );
+  }
+  if (!state) {
     return (
       <div className="p-4 text-sm text-[var(--console-text-muted)]" data-testid="sandbox-run-pane-loading">
         正在读取运行态…
