@@ -69,6 +69,19 @@ export function stripComments(content: string): string {
 // ── S6: Workflow Triggers (allowLocalOverride: true) ─────────
 
 /**
+ * Load the common development-mode collaboration protocol.
+ * No variables, supports .local overlay.
+ */
+export function loadDevProtocol(): string {
+  const { path: filePath } = resolveWithOverlay('s6-dev-protocol.md', 's6-dev-protocol.local.md');
+  if (!existsSync(filePath)) {
+    console.warn('[prompt-template] s6-dev-protocol.md not found, returning empty');
+    return '';
+  }
+  return stripComments(readFileSync(filePath, 'utf-8'));
+}
+
+/**
  * Load per-breed workflow triggers from YAML.
  * Checks for workflow-triggers.local.yaml overlay first.
  * Returns Record<string, string> keyed by breedId.
@@ -190,6 +203,7 @@ const TEMPLATE_FILES: Record<string, { base: string; local: string }> = {
   N1: { base: 'n1-navigation.md', local: '' },
   // ── Existing templates ──
   S6: { base: 'workflow-triggers.yaml', local: 'workflow-triggers.local.yaml' },
+  S6_base: { base: 's6-dev-protocol.md', local: 's6-dev-protocol.local.md' },
   S13: { base: 'mcp-tools.md', local: 'mcp-tools.local.md' },
   D8: { base: 'a2a-ball-check.md', local: '' },
   D21: { base: 'handoff-decision-tree.md', local: '' },

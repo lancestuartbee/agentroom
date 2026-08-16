@@ -408,26 +408,26 @@ describe('SystemPromptBuilder', () => {
     assert.equal(buildStaticIdentity('unknown-cat'), '');
   });
 
-  test('buildStaticIdentity includes workflow triggers', async () => {
+  test('buildStaticIdentity includes workflow triggers in development mode', async () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
-    const opusId = buildStaticIdentity('opus');
+    const opusId = buildStaticIdentity('opus', { threadMode: 'development' });
     assert.ok(opusId.includes('工作流'), 'Opus should have workflow triggers');
-    assert.ok(opusId.includes('@缅因猫'), 'Opus workflow should mention review with 缅因猫');
+    assert.ok(opusId.includes('@codex'), 'Opus workflow should mention review with @codex');
     assert.ok(
       opusId.includes('MG provenance override'),
       'Opus workflow should avoid local-reviewer ping after external merge-gate feedback',
     );
 
-    const codexId = buildStaticIdentity('codex');
+    const codexId = buildStaticIdentity('codex', { threadMode: 'development' });
     assert.ok(codexId.includes('工作流'), 'Codex should have workflow triggers');
-    assert.ok(codexId.includes('@布偶猫'), 'Codex workflow should mention notifying 布偶猫');
+    assert.ok(codexId.includes('@opus'), 'Codex workflow should mention notifying @opus');
     assert.ok(
       codexId.includes('MG provenance override'),
       'Codex workflow should avoid local-reviewer ping after external merge-gate feedback',
     );
     assert.ok(codexId.includes('出口一问'), 'Codex workflow should include exit check (出口一问)');
 
-    const opencodeId = buildStaticIdentity('opencode');
+    const opencodeId = buildStaticIdentity('opencode', { threadMode: 'development' });
     assert.ok(opencodeId.includes('工作流'), 'OpenCode should have workflow triggers');
     assert.ok(
       opencodeId.includes('MG provenance override'),
@@ -436,6 +436,38 @@ describe('SystemPromptBuilder', () => {
     assert.ok(opencodeId.includes('### 执行纪律'), 'OpenCode workflow should include execution discipline');
     assert.ok(opencodeId.includes('出口一问'), 'OpenCode workflow should include exit check (出口一问)');
     assert.ok(opencodeId.includes('OMOC Sisyphus'), 'OpenCode workflow should keep golden-chinchilla governance');
+  });
+
+  test('buildStaticIdentity omits development workflow triggers outside development mode', async () => {
+    const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+    const opusCasual = buildStaticIdentity('opus', { threadMode: 'casual' });
+    assert.ok(!opusCasual.includes('### 执行纪律'), 'Casual thread should not include dev execution discipline');
+    assert.ok(!opusCasual.includes('出口一问'), 'Casual thread should not include dev exit check');
+    assert.ok(
+      !opusCasual.includes('工作流（主动 @ 触发点）'),
+      'Casual thread should not include dev workflow trigger section',
+    );
+
+    const opusRoundtable = buildStaticIdentity('opus', { threadMode: 'roundtable' });
+    assert.ok(
+      !opusRoundtable.includes('### 执行纪律'),
+      'Roundtable thread should not include dev execution discipline',
+    );
+    assert.ok(
+      !opusRoundtable.includes('工作流（主动 @ 触发点）'),
+      'Roundtable thread should not include dev workflow trigger section',
+    );
+  });
+
+  test('buildStaticIdentity gives new breeds the common dev protocol even without per-breed overlay', async () => {
+    const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+    const moonshotDev = buildStaticIdentity('kimi', { threadMode: 'development' });
+    assert.ok(moonshotDev.includes('### 执行纪律'), 'New breed in dev mode should get common dev protocol');
+    assert.ok(moonshotDev.includes('出口一问'), 'New breed in dev mode should get exit check');
+    assert.ok(
+      !moonshotDev.includes('完成开发/修复 → @codex'),
+      'New breed without overlay should not get breed-specific reviewer routing',
+    );
   });
 
   test('buildStaticIdentity is deterministic', async () => {
@@ -1866,11 +1898,12 @@ describe('SystemPromptBuilder', () => {
 
   // --- 回归测试：maine-coon prompt 必须包含 A2A 执行纪律 ---
 
-  test('maine-coon prompt contains execution discipline keywords', async () => {
+  test('maine-coon prompt contains execution discipline keywords in development mode', async () => {
     const build = await getBuilder();
     const prompt = build({
       catId: 'codex',
       mode: 'independent',
+      threadMode: 'development',
       teammates: [],
       mcpAvailable: false,
     });
@@ -1881,9 +1914,9 @@ describe('SystemPromptBuilder', () => {
     assert.ok(prompt.includes('出口一问'), 'maine-coon prompt must include 出口一问');
   });
 
-  test('maine-coon workflow contains A2A state transition keywords', async () => {
+  test('maine-coon workflow contains A2A state transition keywords in development mode', async () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
-    const codexId = buildStaticIdentity('codex');
+    const codexId = buildStaticIdentity('codex', { threadMode: 'development' });
     assert.ok(codexId.includes('BLOCKED'), 'codex prompt must include BLOCKED state');
     assert.ok(codexId.includes('REVIEW READY'), 'codex prompt must include REVIEW READY state');
     assert.ok(codexId.includes('DONE'), 'codex prompt must include DONE state');

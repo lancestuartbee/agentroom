@@ -50,7 +50,12 @@ export const promptInjectionPreviewRoutes: FastifyPluginAsync = async (app) => {
       const mcpAvailable = (catConfig?.mcpSupport ?? false) && !!mcpServerPath;
       const packBlocks = await getActivePackBlocks(packStore);
 
-      const compiled = buildStaticIdentity(catId as CatId, { mcpAvailable, packBlocks, annotateSegments: true });
+      const compiled = buildStaticIdentity(catId as CatId, {
+        mcpAvailable,
+        packBlocks,
+        annotateSegments: true,
+        threadMode: 'development',
+      });
       if (!compiled) {
         reply.status(404);
         return { error: `Cat "${catId}" not found or has no identity config` };

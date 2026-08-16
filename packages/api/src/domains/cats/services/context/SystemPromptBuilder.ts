@@ -5,7 +5,14 @@
  * 纯函数，无副作用。读取 catRegistry 生成身份上下文。
  */
 
-import type { CatConfig, CatId, CompiledPackBlocks, ConciergeConfig, WorldContextEnvelope } from '@cat-cafe/shared';
+import type {
+  CatConfig,
+  CatId,
+  CompiledPackBlocks,
+  ConciergeConfig,
+  ThreadMode,
+  WorldContextEnvelope,
+} from '@cat-cafe/shared';
 import { catRegistry } from '@cat-cafe/shared';
 import { getDossierRosterSummary, hasDossierEntry } from '@cat-cafe/shared/dossier';
 import {
@@ -33,6 +40,7 @@ import type {
 import { loadCompiledGovernanceL0, loadCompiledGovernanceL0Sync } from './governance-l0.js';
 import {
   loadA2aBallCheck,
+  loadDevProtocol,
   loadHandoffDecisionTree,
   loadMcpToolsSection,
   loadWorkflowTriggers,
@@ -200,6 +208,12 @@ export interface InvocationContext {
    * Required when threadKind === 'concierge'. Provides displayName / personaTone / dutyCatProfileId.
    */
   conciergeConfig?: ConciergeConfig;
+  /**
+   * Thread collaboration mode. When 'development', buildSystemPrompt forwards this
+   * to buildStaticIdentity so the common dev protocol + per-breed workflow triggers
+   * are injected. Other modes keep the lightweight identity-only prompt.
+   */
+  threadMode?: ThreadMode;
 }
 
 /** Get all cat configs from catRegistry (.cat-cafe/cat-catalog.json) */
@@ -429,6 +443,12 @@ export interface StaticIdentityOptions {
    * Used by compiled-preview to show which segment generated which content.
    */
   annotateSegments?: boolean;
+  /**
+   * Thread collaboration mode. When 'development', the common development
+   * collaboration protocol (S6-base) is injected in addition to per-breed
+   * workflow triggers.
+   */
+  threadMode?: ThreadMode;
 }
 
 export interface CasualStaticIdentityOptions {
@@ -646,11 +666,22 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
   }
 
   /* @segment S6 — 工作流触发点 */
-  const wfTriggers = getWorkflowTriggers();
-  const triggers = wfTriggers[config.breedId ?? ''] ?? wfTriggers[catId as string];
-  if (triggers) {
-    mark('S6', '工作流触发点');
-    lines.push(triggers, '');
+  // F064 P1: development-mode collaboration protocol is a mode-gated invariant,
+  // not a per-breed choice. Per-breed entries are routing preferences only.
+  if (options?.threadMode === 'development') {
+    const devProtocol = loadDevProtocol();
+    if (devProtocol) {
+      mark('S6', '工作流触发点');
+      lines.push(devProtocol, '');
+    }
+
+    const wfTriggers = getWorkflowTriggers();
+    const triggers = wfTriggers[config.breedId ?? ''] ?? wfTriggers[catId as string];
+    if (triggers) {
+      // Only mark S6 once; base protocol already marked it.
+      if (!devProtocol) mark('S6', '工作流触发点');
+      lines.push(triggers, '');
+    }
   }
 
   /* @segment S7 — Pack Workflows (template: s7-pack-workflows.md) */
@@ -1211,6 +1242,7 @@ export function buildSystemPrompt(context: InvocationContext): string {
   const staticPart = buildStaticIdentity(context.catId, {
     mcpAvailable: context.mcpAvailable,
     packBlocks: context.packBlocks,
+    threadMode: context.threadMode,
   });
   if (!staticPart) return '';
 

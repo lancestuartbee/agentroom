@@ -273,6 +273,7 @@ export async function* routeParallel(
         routePromptProfile === 'sandbox' && deps.sandboxStore
           ? await Promise.resolve(deps.sandboxStore.getByThreadId(threadId)).catch(() => null)
           : null;
+      const threadMode = routeThread?.mode;
       const staticIdentity = buildPromptProfileStaticIdentity(
         catId,
         threadId,
@@ -280,7 +281,7 @@ export async function* routeParallel(
         () =>
           hasNativeL0
             ? buildStaticIdentityPackOnly(catId, { packBlocks })
-            : buildStaticIdentity(catId, { mcpAvailable, packBlocks }),
+            : buildStaticIdentity(catId, { mcpAvailable, packBlocks, threadMode }),
         identitySandbox
           ? { name: identitySandbox.spec?.name ?? identitySandbox.title, projectPath: identitySandbox.projectPath }
           : undefined,
