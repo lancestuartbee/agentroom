@@ -188,9 +188,18 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 > ⚠️ **已知覆盖缺口（luna 放行时记录，2026-08-16）**：`useSandboxResource.apply()` 的"切换后旧 mutation reply 不污染 B"**没有直接的 hook 回归测试**。当前安全性来自两个实现细节——调用方在 `apply` 前查 `isCurrent`，且 hook 的 sandboxId-tag getter 不会把旧数据当作 B 交出去。**新增任何 `apply` 调用方都必须沿用 `isCurrent` 守卫**，并应补上这条直测。
 
 ### Phase E（Backflow & Promotion）
-- [ ] AC-E1: 创建沙盒时可设置 `allowBackflow` 开关。
-- [ ] AC-E2: 当 `allowBackflow=true` 时，用户可在开发态把 learned item 提升为系统级知识。
-- [ ] AC-E3: 回流操作记录 provenance（来源 sandbox、时间、原始内容）。
+- [x] AC-E1: 创建沙盒时可设置 `allowBackflow` 开关。
+- [x] AC-E2: 当 `allowBackflow=true` 时，用户可在开发态把 learned item 手动提升为系统级 evidence。
+  - 提升动作使用 durable **claim state machine**：`claimPromotion` → `upsertEvidence` → `completePromotion`，失败时 `releasePromotionClaim`。
+  - `claimPromotion` 在写 claim 前按 `sourceRunId + content` 的 **fingerprint** 做线性化校验；同 stable id 在 claim 前被 fold 改写/撤回时直接 conflict，不会外泄旧 evidence。
+  - 同内容的并发请求命中已有 active claim 时，只得到 `Promotion already in progress`，**不共享 attemptId**，也绝不 release 不属于自己的 claim。
+  - Stale claim 用新 attemptId 显式 takeover，避免崩溃后遗留不可恢复的 pending 状态。
+  - Claim 完成后 fold 仍按已定删除语义工作：已 promoted 的条目冻结，后续改写/撤回记录为 `divergence` 上报，不静默应用。
+- [x] AC-E3: 回流操作记录完整 provenance，包括来源 sandbox / run / original content / promotedAt，不发布沙盒绝对目录为 `sourcePath`。
+
+> **Phase E 已通过 review（terra，2026-08-22）**，`94f8692c..3d845ce3`。
+>
+> ⚠️ **已知 P3（本轮记录）**：`PROMOTION_CLAIM_STALE_MS` 当前为 30 秒租约启发式，用于区分崩溃遗留 claim 与仍在执行的活 claim。若 evidence write queue 极端积压超过该阈值，第二请求可能误判并 takeover 一个仍在推进的活 claim。后续应改为显式 heartbeat 或独立恢复器，而不是继续调大该常数。
 
 ## Tips Contribution（F244）
 
@@ -222,7 +231,7 @@ Reviewer usefulness check: tip teaches a concrete action, timing, or traceable h
 |---|------|------|
 | OQ-1 | v1 是否支持非 cron 的 schedule（如 interval、外部 webhook）？ | ⬜ 未定，v1 只做 cron |
 | OQ-2 | 沙盒是否允许绑定非代码目录（如纯数据目录）？ | ⬜ 未定，v1 复用 projectPath 校验 |
-| OQ-3 | learned item 的 promote 目标：全局 evidence 还是 skill 候选池？ | ⬜ 未定，v1 建议全局 evidence |
+| OQ-3 | learned item 的 promote 目标：全局 evidence 还是 skill 候选池？ | ✅ 已定为全局 evidence（derived/observed），`allowBackflow=true` 时手动 promote 写入系统级 evidence |
 
 ## Key Decisions
 
@@ -245,7 +254,7 @@ Reviewer usefulness check: tip teaches a concrete action, timing, or traceable h
 | TBD | Phase B: backend routing & memory isolation |
 | TBD | Phase C: scheduler & run loop |
 | TBD | Phase D: frontend dual-pane UX v1 |
-| TBD | Phase E: backflow & promotion |
+| 2026-08-22 | Phase E: backflow & promotion 实现完成并通过 review |
 
 ## Review Gate
 
