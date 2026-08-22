@@ -360,11 +360,22 @@ describe('Sandbox store', () => {
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-migrate-'));
     const projectPath = join(tmpDir, 'project');
     const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
-    const memoryDir = join(projectPath, '.a2a-sandbox', 'memory');
     await mkdir(runsDir, { recursive: true });
-    await mkdir(memoryDir, { recursive: true });
 
-    // Simulate an old memory file written before namespacing.
+    const indexFilePath = join(tmpDir, 'index.jsonl');
+    const store1 = new InMemorySandboxStore({ indexFilePath });
+    const sandbox = await store1.create(
+      {
+        title: 'Migrate',
+        projectPath,
+        members: ['opus'],
+        spec: { specVersion: '1', name: 'Migrate', goal: 'g', members: ['opus'] },
+      },
+      'user-1',
+    );
+    await store1.bindThread(sandbox.id, 'thread-1');
+
+    // Seed an old memory with a bare local id, as if written by a pre-namespace version.
     const oldMemory = {
       v: 1,
       summary: '- [1970-01-01] first run',
@@ -376,7 +387,7 @@ describe('Sandbox store', () => {
         { id: 'a', content: 'old bare id', sourceRunId: 'run-1', sourceRunAt: 1_700_000_000_000, promoted: false },
       ],
     };
-    await writeFile(join(memoryDir, 'sandbox-memory.json'), JSON.stringify(oldMemory), 'utf-8');
+    await store1.updateMemory(sandbox.id, oldMemory);
 
     // A report that agrees with the old memory.
     await writeFile(
@@ -400,33 +411,26 @@ describe('Sandbox store', () => {
       'utf-8',
     );
 
-    const indexFilePath = join(tmpDir, 'index.jsonl');
-    const store = new InMemorySandboxStore({ indexFilePath });
-    const sandbox = await store.create(
-      {
-        title: 'Migrate',
-        projectPath,
-        members: ['opus'],
-        spec: { specVersion: '1', name: 'Migrate', goal: 'g', members: ['opus'] },
-      },
-      'user-1',
-    );
-    await store.bindThread(sandbox.id, 'thread-1');
-
-    const runs = await store.listRuns(sandbox.id);
-    const memory = await store.getMemory(sandbox.id);
-    const folded = foldRunsIntoMemory(memory, runs);
-    assert.equal(folded.changed, true, 'migration must be reported as a change');
-    await store.updateMemory(sandbox.id, folded.memory);
-
-    // Simulate restart and re-read from disk.
+    // Simulate restart: a fresh store reads the bare-id memory from disk.
     const store2 = new InMemorySandboxStore({ indexFilePath });
     await store2.rehydrate();
-    const rehydrated = await store2.getMemory(sandbox.id);
-    assert.ok(rehydrated, 'memory must survive restart');
-    assert.equal(rehydrated.learnedItems.length, 1);
-    assert.equal(rehydrated.learnedItems[0].id, 'run-1\x1fa', 'bare id must be persisted as namespaced id');
-    assert.equal(rehydrated.learnedItems[0].content, 'old bare id');
+    const memoryBefore = await store2.getMemory(sandbox.id);
+    assert.ok(memoryBefore, 'memory must survive restart');
+    assert.equal(memoryBefore.learnedItems[0].id, 'a', 'fresh store must load the pre-namespace bare id');
+
+    const runs = await store2.listRuns(sandbox.id);
+    const folded = foldRunsIntoMemory(memoryBefore, runs);
+    assert.equal(folded.changed, true, 'migration must be reported as a change');
+    await store2.updateMemory(sandbox.id, folded.memory);
+
+    // Another restart: the migration must now be persisted on disk.
+    const store3 = new InMemorySandboxStore({ indexFilePath });
+    await store3.rehydrate();
+    const memoryAfter = await store3.getMemory(sandbox.id);
+    assert.ok(memoryAfter, 'memory must survive second restart');
+    assert.equal(memoryAfter.learnedItems.length, 1);
+    assert.equal(memoryAfter.learnedItems[0].id, 'run-1\x1fa', 'bare id must be persisted as namespaced id');
+    assert.equal(memoryAfter.learnedItems[0].content, 'old bare id');
 
     await rm(tmpDir, { recursive: true, force: true });
   });
