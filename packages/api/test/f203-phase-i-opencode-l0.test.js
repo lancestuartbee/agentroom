@@ -204,6 +204,15 @@ describe('F203 Phase I — native L0 role-based routing parity', () => {
     assert.ok(l0.includes('完成设计/视觉资产'), 'designer-role cat should get design routing in L0');
     assert.ok(!l0.includes('完成开发/修复 → @codex'), 'designer-only cat should not get code-review handoff in L0');
   });
+
+  test('kimi L0 receives common dev protocol without dev-role routing', async () => {
+    const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
+    const l0 = await compileL0({ catId: 'kimi' });
+
+    assert.ok(l0.includes('出口一问'), 'non-dev-role cat should still receive common dev protocol in L0');
+    assert.ok(!l0.includes('完成开发/修复 → @codex'), 'non-dev-role cat should not get code-review handoff in L0');
+    assert.ok(!l0.includes('完成设计/视觉资产'), 'non-designer cat should not get designer routing in L0');
+  });
 });
 
 // ── AC-I5c: lightweight profiles skip S6 dev protocol entirely ──

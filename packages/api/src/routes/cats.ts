@@ -564,12 +564,30 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         }[];
         clientDefaults?: Record<string, { defaultModel: string; models: string[] }>;
       };
-      if (raw.roleTemplates && raw.roleTemplates.length > 0) {
-        return { templates: raw.roleTemplates, clientDefaults: raw.clientDefaults ?? {} };
-      }
-      // Fallback: extract from breeds (legacy)
+      // F032: derive default roles from roster so the UI can seed new members with
+      // structured capabilities instead of falling back to ['assistant'].
       const templateConfig = loadCatConfig(templatePath);
       const allCats = Object.values(toAllCatConfigs(templateConfig));
+      const roster = getRoster(templateConfig);
+      const breedToRoles = new Map<string, string[]>();
+      for (const cat of allCats) {
+        if (cat.isDefaultVariant && cat.breedId) {
+          const entry = roster[cat.id];
+          if (entry?.roles && entry.roles.length > 0) {
+            breedToRoles.set(cat.breedId, [...entry.roles]);
+          }
+        }
+      }
+      if (raw.roleTemplates && raw.roleTemplates.length > 0) {
+        return {
+          templates: raw.roleTemplates.map((t) => ({
+            ...t,
+            roles: breedToRoles.get(t.id) ?? [],
+          })),
+          clientDefaults: raw.clientDefaults ?? {},
+        };
+      }
+      // Fallback: extract from breeds (legacy)
       const templateCats = allCats.filter((c) => c.isDefaultVariant);
       return {
         templates: templateCats.map((cat) => ({
@@ -585,6 +603,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           capabilityLevel: cat.capabilityLevel,
           runtimeClient: cat.runtimeClient,
           teamStrengths: cat.teamStrengths,
+          roles: breedToRoles.get(cat.breedId ?? cat.id) ?? [],
         })),
         clientDefaults: {},
       };

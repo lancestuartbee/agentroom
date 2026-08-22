@@ -11,6 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { compileL0ViaSubprocess } from '../../domains/cats/services/agents/providers/l0-compiler.js';
+import type { PromptProfile } from '../../domains/cats/services/types.js';
 import { createModuleLogger } from '../logger.js';
 import { pseudonymizeId } from '../telemetry/hmac.js';
 import {
@@ -54,10 +55,15 @@ export interface CaptureInput {
    */
   nativeL0Provider?: boolean;
   /**
+   * F032: thread prompt profile so capture matches the actual L0 compiled for
+   * the invocation (lightweight profiles skip S6 dev protocol).
+   */
+  promptProfile?: PromptProfile;
+  /**
    * Test seam — replaces the L0 fetcher (default `compileL0ViaSubprocess`).
    * Production callers leave this undefined.
    */
-  nativeL0Fetcher?: (catId: string) => Promise<string>;
+  nativeL0Fetcher?: (catId: string, promptProfile?: PromptProfile) => Promise<string>;
 }
 
 export function capturePromptIfEnabled(input: CaptureInput): void {
@@ -78,7 +84,7 @@ async function runCapture(input: CaptureInput): Promise<void> {
   if (input.nativeL0Provider) {
     const fetcher = input.nativeL0Fetcher ?? defaultFetcher;
     try {
-      const l0 = await fetcher(input.catId);
+      const l0 = await fetcher(input.catId, input.promptProfile);
       if (l0 && l0.trim().length > 0) {
         nativeSystemPrompt = l0;
         nativeSystemPromptSource = 'f203-l0';
@@ -132,8 +138,8 @@ async function runCapture(input: CaptureInput): Promise<void> {
 }
 
 /** Default L0 fetcher — module-level so tests can override via input.nativeL0Fetcher. */
-async function defaultFetcher(catId: string): Promise<string> {
-  return compileL0ViaSubprocess({ catId });
+async function defaultFetcher(catId: string, promptProfile?: PromptProfile): Promise<string> {
+  return compileL0ViaSubprocess({ catId, promptProfile });
 }
 
 export function getPromptCaptureStore(): PromptCaptureStore {

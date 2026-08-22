@@ -1902,6 +1902,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         catId as string,
         params.promptDiagnostics.nativeL0Provider,
         nativeSystemPromptOverride,
+        promptProfile === 'development' ? undefined : promptProfile,
       );
       const runtimeSegments: PromptDiagnosticSegment[] = [
         ...(nativeL0Segment ? [nativeL0Segment] : []),
@@ -1982,6 +1983,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       // path stays non-blocking — the bridge handles fetch async + fail-safe
       // (see comment block in prompt-capture-bridge.ts).
       nativeL0Provider,
+      promptProfile: promptProfile === 'development' ? undefined : promptProfile,
     });
 
     // F089 Phase 2+3: Create tmux spawn override for agent-in-pane execution
@@ -3633,6 +3635,7 @@ async function buildNativeL0DiagnosticSegment(
   catId: string,
   nativeL0Provider: boolean,
   nativeSystemPromptOverride?: string,
+  promptProfile?: PromptProfile,
 ): Promise<PromptDiagnosticSegment | undefined> {
   if (!nativeL0Provider) return undefined;
   if (nativeSystemPromptOverride) {
@@ -3651,7 +3654,7 @@ async function buildNativeL0DiagnosticSegment(
   }
 
   try {
-    const nativeL0 = await compileL0ViaSubprocess({ catId });
+    const nativeL0 = await compileL0ViaSubprocess({ catId, promptProfile });
     return promptTextSegment('nativeL0ProviderSystemPrompt', nativeL0, 'provider-native channel');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

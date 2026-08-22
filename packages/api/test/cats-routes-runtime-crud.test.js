@@ -2126,6 +2126,24 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.ok(prompt.includes('完成开发/修复 → @codex'), 'coding-role runtime cat should receive code-review handoff');
   });
 
+  it('GET /api/cat-templates surfaces roster roles for UI seeding', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const res = await app.inject({ method: 'GET', url: '/api/cat-templates' });
+    assert.equal(res.statusCode, 200, `expected 200, got ${res.statusCode}: ${res.body}`);
+    const body = JSON.parse(res.body);
+    const ragdoll = body.templates.find((t) => t.id === 'ragdoll');
+    assert.ok(ragdoll, 'ragdoll template should be present');
+    assert.deepEqual(ragdoll.roles, ['architect'], 'template should expose roster roles so UI can seed new members');
+  });
+
   it('DELETE /api/cats/:id removes runtime session-strategy override for deleted cat', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');

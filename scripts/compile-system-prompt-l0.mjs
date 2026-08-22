@@ -270,23 +270,24 @@ function buildWorkflowTriggers(breedId, catId, displayName, promptProfile = 'dev
 
   const parts = [];
 
-  // Common development-mode protocol is part of the workflow-triggers section in L0.
-  if (hasDevRole) {
-    const devProtocol = loadDevProtocol();
-    if (devProtocol) {
-      parts.push(devProtocol);
-    }
+  // Common development-mode protocol applies to ALL members in a development thread,
+  // not only those with dev roles. Role gate below controls routing preferences only.
+  const devProtocol = loadDevProtocol();
+  if (devProtocol) {
+    parts.push(devProtocol);
   }
 
   // Inject the highest-priority dev-role routing preference to avoid duplication.
   let devRoleInjected = false;
-  for (const role of DEV_ROLE_PRIORITY) {
-    if (roles.includes(role)) {
-      const roleTriggers = workflowTriggers.roles[role];
-      if (roleTriggers) {
-        parts.push(roleTriggers);
-        devRoleInjected = true;
-        break;
+  if (hasDevRole) {
+    for (const role of DEV_ROLE_PRIORITY) {
+      if (roles.includes(role)) {
+        const roleTriggers = workflowTriggers.roles[role];
+        if (roleTriggers) {
+          parts.push(roleTriggers);
+          devRoleInjected = true;
+          break;
+        }
       }
     }
   }
