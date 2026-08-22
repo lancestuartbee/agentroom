@@ -41,7 +41,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { catRegistry } from '@cat-cafe/shared';
 import { getDossierRosterSummary, hasDossierEntry } from '@cat-cafe/shared/dossier';
-import YAML from 'yaml';
+import {
+  DEV_ROLE_PRIORITY,
+  loadDevProtocol,
+  loadWorkflowTriggers,
+} from '../packages/api/dist/domains/cats/services/context/prompt-template-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -160,77 +164,6 @@ export function filterAvailableTeammates(allConfigs, currentCatId, isAvailableFn
   return Object.entries(allConfigs).filter(([id]) => id !== currentCatId && isAvailableFn(id));
 }
 
-function workflowTriggersBasePath(filename) {
-  return resolve(PROMPT_TEMPLATES_DIR, filename);
-}
-
-function workflowTriggersOverlayPath(filename) {
-  return resolve(PROMPT_OVERLAYS_DIR, filename);
-}
-
-function extractStringMap(obj) {
-  if (obj == null || typeof obj !== 'object') return {};
-  const result = {};
-  for (const [key, content] of Object.entries(obj)) {
-    if (typeof content === 'string') {
-      result[key] = content.trimEnd();
-    }
-  }
-  return result;
-}
-
-function parseWorkflowTriggersFile(filePath) {
-  const parsed = YAML.parse(readFileSync(filePath, 'utf-8'));
-  if (parsed == null || typeof parsed !== 'object') return { roles: {}, breeds: {} };
-  return {
-    roles: extractStringMap(parsed.roles),
-    breeds: extractStringMap(parsed.breeds),
-  };
-}
-
-function loadWorkflowTriggers() {
-  const basePath = workflowTriggersBasePath('workflow-triggers.yaml');
-  const localPath = workflowTriggersOverlayPath('workflow-triggers.local.yaml');
-  const effectivePath = existsSync(localPath) ? localPath : basePath;
-
-  if (!existsSync(effectivePath)) {
-    console.warn('[compile-l0] workflow-triggers.yaml not found, using empty map');
-    return { roles: {}, breeds: {} };
-  }
-
-  try {
-    return parseWorkflowTriggersFile(effectivePath);
-  } catch (err) {
-    console.warn(`[compile-l0] malformed YAML in ${effectivePath}: ${err}`);
-    if (effectivePath === localPath && existsSync(basePath)) {
-      try {
-        return parseWorkflowTriggersFile(basePath);
-      } catch {
-        console.warn('[compile-l0] base workflow-triggers.yaml also malformed, using empty map');
-      }
-    }
-    return { roles: {}, breeds: {} };
-  }
-}
-
-function loadDevProtocol() {
-  const basePath = resolve(PROMPT_TEMPLATES_DIR, 's6-dev-protocol.md');
-  const localPath = resolve(PROMPT_OVERLAYS_DIR, 's6-dev-protocol.local.md');
-  const effectivePath = existsSync(localPath) ? localPath : basePath;
-  if (!existsSync(effectivePath)) {
-    console.warn('[compile-l0] s6-dev-protocol.md not found, using empty string');
-    return '';
-  }
-  return readFileSync(effectivePath, 'utf8')
-    .split('\n')
-    .filter((line) => {
-      const trimmed = line.trim();
-      return trimmed && !trimmed.startsWith('<!--');
-    })
-    .join('\n')
-    .trim();
-}
-
 function buildIdentityBlock(config, runtimeModel) {
   const lines = [];
   const nameLabel = config.nickname
@@ -327,8 +260,7 @@ function buildWorkflowTriggers(breedId, catId, displayName) {
   const workflowTriggers = loadWorkflowTriggers();
   const rosterEntry = _loadedConfig?.roster?.[catId];
   const roles = rosterEntry?.roles ?? [];
-  const devRoles = ['coding', 'peer-reviewer', 'architect', 'security'];
-  const hasDevRole = roles.some((role) => devRoles.includes(role));
+  const hasDevRole = roles.some((role) => DEV_ROLE_PRIORITY.includes(role));
 
   const parts = [];
 
@@ -342,7 +274,7 @@ function buildWorkflowTriggers(breedId, catId, displayName) {
 
   // Inject the highest-priority dev-role routing preference to avoid duplication.
   let devRoleInjected = false;
-  for (const role of devRoles) {
+  for (const role of DEV_ROLE_PRIORITY) {
     if (roles.includes(role)) {
       const roleTriggers = workflowTriggers.roles[role];
       if (roleTriggers) {
@@ -353,8 +285,8 @@ function buildWorkflowTriggers(breedId, catId, displayName) {
     }
   }
 
-  // Non-dev designer role still gets design routing.
-  if (!devRoleInjected && roles.includes('designer')) {
+  // Designer role gets its own routing preference, independently of dev roles.
+  if (roles.includes('designer')) {
     const designerTriggers = workflowTriggers.roles.designer;
     if (designerTriggers) {
       parts.push(designerTriggers);

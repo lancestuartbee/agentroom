@@ -39,6 +39,7 @@ import type {
 } from '../stores/ports/ThreadStore.js';
 import { loadCompiledGovernanceL0, loadCompiledGovernanceL0Sync } from './governance-l0.js';
 import {
+  DEV_ROLE_PRIORITY,
   loadA2aBallCheck,
   loadDevProtocol,
   loadHandoffDecisionTree,
@@ -684,8 +685,7 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
     // Inject the highest-priority dev-role routing preference. Order matters:
     // a cat with multiple dev roles (e.g. codex = peer-reviewer + security)
     // should get one coherent routing block, not duplicated bullets.
-    const devRolePriority = ['architect', 'peer-reviewer', 'coding', 'security'] as const;
-    for (const role of devRolePriority) {
+    for (const role of DEV_ROLE_PRIORITY) {
       if (catHasRole(catId as string, role)) {
         const roleTriggers = wfTriggers.roles[role];
         if (roleTriggers) {

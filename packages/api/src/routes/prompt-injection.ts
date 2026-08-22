@@ -68,11 +68,13 @@ function requireOverlayWriteAuth(request: import('fastify').FastifyRequest): Ove
 }
 
 /**
- * Validate that YAML content parses to a mapping of string values.
+ * Validate that YAML content parses to a nested mapping whose leaf values are
+ * strings. The S6 workflow-triggers overlay uses `roles:` / `breeds:` nested
+ * maps, so flat string-only validation is no longer sufficient.
  * Returns an error message or null if valid.
  * Used by both save and restore-backup paths (P2 audit: same gate on all write paths).
  */
-function validateYamlStringMapping(content: string): string | null {
+function validateYamlLeafStrings(content: string): string | null {
   let parsed: unknown;
   try {
     parsed = YAML.parse(content);
@@ -82,12 +84,26 @@ function validateYamlStringMapping(content: string): string | null {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     return 'YAML must be a mapping (object), not a scalar or list';
   }
-  for (const [key, val] of Object.entries(parsed)) {
-    if (typeof val !== 'string') {
-      return `Value for key "${key}" must be a string, got ${typeof val}`;
+
+  function walk(value: unknown, path: string): string | null {
+    if (value === null || typeof value !== 'object') {
+      if (typeof value !== 'string') {
+        return `Value at "${path || 'root'}" must be a string, got ${typeof value}`;
+      }
+      return null;
     }
+    if (Array.isArray(value)) {
+      return `Value at "${path || 'root'}" must be a mapping, got a list`;
+    }
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const childPath = path ? `${path}.${key}` : key;
+      const err = walk(child, childPath);
+      if (err) return err;
+    }
+    return null;
   }
-  return null;
+
+  return walk(parsed, '');
 }
 
 function removeIfExists(path: string): void {
@@ -231,18 +247,14 @@ export const promptInjectionRoutes: FastifyPluginAsync = async (app) => {
       const vars = resolveVars(id);
       let rendered: string;
       if (meta.ext === 'yaml') {
-        // YAML preview: parse and show per-key values
+        // YAML preview: parse and show nested mapping (roles / breeds for S6)
         try {
           const parsed: unknown = YAML.parse(content);
           if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
             reply.status(400);
             return { error: 'YAML must be a mapping (object), not a scalar or list' };
           }
-          const entries: Record<string, string> = {};
-          for (const [k, v] of Object.entries(parsed)) {
-            entries[k] = typeof v === 'string' ? v.trimEnd() : String(v);
-          }
-          rendered = JSON.stringify(entries, null, 2);
+          rendered = JSON.stringify(parsed, null, 2);
         } catch (e) {
           reply.status(400);
           return { error: `Invalid YAML: ${e instanceof Error ? e.message : String(e)}` };
@@ -285,9 +297,9 @@ export const promptInjectionRoutes: FastifyPluginAsync = async (app) => {
         return { error: 'Missing or empty content field' };
       }
 
-      // Validate YAML segments parse to a string-valued mapping
+      // Validate YAML segments parse to a nested mapping with string leaves
       if (meta.ext === 'yaml') {
-        const yamlErr = validateYamlStringMapping(content);
+        const yamlErr = validateYamlLeafStrings(content);
         if (yamlErr) {
           reply.status(400);
           return { error: yamlErr };
@@ -397,7 +409,7 @@ export const promptInjectionRoutes: FastifyPluginAsync = async (app) => {
     // Validate backup content before restoring (P2-7: same gate as save path)
     if (meta.ext === 'yaml') {
       const bakContent = readFileSync(bakPath, 'utf-8');
-      const yamlErr = validateYamlStringMapping(bakContent);
+      const yamlErr = validateYamlLeafStrings(bakContent);
       if (yamlErr) {
         reply.status(400);
         return { error: `Backup file is invalid — ${yamlErr}` };

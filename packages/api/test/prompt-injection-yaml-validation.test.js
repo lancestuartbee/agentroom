@@ -6,6 +6,7 @@ import Fastify from 'fastify';
 import {
   getTemplateFileInfo,
   getTemplateOverlayPath,
+  loadWorkflowTriggers,
   TEMPLATES_DIR,
 } from '../dist/domains/cats/services/context/prompt-template-loader.js';
 import { promptInjectionRoutes } from '../dist/routes/prompt-injection.js';
@@ -153,6 +154,50 @@ describe('prompt-injection YAML validation', () => {
         await app.close();
       }
     });
+
+    it('accepts nested roles/breeds YAML mapping', async () => {
+      const app = await buildApp();
+      try {
+        const content = `roles:
+  coding: |
+    test coding routing
+  designer: |
+    test designer routing
+breeds:
+  maine-coon: |
+    test breed governance`;
+        const res = await app.inject({
+          method: 'POST',
+          url: `/api/prompt-injection/segment/${YAML_SEGMENT}/preview`,
+          headers: AUTH_HEADERS,
+          payload: { content },
+        });
+        assert.equal(res.statusCode, 200, `expected 200, got ${res.statusCode}`);
+        const body = JSON.parse(res.body);
+        assert.equal(body.segmentId, YAML_SEGMENT);
+        assert.ok(body.rendered.includes('coding'), 'preview should include nested roles');
+        assert.ok(body.rendered.includes('breeds'), 'preview should include nested breeds');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('rejects nested YAML with non-string leaves on write', async () => {
+      const app = await buildSessionApp();
+      try {
+        const res = await app.inject({
+          method: 'PUT',
+          url: `/api/prompt-injection/segment/${YAML_SEGMENT}/override`,
+          headers: LOCAL_WRITE_HEADERS,
+          payload: { content: 'roles:\n  coding: 42' },
+        });
+        assert.equal(res.statusCode, 400, `expected 400, got ${res.statusCode}`);
+        const body = JSON.parse(res.body);
+        assert.match(body.error, /string/i);
+      } finally {
+        await app.close();
+      }
+    });
   });
 
   describe('PUT /api/prompt-injection/segment/:id/override', () => {
@@ -281,6 +326,34 @@ describe('prompt-injection YAML validation', () => {
         }
       });
     });
+
+    it('writes nested roles/breeds YAML overlays', async () => {
+      await withPreservedOverlay(YAML_SEGMENT, async () => {
+        const overlayPath = getTemplateOverlayPath(YAML_SEGMENT);
+        assert.ok(overlayPath);
+        restoreFile(overlayPath, null);
+
+        const app = await buildSessionApp();
+        try {
+          const content = `roles:
+  coding: |
+    nested coding role routing
+breeds:
+  maine-coon: |
+    nested breed governance`;
+          const res = await app.inject({
+            method: 'PUT',
+            url: `/api/prompt-injection/segment/${YAML_SEGMENT}/override`,
+            headers: LOCAL_WRITE_HEADERS,
+            payload: { content },
+          });
+          assert.equal(res.statusCode, 200, `expected 200, got ${res.statusCode}: ${res.body}`);
+          assert.equal(readFileSync(overlayPath, 'utf-8'), content);
+        } finally {
+          await app.close();
+        }
+      });
+    });
   });
 
   describe('DELETE /api/prompt-injection/segment/:id/override', () => {
@@ -312,6 +385,26 @@ describe('prompt-injection YAML validation', () => {
       );
       assert.doesNotMatch(source, /copyFileSync\(localPath,\s*bakPath/, 'backup must not copy directly to final .bak');
       assert.doesNotMatch(source, /copyFileSync\(bakPath,\s*localPath/, 'restore must not copy directly to localPath');
+    });
+  });
+
+  describe('legacy flat overlay migration', () => {
+    it('migrates legacy flat workflow-triggers overlay to nested roles/breeds', async () => {
+      await withPreservedOverlay(YAML_SEGMENT, async () => {
+        const overlayPath = getTemplateOverlayPath(YAML_SEGMENT);
+        assert.ok(overlayPath);
+        writeFileSync(overlayPath, 'coding: |\n  legacy coding route\nragdoll: |\n  legacy ragdoll route', 'utf-8');
+
+        const triggers = loadWorkflowTriggers();
+        assert.ok(
+          triggers.roles.coding?.includes('legacy coding route'),
+          'legacy role key should migrate into roles map',
+        );
+        assert.ok(
+          triggers.breeds.ragdoll?.includes('legacy ragdoll route'),
+          'legacy breed key should migrate into breeds map',
+        );
+      });
     });
   });
 });

@@ -87,6 +87,15 @@ export interface WorkflowTriggers {
   breeds: Record<string, string>;
 }
 
+/**
+ * Priority order for dev-role routing preferences.
+ * A cat with multiple dev roles gets the highest-priority block only.
+ * Keep this in one place so runtime and native L0 do not drift.
+ */
+export const DEV_ROLE_PRIORITY = ['architect', 'peer-reviewer', 'coding', 'security'] as const;
+
+const ALL_RECOGNIZED_ROLES = new Set<string>([...DEV_ROLE_PRIORITY, 'designer']);
+
 function extractStringMap(obj: unknown): Record<string, string> {
   if (obj == null || typeof obj !== 'object') return {};
   const result: Record<string, string> = {};
@@ -99,9 +108,42 @@ function extractStringMap(obj: unknown): Record<string, string> {
 }
 
 /**
+ * Detect legacy flat workflow-triggers overlays where top-level keys were role or
+ * breed IDs mapped directly to strings. New schema requires `roles:` / `breeds:`
+ * nested maps. We migrate without silently dropping user overrides.
+ */
+function isLegacyFlatWorkflowTriggers(record: Record<string, unknown>): boolean {
+  if ('roles' in record || 'breeds' in record) return false;
+  const entries = Object.entries(record);
+  if (entries.length === 0) return false;
+  // Treat as legacy if every top-level value is a string (the old contract).
+  return entries.every(([, val]) => typeof val === 'string');
+}
+
+function migrateLegacyFlatWorkflowTriggers(record: Record<string, unknown>): WorkflowTriggers {
+  console.warn(
+    '[prompt-template] workflow-triggers overlay uses legacy flat schema; ' +
+      'migrating to nested roles/breeds. Please update to the new schema.',
+  );
+  const roles: Record<string, string> = {};
+  const breeds: Record<string, string> = {};
+  for (const [key, val] of Object.entries(record)) {
+    if (typeof val !== 'string') continue;
+    const trimmed = val.trimEnd();
+    if (ALL_RECOGNIZED_ROLES.has(key)) {
+      roles[key] = trimmed;
+    } else {
+      breeds[key] = trimmed;
+    }
+  }
+  return { roles, breeds };
+}
+
+/**
  * Load workflow triggers from YAML.
  * Checks for workflow-triggers.local.yaml overlay first.
  * Returns role-keyed routing preferences and breed-keyed governance overlays.
+ * Supports legacy flat overlays by migrating them to the nested schema.
  */
 export function loadWorkflowTriggers(): WorkflowTriggers {
   const { path: filePath, isOverride } = resolveWithOverlay('workflow-triggers.yaml', 'workflow-triggers.local.yaml');
@@ -136,6 +178,10 @@ export function loadWorkflowTriggers(): WorkflowTriggers {
   if (parsed == null || typeof parsed !== 'object') return { roles: {}, breeds: {} };
 
   const record = parsed as Record<string, unknown>;
+  if (isLegacyFlatWorkflowTriggers(record)) {
+    return migrateLegacyFlatWorkflowTriggers(record);
+  }
+
   return {
     roles: extractStringMap(record.roles),
     breeds: extractStringMap(record.breeds),

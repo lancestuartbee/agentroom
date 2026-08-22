@@ -155,6 +155,33 @@ describe('F203 Phase I — golden-chinchilla workflow triggers', () => {
   });
 });
 
+// ── AC-I5b: role-based routing parity between runtime and native L0 ──
+
+describe('F203 Phase I — native L0 role-based routing parity', () => {
+  test('opus L0 uses architect role priority over peer-reviewer', async () => {
+    const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
+    const l0 = await compileL0({ catId: 'opus' });
+
+    assert.ok(l0.includes('出口一问'), 'dev-role cat should receive common dev protocol in L0');
+    assert.ok(
+      l0.includes('完成架构设计/重大开发 → @codex 请 review'),
+      'opus (architect > peer-reviewer) should get architect routing in L0',
+    );
+    assert.ok(
+      !l0.includes('完成 review → @原作者 通知结果'),
+      'opus should NOT get lower-priority peer-reviewer routing in L0',
+    );
+  });
+
+  test('gemini L0 receives designer routing independently', async () => {
+    const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
+    const l0 = await compileL0({ catId: 'gemini' });
+
+    assert.ok(l0.includes('完成设计/视觉资产'), 'designer-role cat should get design routing in L0');
+    assert.ok(!l0.includes('完成开发/修复 → @codex'), 'designer-only cat should not get code-review handoff in L0');
+  });
+});
+
 // ── AC-I6: permission/plugin/compaction not broken ──
 
 describe('F203 Phase I — OpenCode runtime invariants (AC-I6)', () => {

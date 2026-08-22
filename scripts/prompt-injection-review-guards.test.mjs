@@ -90,10 +90,14 @@ describe('prompt-injection review guard scripts', () => {
     );
     assert.match(
       source,
-      /workflow-triggers\.local\.yaml/,
-      'native L0 compiler must consider the same local S6 overlay file as the runtime builder',
+      /loadWorkflowTriggers/,
+      'native L0 compiler must load S6 workflow triggers through the shared template loader',
     );
-    assert.match(source, /YAML\.parse/, 'native L0 compiler must load S6 workflow trigger YAML');
+    assert.match(
+      source,
+      /loadDevProtocol/,
+      'native L0 compiler must load S6 dev protocol through the shared template loader',
+    );
   });
 
   it('Maine Coon S6 breed governance preserves native L0 long-task guardrails', () => {
