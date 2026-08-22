@@ -92,7 +92,15 @@ interface ParsedLearnedMixed {
 interface ParsedLearnedDuplicate {
   kind: 'duplicate';
 }
-type ParsedLearnedResult = ParsedLearnedStable | ParsedLearnedLegacy | ParsedLearnedMixed | ParsedLearnedDuplicate;
+interface ParsedLearnedMalformed {
+  kind: 'malformed';
+}
+type ParsedLearnedResult =
+  | ParsedLearnedStable
+  | ParsedLearnedLegacy
+  | ParsedLearnedMixed
+  | ParsedLearnedDuplicate
+  | ParsedLearnedMalformed;
 
 function parseLearnedBullets(section: string | undefined): ParsedLearnedResult {
   const raw = section
@@ -116,6 +124,15 @@ function parseLearnedBullets(section: string | undefined): ParsedLearnedResult {
 
   if (raw.length === 0) {
     return { kind: 'legacy', items: [] };
+  }
+
+  // Any line that starts with `id:` but does not match the full `id:<token> <content>`
+  // shape is a malformed attempt at a stable id (e.g. `- id:a` with no conclusion, or
+  // `- id: a` with a space where the id should be). Treating it as legacy content would
+  // invent a fake learning and, worse, retract the real item that previously used this id.
+  const hasMalformedId = raw.some((item) => item.id === undefined && item.content.startsWith('id:'));
+  if (hasMalformedId) {
+    return { kind: 'malformed' };
   }
 
   const withIdCount = raw.filter((item) => item.id !== undefined).length;
@@ -530,34 +547,11 @@ export class InMemorySandboxStore implements ISandboxStore {
         const [summaryPart, learnedPart] = afterSummary.split('## Learned');
         const parsedLearned = parseLearnedBullets(learnedPart);
 
-        // Malformed learning sections must not be silently partially parsed: a mix of
-        // id-ed and bare lines, or duplicate ids within one report, would either drop
-        // valid lines or invent false retractions on the next fold. Keep the run on
-        // record (the summary is real), but do not emit any learnings.
-        let learned: string[] | undefined;
-        let learnedWithIds: Array<{ id: string; content: string }> | undefined;
-        let learningParseError = false;
-        if (parsedLearned.kind === 'mixed') {
-          log.warn(
-            { projectPath, file: name },
-            'Sandbox run report mixes id-ed and bare learnings — treated as no learnings',
-          );
-          learningParseError = true;
-        } else if (parsedLearned.kind === 'duplicate') {
-          log.warn(
-            { projectPath, file: name },
-            'Sandbox run report has duplicate learning ids — treated as no learnings',
-          );
-          learningParseError = true;
-        } else if (parsedLearned.kind === 'stable') {
-          learnedWithIds = parsedLearned.items;
-        } else {
-          learned = parsedLearned.items;
-        }
         // Completeness is judged on RAW bullets, before the placeholder is filtered out:
         // "nothing durable today" is a normal, fully-written report, and most days look
         // like that. Judging on filtered learnings would have branded every ordinary run
         // as half-written and deferred it forever.
+        const hasLearnedHeading = content.includes('## Learned');
         const hasAnyLearnedBullet = countBullets(learnedPart) > 0;
 
         // IN-FLIGHT GATE. listRuns() reads the directory live, so a scan can land in the
@@ -573,15 +567,49 @@ export class InMemorySandboxStore implements ISandboxStore {
         // Deliberately NOT a completion sentinel the member must write: a member that
         // forgets it would have its run skipped forever, trading one silent loss for
         // another. This judgement stays with the system.
-        const looksComplete = content.includes('## Learned') && hasAnyLearnedBullet;
+        const looksComplete = hasLearnedHeading && hasAnyLearnedBullet;
         if (!looksComplete && Date.now() - statResult.mtimeMs < REPORT_QUIESCENCE_MS) {
           log.warn({ projectPath, file: name }, 'Sandbox run report still being written — deferred to the next scan');
           continue;
         }
-        if (!looksComplete) {
-          // Settled but malformed: the run genuinely happened and its summary is real,
-          // so record it rather than skipping it forever. We just get no learnings.
-          log.warn({ projectPath, file: name }, 'Sandbox run report has settled without parseable learnings');
+
+        // Malformed learning sections must not be silently partially parsed: a mix of
+        // id-ed and bare lines, duplicate ids, or an incomplete `id:` attempt would either
+        // drop valid lines or invent false retractions on the next fold. A settled report
+        // that lacks a `## Learned` section or any bullet at all is similarly malformed.
+        // Keep the run on record (the summary is real), but do not emit any learnings and
+        // mark the parse error so the fold does not treat this as a retraction.
+        let learned: string[] | undefined;
+        let learnedWithIds: Array<{ id: string; content: string }> | undefined;
+        let learningParseError = false;
+        if (parsedLearned.kind === 'mixed') {
+          log.warn(
+            { projectPath, file: name },
+            'Sandbox run report mixes id-ed and bare learnings — treated as no learnings',
+          );
+          learningParseError = true;
+        } else if (parsedLearned.kind === 'duplicate') {
+          log.warn(
+            { projectPath, file: name },
+            'Sandbox run report has duplicate learning ids — treated as no learnings',
+          );
+          learningParseError = true;
+        } else if (parsedLearned.kind === 'malformed') {
+          log.warn(
+            { projectPath, file: name },
+            'Sandbox run report has malformed stable-id lines — treated as no learnings',
+          );
+          learningParseError = true;
+        } else if (!looksComplete) {
+          log.warn(
+            { projectPath, file: name },
+            'Sandbox run report has settled without a parseable ## Learned section — treated as no learnings',
+          );
+          learningParseError = true;
+        } else if (parsedLearned.kind === 'stable') {
+          learnedWithIds = parsedLearned.items;
+        } else {
+          learned = parsedLearned.items;
         }
 
         results.push({

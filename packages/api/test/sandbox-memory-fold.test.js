@@ -481,7 +481,7 @@ describe('stable learned item ids', () => {
       runWithIds('r1', 1000, '第一天', [{ id: 'r1-a', content: 'old bare id' }]),
     ]);
 
-    assert.equal(result.changed, false, 'migrated id must match the new report and produce a no-op');
+    assert.equal(result.changed, true, 'migration itself is a change that must be persisted');
     assert.equal(result.memory.learnedItems.length, 1);
     assert.equal(result.memory.learnedItems[0].id, nsId('r1', 'r1-a'));
     assert.equal(result.memory.learnedItems[0].content, 'old bare id');

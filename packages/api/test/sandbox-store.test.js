@@ -1,7 +1,7 @@
 import './helpers/setup-cat-registry.js';
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -188,6 +188,245 @@ describe('Sandbox store', () => {
     assert.equal(runs.length, 1);
     assert.equal(runs[0].learned, undefined);
     assert.equal(runs[0].learnedWithIds, undefined);
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('an incomplete id: line is a parse error and does not retract existing memory', async () => {
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-incomplete-id-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    const memoryDir = join(projectPath, '.a2a-sandbox', 'memory');
+    await mkdir(runsDir, { recursive: true });
+    await mkdir(memoryDir, { recursive: true });
+
+    // First run: a complete stable-id report that becomes durable memory.
+    await writeFile(
+      join(runsDir, 'run-1.md'),
+      [
+        '# Sandbox Run run-1',
+        '',
+        '- Trigger: scheduled',
+        '- Triggered At: 2026-01-01T00:00:00.000Z',
+        '- Spec Version: 1',
+        '',
+        '## Summary',
+        '',
+        'first run',
+        '',
+        '## Learned',
+        '',
+        '- id:a original conclusion',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      {
+        title: 'Incomplete',
+        projectPath,
+        members: ['opus'],
+        spec: { specVersion: '1', name: 'Incomplete', goal: 'g', members: ['opus'] },
+      },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const firstRuns = await store.listRuns(sandbox.id);
+    const firstFold = foldRunsIntoMemory(null, firstRuns);
+    await store.updateMemory(sandbox.id, firstFold.memory);
+
+    // Second run: the member left `- id:a` with no conclusion. This is a malformed
+    // stable-id attempt, not a retraction, and must not delete `a`.
+    await writeFile(
+      join(runsDir, 'run-2.md'),
+      [
+        '# Sandbox Run run-2',
+        '',
+        '- Trigger: scheduled',
+        '- Triggered At: 2026-01-02T00:00:00.000Z',
+        '- Spec Version: 1',
+        '',
+        '## Summary',
+        '',
+        'second run',
+        '',
+        '## Learned',
+        '',
+        '- id:a',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const secondRuns = await store.listRuns(sandbox.id);
+    assert.equal(secondRuns[1].learningParseError, true, 'incomplete id: line must be flagged');
+
+    const secondFold = foldRunsIntoMemory(firstFold.memory, secondRuns);
+    assert.equal(secondFold.memory.learnedItems.length, 1, 'incomplete id must not retract existing learning');
+    assert.equal(secondFold.memory.learnedItems[0].content, 'original conclusion');
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('a settled report without a ## Learned section is a parse error and does not retract memory', async () => {
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-missing-learned-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    const memoryDir = join(projectPath, '.a2a-sandbox', 'memory');
+    await mkdir(runsDir, { recursive: true });
+    await mkdir(memoryDir, { recursive: true });
+
+    await writeFile(
+      join(runsDir, 'run-1.md'),
+      [
+        '# Sandbox Run run-1',
+        '',
+        '- Trigger: scheduled',
+        '- Triggered At: 2026-01-01T00:00:00.000Z',
+        '- Spec Version: 1',
+        '',
+        '## Summary',
+        '',
+        'first run',
+        '',
+        '## Learned',
+        '',
+        '- id:a original conclusion',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      {
+        title: 'Missing',
+        projectPath,
+        members: ['opus'],
+        spec: { specVersion: '1', name: 'Missing', goal: 'g', members: ['opus'] },
+      },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const firstRuns = await store.listRuns(sandbox.id);
+    const firstFold = foldRunsIntoMemory(null, firstRuns);
+    await store.updateMemory(sandbox.id, firstFold.memory);
+
+    // Second run has no ## Learned section at all. After the in-flight window passes,
+    // this is a parse error, not a retraction.
+    const run2Path = join(runsDir, 'run-2.md');
+    await writeFile(
+      run2Path,
+      [
+        '# Sandbox Run run-2',
+        '',
+        '- Trigger: scheduled',
+        '- Triggered At: 2026-01-02T00:00:00.000Z',
+        '- Spec Version: 1',
+        '',
+        '## Summary',
+        '',
+        'missing learned section',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    // Backdate so the in-flight gate treats it as settled.
+    await utimes(run2Path, new Date('2020-01-01'), new Date('2020-01-01'));
+
+    const secondRuns = await store.listRuns(sandbox.id);
+    assert.equal(secondRuns[1].learningParseError, true, 'missing ## Learned must be flagged once settled');
+
+    const secondFold = foldRunsIntoMemory(firstFold.memory, secondRuns);
+    assert.equal(secondFold.memory.learnedItems.length, 1, 'missing section must not retract existing learning');
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('bare stable id migration is persisted through the store path', async () => {
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-migrate-'));
+    const projectPath = join(tmpDir, 'project');
+    const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
+    const memoryDir = join(projectPath, '.a2a-sandbox', 'memory');
+    await mkdir(runsDir, { recursive: true });
+    await mkdir(memoryDir, { recursive: true });
+
+    // Simulate an old memory file written before namespacing.
+    const oldMemory = {
+      v: 1,
+      summary: '- [1970-01-01] first run',
+      runsIncorporated: 1,
+      processedRunIds: ['run-1'],
+      lastRunAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+      learnedItems: [
+        { id: 'a', content: 'old bare id', sourceRunId: 'run-1', sourceRunAt: 1_700_000_000_000, promoted: false },
+      ],
+    };
+    await writeFile(join(memoryDir, 'sandbox-memory.json'), JSON.stringify(oldMemory), 'utf-8');
+
+    // A report that agrees with the old memory.
+    await writeFile(
+      join(runsDir, 'run-1.md'),
+      [
+        '# Sandbox Run run-1',
+        '',
+        '- Trigger: scheduled',
+        '- Triggered At: 2026-11-14T22:13:20.000Z',
+        '- Spec Version: 1',
+        '',
+        '## Summary',
+        '',
+        'first run',
+        '',
+        '## Learned',
+        '',
+        '- id:a old bare id',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const indexFilePath = join(tmpDir, 'index.jsonl');
+    const store = new InMemorySandboxStore({ indexFilePath });
+    const sandbox = await store.create(
+      {
+        title: 'Migrate',
+        projectPath,
+        members: ['opus'],
+        spec: { specVersion: '1', name: 'Migrate', goal: 'g', members: ['opus'] },
+      },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    const runs = await store.listRuns(sandbox.id);
+    const memory = await store.getMemory(sandbox.id);
+    const folded = foldRunsIntoMemory(memory, runs);
+    assert.equal(folded.changed, true, 'migration must be reported as a change');
+    await store.updateMemory(sandbox.id, folded.memory);
+
+    // Simulate restart and re-read from disk.
+    const store2 = new InMemorySandboxStore({ indexFilePath });
+    await store2.rehydrate();
+    const rehydrated = await store2.getMemory(sandbox.id);
+    assert.ok(rehydrated, 'memory must survive restart');
+    assert.equal(rehydrated.learnedItems.length, 1);
+    assert.equal(rehydrated.learnedItems[0].id, 'run-1\x1fa', 'bare id must be persisted as namespaced id');
+    assert.equal(rehydrated.learnedItems[0].content, 'old bare id');
 
     await rm(tmpDir, { recursive: true, force: true });
   });

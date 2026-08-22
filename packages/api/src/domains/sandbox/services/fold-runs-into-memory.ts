@@ -145,6 +145,7 @@ function listLearnedFromRecord(
  * `lastRunAt` is retained for display ("last run at ..."), never as the fold gate.
  */
 export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonly SandboxRunRecordV1[]): FoldResult {
+  let migratedIds = false;
   const base = memory
     ? {
         ...memory,
@@ -154,8 +155,11 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
           // legacy runId-index ids like `r1-0`) to the namespaced form. A pre-existing id
           // that already begins with `sourceRunId<sep>` is left untouched.
           const namespacePrefix = makeMemoryId(sourceRunId, '');
-          const id = item.id.startsWith(namespacePrefix) ? item.id : makeMemoryId(sourceRunId, item.id);
-          return { ...item, id, sourceRunId };
+          if (item.id.startsWith(namespacePrefix)) {
+            return { ...item, sourceRunId };
+          }
+          migratedIds = true;
+          return { ...item, id: makeMemoryId(sourceRunId, item.id), sourceRunId };
         }),
       }
     : emptyMemory();
@@ -313,8 +317,9 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   const learnedItems = [...byId.values()];
 
   // Any of these is a real change worth persisting: a new run, a corrected/late
-  // learning, or a summary that no longer matches the reports.
-  if (fresh.length === 0 && !learningsChanged && summary === base.summary) {
+  // learning, a summary that no longer matches the reports, or an in-memory id
+  // migration that must be written back to disk.
+  if (fresh.length === 0 && !learningsChanged && summary === base.summary && !migratedIds) {
     return { memory: base, changed: false, foldedRunIds: [], divergedPromotedIds };
   }
 
