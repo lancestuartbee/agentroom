@@ -1,10 +1,10 @@
 import './helpers/setup-cat-registry.js';
 
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, test } from 'node:test';
 
 const SPEC = {
   specVersion: '1',
@@ -16,9 +16,7 @@ const SPEC = {
 
 describe('Sandbox run prompt', () => {
   test('carries the CURRENT spec goal and learning goal (hot-update path)', async () => {
-    const { buildSandboxRunPrompt } = await import(
-      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-    );
+    const { buildSandboxRunPrompt } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
 
     const prompt = buildSandboxRunPrompt({
       spec: SPEC,
@@ -42,9 +40,7 @@ describe('Sandbox run prompt', () => {
   });
 
   test('injects accumulated memory so the sandbox compounds instead of restarting', async () => {
-    const { buildSandboxRunPrompt } = await import(
-      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-    );
+    const { buildSandboxRunPrompt } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
 
     const prompt = buildSandboxRunPrompt({
       spec: SPEC,
@@ -52,7 +48,9 @@ describe('Sandbox run prompt', () => {
         v: 1,
         summary: '已学会：低换手率+放量突破 是较强信号',
         runsIncorporated: 12,
-        learnedItems: [{ id: 'l1', content: '财报季前一周波动放大', sourceRunAt: 1, promoted: false }],
+        learnedItems: [
+          { id: 'l1', content: '财报季前一周波动放大', sourceRunId: 'r1', sourceRunAt: 1, promoted: false },
+        ],
         updatedAt: 1,
       },
       runId: 'run-3',
@@ -71,9 +69,7 @@ describe('Sandbox run prompt', () => {
     const { buildSandboxRunPrompt, renderSandboxRunReport } = await import(
       '../dist/domains/sandbox/services/sandbox-run-prompt.js'
     );
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
 
     const runId = 'run-20260811-090000';
     const prompt = buildSandboxRunPrompt({
@@ -105,10 +101,7 @@ describe('Sandbox run prompt', () => {
 
     // Store must round-trip it back as a real run record.
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const store2 = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
@@ -127,16 +120,12 @@ describe('Sandbox run prompt', () => {
   // The whole loop, end to end: a cat writes a report -> the store parses it ->
   // it folds into memory -> the NEXT run is briefed with it. If any link breaks the
   // sandbox keeps running and silently stops learning, so pin the whole chain.
-  test('a run report written today shows up as knowledge in tomorrow\'s prompt', async () => {
+  test("a run report written today shows up as knowledge in tomorrow's prompt", async () => {
     const { buildSandboxRunPrompt, renderSandboxRunReport } = await import(
       '../dist/domains/sandbox/services/sandbox-run-prompt.js'
     );
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-loop-'));
     const projectPath = join(tmpDir, 'project');
@@ -144,10 +133,7 @@ describe('Sandbox run prompt', () => {
     await mkdir(runsDir, { recursive: true });
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     // Day 1: the cat runs and writes its report, separating today's noise from a
@@ -199,19 +185,14 @@ describe('Sandbox run prompt', () => {
 // Pin BOTH writers against the same parser.
 describe('Sandbox run report — programmatic writer', () => {
   test('persistRun output parses back with learnings intact', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-persistrun-'));
     const projectPath = join(tmpDir, 'project');
     await mkdir(projectPath, { recursive: true });
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     await store.addRun(sandbox.id, {
@@ -230,7 +211,11 @@ describe('Sandbox run report — programmatic writer', () => {
 
     assert.ok(found, 'programmatically recorded run must be readable');
     assert.match(found.summary, /程序化写入的运行摘要/);
-    assert.deepEqual(found.learned, ['程序化写入也必须保住的结论']);
+    assert.deepEqual(
+      found.learnedWithIds?.map((i) => i.content),
+      ['程序化写入也必须保住的结论'],
+      'persistRun must generate stable ids and preserve learnings',
+    );
     // Review finding (Kimi P2-5): the cursor must come from the report, not file mtime —
     // copying a sandbox directory (the stated migration path) rewrites mtimes and would
     // otherwise re-fold or skip runs.
@@ -240,12 +225,8 @@ describe('Sandbox run report — programmatic writer', () => {
   });
 
   test('only the exact placeholder is discarded — real parenthesised conclusions survive', async () => {
-    const { renderSandboxRunReport } = await import(
-      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-    );
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
+    const { renderSandboxRunReport } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-placeholder-'));
     const projectPath = join(tmpDir, 'project');
@@ -265,10 +246,7 @@ describe('Sandbox run report — programmatic writer', () => {
     );
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const store2 = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });

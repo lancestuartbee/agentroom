@@ -78,19 +78,35 @@ function countBullets(section: string | undefined): number {
   return section.split('\n').filter((line) => line.trim().startsWith('- ')).length;
 }
 
-function parseLearnedBullets(section: string | undefined): string[] {
+interface ParsedLearnedBullet {
+  id?: string;
+  content: string;
+}
+
+function parseLearnedBullets(section: string | undefined): ParsedLearnedBullet[] {
   if (!section) return [];
-  return (
-    section
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith('- '))
-      .map((line) => line.slice(2).trim())
-      // Drop ONLY the exact template placeholder. An earlier version matched any
-      // fully-parenthesised line, which would have silently discarded genuine
-      // conclusions that happen to be written inside brackets.
-      .filter((line) => line.length > 0 && line !== SANDBOX_NO_LEARNING_PLACEHOLDER)
-  );
+  const parsed = section
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => {
+      const body = line.slice(2).trim();
+      const idMatch = /^id:([^\s]+)\s+(.*)$/.exec(body);
+      if (idMatch) {
+        return { id: idMatch[1], content: idMatch[2].trim() };
+      }
+      return { content: body };
+    })
+    // Drop ONLY the exact template placeholder. An earlier version matched any
+    // fully-parenthesised line, which would have silently discarded genuine
+    // conclusions that happen to be written inside brackets.
+    .filter((item) => item.content.length > 0 && item.content !== SANDBOX_NO_LEARNING_PLACEHOLDER);
+
+  // A report either uses explicit ids or it doesn't. Mixing the two in one report
+  // is an operator error; falling back to legacy indexing keeps the fold deterministic.
+  const hasIds = parsed.length > 0 && parsed.every((item) => item.id !== undefined);
+  if (hasIds) return parsed as ParsedLearnedBullet[];
+  return parsed.filter((item) => item.id === undefined);
 }
 
 function getSandboxDir(projectPath: string): string {
@@ -477,7 +493,12 @@ export class InMemorySandboxStore implements ISandboxStore {
         // very distinction the run report exists to express.
         const afterSummary = content.split('## Summary')[1] ?? content;
         const [summaryPart, learnedPart] = afterSummary.split('## Learned');
-        const learned = parseLearnedBullets(learnedPart);
+        const parsedLearned = parseLearnedBullets(learnedPart);
+        const hasExplicitIds = parsedLearned.length > 0 && parsedLearned.every((item) => item.id !== undefined);
+        const learned = hasExplicitIds ? undefined : parsedLearned.map((item) => item.content);
+        const learnedWithIds = hasExplicitIds
+          ? parsedLearned.map((item) => ({ id: item.id as string, content: item.content }))
+          : undefined;
         // Completeness is judged on RAW bullets, before the placeholder is filtered out:
         // "nothing durable today" is a normal, fully-written report, and most days look
         // like that. Judging on filtered learnings would have branded every ordinary run
@@ -515,7 +536,11 @@ export class InMemorySandboxStore implements ISandboxStore {
           triggeredAt,
           specVersion: specVersionMatch?.[1] ?? 'unknown',
           summary: (summaryPart ?? content).trim(),
-          ...(learned.length > 0 ? { learned } : {}),
+          ...(learnedWithIds && learnedWithIds.length > 0
+            ? { learnedWithIds }
+            : learned && learned.length > 0
+              ? { learned }
+              : {}),
         });
       } catch (err) {
         log.warn({ err, projectPath, file: name }, 'Failed to read sandbox run report — skipped this file only');
@@ -579,6 +604,13 @@ export class InMemorySandboxStore implements ISandboxStore {
     const dir = getRunsDir(projectPath);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${run.runId}.md`);
+
+    // Programmatic writes often arrive as plain string arrays. Give them stable ids so
+    // they round-trip through the parser and match any legacy memory items that were
+    // derived from the same run under the old runId-index scheme.
+    const learnedWithIds =
+      run.learnedWithIds ?? run.learned?.map((content, index) => ({ id: `${run.runId}-${index}`, content }));
+
     await writeFile(
       path,
       renderSandboxRunReport({
@@ -586,7 +618,7 @@ export class InMemorySandboxStore implements ISandboxStore {
         trigger: run.trigger,
         specVersion: run.specVersion,
         summary: run.summary,
-        ...(run.learned ? { learned: run.learned } : {}),
+        ...(learnedWithIds && learnedWithIds.length > 0 ? { learnedWithIds } : {}),
         triggeredAt: run.triggeredAt,
       }),
     );

@@ -99,6 +99,13 @@ export interface SandboxLearnedItemV1 {
   id: string;
   /** 学习内容 */
   content: string;
+  /**
+   * 来源运行 ID。
+   *
+   * 旧版从 `id.slice(0, lastIndexOf('-'))` 反解，但 stable id 不保证含 `-` 或该 `-`
+   * 分隔 runId，所以 provenance 必须显式存储。旧数据无此字段时 fold 会回退到 id 反解。
+   */
+  sourceRunId: string;
   /** 来源运行时间 */
   sourceRunAt: number;
   /** 是否已提升为系统级知识 */
@@ -149,8 +156,17 @@ export interface SandboxRunRecordV1 {
    * 与 `summary` 的区别是这次设计的要害：summary 是"今天发生了什么"（会过期），
    * learned 是"从此以后都成立的判断"（要积累）。两者混在一起，几个月后记忆就退化
    * 成一堆读不动的日志——只有 learned 会进入 `SandboxMemoryV1.learnedItems`。
+   *
+   * 旧格式是纯字符串数组，id 由 fold 按 `runId-index` 推导。新报告应在每条结论前
+   * 带稳定 id，解析后进入 `learnedWithIds`；fold 优先用显式 id，无显式 id 时回退
+   * 到 legacy 推导。
    */
   learned?: string[];
+  /**
+   * 带稳定 id 的 durable 结论。当成员改写报告时保留 id，fold 就能区分
+   * "内容改写 / 条目删除 / 顺序重排"，而不会因数组下标漂移产生假 divergence。
+   */
+  learnedWithIds?: Array<{ id: string; content: string }>;
   /** 运行产物路径（相对沙盒目录） */
   artifacts?: string[];
 }

@@ -54,6 +54,12 @@ export interface SandboxRunReportInput {
   /** Durable conclusions — these, and only these, become accumulated knowledge. */
   learned?: string[];
   /**
+   * Durable conclusions with stable ids. When a member edits a report, keeping the same
+   * id lets the fold distinguish "content changed / item deleted / order changed" instead
+   * of guessing from array position. Preferred over `learned` when present.
+   */
+  learnedWithIds?: Array<{ id: string; content: string }>;
+  /**
    * When the run was triggered. Emitted into the report so the fold cursor comes from
    * the report itself rather than file mtime — copying a sandbox directory (the stated
    * migration path) rewrites mtimes and would otherwise re-fold or skip runs.
@@ -70,7 +76,18 @@ export interface SandboxRunReportInput {
  * programmatically recorded run silently lost every durable learning.
  */
 export function renderSandboxRunReport(input: SandboxRunReportInput): string {
+  const withIds = (input.learnedWithIds ?? []).filter((item) => item.content.trim().length > 0);
   const learned = (input.learned ?? []).filter((line) => line.trim().length > 0);
+
+  let bullets: string[];
+  if (withIds.length > 0) {
+    bullets = withIds.map((item) => `- id:${item.id} ${item.content.trim()}`);
+  } else if (learned.length > 0) {
+    bullets = learned.map((line) => `- ${line.trim()}`);
+  } else {
+    bullets = [`- ${SANDBOX_NO_LEARNING_PLACEHOLDER}`];
+  }
+
   return [
     `# Sandbox Run ${input.runId}`,
     '',
@@ -84,7 +101,7 @@ export function renderSandboxRunReport(input: SandboxRunReportInput): string {
     '',
     '## Learned',
     '',
-    ...(learned.length > 0 ? learned.map((line) => `- ${line.trim()}`) : [`- ${SANDBOX_NO_LEARNING_PLACEHOLDER}`]),
+    ...bullets,
     '',
   ].join('\n');
 }
@@ -170,13 +187,16 @@ export function buildSandboxRunPrompt(input: SandboxRunPromptInput): string {
   lines.push(
     '   - `## Learned`：**从此以后都成立的判断**。只写你有信心长期复用的结论，它们会累积进沙盒的长期记忆，并出现在以后每一次运行里。',
   );
+  lines.push(
+    '   每条结论必须以 `- id:<唯一标识> <结论>` 开头。这个 id 在同一次运行内必须唯一；修改报告时保留原 id，删除结论时移除整行。',
+  );
   lines.push('   宁可 `## Learned` 为空，也不要把当日噪音写进去——写错的长期结论会持续误导后续所有运行。');
   lines.push('');
   lines.push('## 运行报告（必须写，格式不可改）');
   lines.push(`写入路径：\`${SANDBOX_RUNS_RELATIVE_DIR}/${runId}.md\`（相对本沙盒项目目录）`);
   lines.push('');
   lines.push(
-    '文件内容必须严格采用下面的模板 —— 前两个字段和 `## Summary` 标题会被系统解析，改动会导致本次运行被丢弃：',
+    '文件内容必须严格采用下面的模板 —— 前两个字段和 `## Summary` / `## Learned` 标题会被系统解析，改动会导致本次运行被丢弃：',
   );
   lines.push('');
   lines.push('```markdown');
@@ -187,7 +207,9 @@ export function buildSandboxRunPrompt(input: SandboxRunPromptInput): string {
       specVersion: spec.specVersion,
       triggeredAt: input.triggeredAt,
       summary: '（今天做了什么、观察到什么，写在这里）',
-      learned: [`（一条可长期复用的结论；本次没有就写「${SANDBOX_NO_LEARNING_PLACEHOLDER}」）`],
+      learnedWithIds: [
+        { id: `${runId}-1`, content: `（一条可长期复用的结论；本次没有就写「${SANDBOX_NO_LEARNING_PLACEHOLDER}」）` },
+      ],
     }).trimEnd(),
   );
   lines.push('```');

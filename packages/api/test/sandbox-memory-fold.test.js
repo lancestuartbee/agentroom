@@ -13,15 +13,21 @@ const run = (runId, triggeredAt, summary, learned) => ({
   ...(learned ? { learned } : {}),
 });
 
+const runWithIds = (runId, triggeredAt, summary, learnedWithIds) => ({
+  v: 1,
+  runId,
+  trigger: 'scheduled',
+  triggeredAt,
+  specVersion: '1',
+  summary,
+  ...(learnedWithIds ? { learnedWithIds } : {}),
+});
+
 describe('Sandbox memory fold', () => {
   test('first fold seeds memory from runs', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
-    const result = foldRunsIntoMemory(null, [
-      run('r1', 1000, '大盘缩量', ['低换手率+放量突破是较强信号']),
-    ]);
+    const result = foldRunsIntoMemory(null, [run('r1', 1000, '大盘缩量', ['低换手率+放量突破是较强信号'])]);
 
     assert.ok(result.changed);
     assert.equal(result.memory.runsIncorporated, 1);
@@ -32,14 +38,9 @@ describe('Sandbox memory fold', () => {
 
   // The whole point of the mode: day 100 must not repeat day 1's work.
   test('only folds runs newer than lastRunAt — re-folding is idempotent', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
-    const runs = [
-      run('r1', 1000, 's1', ['learned-A']),
-      run('r2', 2000, 's2', ['learned-B']),
-    ];
+    const runs = [run('r1', 1000, 's1', ['learned-A']), run('r2', 2000, 's2', ['learned-B'])];
 
     const first = foldRunsIntoMemory(null, runs);
     assert.equal(first.memory.runsIncorporated, 2);
@@ -62,13 +63,9 @@ describe('Sandbox memory fold', () => {
   // Durable knowledge vs today's noise. Mixing them is what turns month-long
   // memory into an unreadable log.
   test('run summaries feed the rolling summary; only `learned` becomes durable items', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
-    const result = foldRunsIntoMemory(null, [
-      run('r1', 1000, '今天大盘缩量，无买点', ['财报季前一周波动放大']),
-    ]);
+    const result = foldRunsIntoMemory(null, [run('r1', 1000, '今天大盘缩量，无买点', ['财报季前一周波动放大'])]);
 
     // Ephemeral detail stays in the rolling summary...
     assert.match(result.memory.summary, /今天大盘缩量/);
@@ -79,9 +76,7 @@ describe('Sandbox memory fold', () => {
   });
 
   test('a run with no learnings still counts as incorporated', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
     const result = foldRunsIntoMemory(null, [run('r1', 1000, '今天没跑出结论')]);
     assert.equal(result.memory.runsIncorporated, 1);
@@ -92,9 +87,7 @@ describe('Sandbox memory fold', () => {
   // Months of daily runs: the rolling summary must stay bounded or it eventually
   // eats the whole prompt budget and gets dropped wholesale by SessionBootstrap.
   test('rolling summary stays bounded across many runs, newest kept', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
     let memory = null;
     for (let i = 1; i <= 200; i++) {
@@ -113,13 +106,12 @@ describe('Sandbox memory fold', () => {
   });
 
   test('prompt injection caps learnings and says so instead of silently truncating', async () => {
-    const { buildSandboxRunPrompt } = await import(
-      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-    );
+    const { buildSandboxRunPrompt } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
 
     const learnedItems = Array.from({ length: 100 }, (_, i) => ({
       id: `l${i}`,
       content: `学习条目-${i}`,
+      sourceRunId: 'run-x',
       sourceRunAt: i,
       promoted: false,
     }));
@@ -235,7 +227,7 @@ describe('a learning that vanishes from its report', () => {
     assert.equal(healed.memory.learnedItems[0].divergence, undefined);
   });
 
-  test('an unrelated run being folded does not retract another run\'s learnings', async () => {
+  test("an unrelated run being folded does not retract another run's learnings", async () => {
     const { foldRunsIntoMemory } = await load();
     const memory = await seed(['第一天学到的']);
 
@@ -244,10 +236,7 @@ describe('a learning that vanishes from its report', () => {
       run('r2', 2000, '第二天', ['第二天学到的']),
     ]);
 
-    assert.deepEqual(
-      result.memory.learnedItems.map((i) => i.content).sort(),
-      ['第一天学到的', '第二天学到的'],
-    );
+    assert.deepEqual(result.memory.learnedItems.map((i) => i.content).sort(), ['第一天学到的', '第二天学到的']);
   });
 });
 
@@ -283,5 +272,152 @@ describe('recording a divergence is idempotent', () => {
 
     const second = foldRunsIntoMemory(first.memory, [run('r1', 1000, '第一天', ['甲'])]);
     assert.equal(second.changed, false);
+  });
+});
+
+/**
+ * Stable identities for learned items (F247 Phase E follow-up).
+ *
+ * An earlier version derived item ids from `runId-arrayIndex`. That made deletion or
+ * reordering inside a report indistinguishable from retraction/rewrite, because the
+ * index of every subsequent bullet changed. Promoted items then collected false
+ * divergence metadata on the wrong content.
+ *
+ * The fix: each learning carries its own stable id in the report. The fold uses that
+ * id for identity; only absence of a still-visible id means retraction.
+ */
+describe('stable learned item ids', () => {
+  const load = () => import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+
+  test('deleting the first item does not renumber the rest', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [
+      runWithIds('r1', 1000, '第一天', [
+        { id: 'r1-a', content: '第一条' },
+        { id: 'r1-b', content: '第二条' },
+      ]),
+    ]).memory;
+
+    const result = foldRunsIntoMemory(seeded, [runWithIds('r1', 1000, '第一天', [{ id: 'r1-b', content: '第二条' }])]);
+
+    assert.deepEqual(
+      result.memory.learnedItems.map((i) => ({ id: i.id, content: i.content })),
+      [{ id: 'r1-b', content: '第二条' }],
+    );
+    assert.equal(result.divergedPromotedIds.length, 0);
+  });
+
+  test('deleting the first promoted item does not create a false divergence on the second', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [
+      runWithIds('r1', 1000, '第一天', [
+        { id: 'r1-a', content: '第一条' },
+        { id: 'r1-b', content: '第二条' },
+      ]),
+    ]).memory;
+    seeded.learnedItems.find((i) => i.id === 'r1-b').promoted = true;
+
+    const result = foldRunsIntoMemory(seeded, [runWithIds('r1', 1000, '第一天', [{ id: 'r1-b', content: '第二条' }])]);
+
+    const b = result.memory.learnedItems.find((i) => i.id === 'r1-b');
+    assert.ok(b, 'the promoted item must remain');
+    assert.equal(b.promoted, true, 'promotion must survive');
+    assert.equal(b.divergence, undefined, 'no false divergence: the promoted item is still there');
+    assert.deepEqual(result.divergedPromotedIds, []);
+  });
+
+  test('deleting a middle item does not shift promoted siblings', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [
+      runWithIds('r1', 1000, '第一天', [
+        { id: 'r1-a', content: '甲' },
+        { id: 'r1-b', content: '乙' },
+        { id: 'r1-c', content: '丙' },
+      ]),
+    ]).memory;
+    seeded.learnedItems.find((i) => i.id === 'r1-c').promoted = true;
+
+    const result = foldRunsIntoMemory(seeded, [
+      runWithIds('r1', 1000, '第一天', [
+        { id: 'r1-a', content: '甲' },
+        { id: 'r1-c', content: '丙' },
+      ]),
+    ]);
+
+    assert.deepEqual(result.memory.learnedItems.map((i) => i.id).sort(), ['r1-a', 'r1-c']);
+    const c = result.memory.learnedItems.find((i) => i.id === 'r1-c');
+    assert.equal(c.promoted, true);
+    assert.equal(c.divergence, undefined);
+    assert.deepEqual(result.divergedPromotedIds, []);
+  });
+
+  test('pure reorder does not produce false divergence', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [
+      runWithIds('r1', 1000, '第一天', [
+        { id: 'r1-a', content: '甲' },
+        { id: 'r1-b', content: '乙' },
+      ]),
+    ]).memory;
+    seeded.learnedItems.find((i) => i.id === 'r1-a').promoted = true;
+
+    const result = foldRunsIntoMemory(seeded, [
+      runWithIds('r1', 1000, '第一天', [
+        { id: 'r1-b', content: '乙' },
+        { id: 'r1-a', content: '甲' },
+      ]),
+    ]);
+
+    assert.deepEqual(result.memory.learnedItems.map((i) => i.id).sort(), ['r1-a', 'r1-b']);
+    const a = result.memory.learnedItems.find((i) => i.id === 'r1-a');
+    assert.equal(a.promoted, true);
+    assert.equal(a.divergence, undefined);
+    assert.deepEqual(result.divergedPromotedIds, []);
+  });
+
+  test('editing content keeps the same id and tracks divergence for promoted items', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [
+      runWithIds('r1', 1000, '第一天', [{ id: 'r1-a', content: '原始内容' }]),
+    ]).memory;
+    seeded.learnedItems[0].promoted = true;
+
+    const result = foldRunsIntoMemory(seeded, [
+      runWithIds('r1', 1000, '第一天', [{ id: 'r1-a', content: '改写后的内容' }]),
+    ]);
+
+    const a = result.memory.learnedItems[0];
+    assert.equal(a.id, 'r1-a');
+    assert.equal(a.content, '原始内容');
+    assert.equal(a.divergence.kind, 'rewritten');
+    assert.equal(a.divergence.reportContent, '改写后的内容');
+    assert.deepEqual(result.divergedPromotedIds, ['r1-a']);
+  });
+
+  test('legacy runId-index reports still work as a fallback', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const result = foldRunsIntoMemory(null, [run('r1', 1000, '第一天', ['甲', '乙'])]);
+
+    assert.deepEqual(
+      result.memory.learnedItems.map((i) => ({ id: i.id, content: i.content })),
+      [
+        { id: 'r1-0', content: '甲' },
+        { id: 'r1-1', content: '乙' },
+      ],
+    );
+  });
+
+  test('legacy promoted items keep their provenance after migration', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const seeded = foldRunsIntoMemory(null, [run('r1', 1000, '第一天', ['甲', '乙'])]).memory;
+    seeded.learnedItems[1].promoted = true;
+
+    // The same report without explicit ids — legacy fallback.
+    const result = foldRunsIntoMemory(seeded, [run('r1', 1000, '第一天', ['甲'])]);
+
+    assert.deepEqual(result.divergedPromotedIds, ['r1-1']);
+    const b = result.memory.learnedItems.find((i) => i.id === 'r1-1');
+    assert.equal(b.content, '乙');
+    assert.equal(b.divergence.kind, 'retracted');
   });
 });

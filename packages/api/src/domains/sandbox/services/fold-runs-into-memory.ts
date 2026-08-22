@@ -88,6 +88,24 @@ function formatSummaryEntry(record: SandboxRunRecordV1): string {
   return `- [${day}] ${record.summary.replace(/\s+/g, ' ').trim()}`;
 }
 
+function deriveSourceRunId(itemId: string): string {
+  const lastDash = itemId.lastIndexOf('-');
+  return lastDash > 0 ? itemId.slice(0, lastDash) : itemId;
+}
+
+function listLearnedFromRecord(
+  record: SandboxRunRecordV1,
+): Array<{ id: string; content: string; sourceRunId: string }> {
+  if (record.learnedWithIds && record.learnedWithIds.length > 0) {
+    return record.learnedWithIds.map((item) => ({ id: item.id, content: item.content, sourceRunId: record.runId }));
+  }
+  return (record.learned ?? []).map((content, index) => ({
+    id: `${record.runId}-${index}`,
+    content,
+    sourceRunId: record.runId,
+  }));
+}
+
 /**
  * Reconcile the memory against the currently visible run reports.
  *
@@ -107,7 +125,15 @@ function formatSummaryEntry(record: SandboxRunRecordV1): string {
  * `lastRunAt` is retained for display ("last run at ..."), never as the fold gate.
  */
 export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonly SandboxRunRecordV1[]): FoldResult {
-  const base = memory ? { ...memory, learnedItems: [...(memory.learnedItems ?? [])] } : emptyMemory();
+  const base = memory
+    ? {
+        ...memory,
+        learnedItems: (memory.learnedItems ?? []).map((item) => ({
+          ...item,
+          sourceRunId: item.sourceRunId ?? deriveSourceRunId(item.id),
+        })),
+      }
+    : emptyMemory();
 
   const processed = new Set(base.processedRunIds ?? []);
 
@@ -168,15 +194,14 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   const visibleRunIds = new Set(runs.map((r) => r.runId));
 
   for (const record of runs) {
-    for (const [index, content] of (record.learned ?? []).entries()) {
+    for (const { id, content, sourceRunId } of listLearnedFromRecord(record)) {
       const trimmed = content.trim();
       if (!trimmed) continue;
-      const id = `${record.runId}-${index}`;
       assertedIds.add(id);
       const existing = byId.get(id);
 
       if (!existing) {
-        byId.set(id, { id, content: trimmed, sourceRunAt: record.triggeredAt, promoted: false });
+        byId.set(id, { id, content: trimmed, sourceRunId, sourceRunAt: record.triggeredAt, promoted: false });
         learningsChanged = true;
         continue;
       }
@@ -209,7 +234,13 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
         }
         continue;
       }
-      byId.set(id, { ...existing, content: trimmed, sourceRunAt: record.triggeredAt, divergence: undefined });
+      byId.set(id, {
+        ...existing,
+        content: trimmed,
+        sourceRunId,
+        sourceRunAt: record.triggeredAt,
+        divergence: undefined,
+      });
       learningsChanged = true;
     }
   }
@@ -233,7 +264,7 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   // our copy desyncs it from the published one. Report it and let the operator decide.
   for (const [id, item] of [...byId.entries()]) {
     if (assertedIds.has(id)) continue;
-    const sourceRunId = id.slice(0, id.lastIndexOf('-'));
+    const sourceRunId = item.sourceRunId;
     if (!visibleRunIds.has(sourceRunId)) continue;
 
     if (item.promoted) {
