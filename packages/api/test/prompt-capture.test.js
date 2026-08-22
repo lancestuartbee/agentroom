@@ -301,6 +301,48 @@ test('AC-G10: capture bridge stamps nativeSystemPrompt when nativeL0Provider=tru
   }
 });
 
+test('AC-G10: capture bridge forwards promptProfile to native L0 fetcher', async () => {
+  const prevEnv = process.env.PROMPT_CAPTURE;
+  process.env.PROMPT_CAPTURE = 'on';
+  try {
+    const { capturePromptIfEnabled, getPromptCaptureStore } = await import(
+      '../dist/infrastructure/debug/prompt-capture-bridge.js'
+    );
+    const _store = getPromptCaptureStore();
+    const invocationId = `g10-profile-${randomUUID()}`;
+    let receivedProfile;
+    capturePromptIfEnabled({
+      catId: 'opus',
+      invocationId,
+      threadId: 'g10-profile-thread',
+      userId: 'g10-profile-user',
+      model: 'claude-opus-4-6',
+      systemPrompt: 'pack-system',
+      userPrompt: 'hi',
+      effectivePrompt: 'pack-system\n\n---\n\nhi',
+      injectionDecision: { isResume: false, canSkipOnResume: true, forceReinjection: false, injected: true },
+      nativeL0Provider: true,
+      promptProfile: 'casual',
+      nativeL0Fetcher: async (_catId, promptProfile) => {
+        receivedProfile = promptProfile;
+        return `TEST-L0-${promptProfile ?? 'undefined'}`;
+      },
+    });
+    let captures = [];
+    for (let i = 0; i < 50 && captures.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      captures = _store.listByInvocation(invocationId);
+    }
+    assert.equal(captures.length, 1, 'capture must be persisted within poll window');
+    assert.equal(receivedProfile, 'casual', 'fetcher must receive the thread promptProfile');
+    const detail = _store.read(captures[0].captureId);
+    assert.ok(detail);
+    assert.equal(detail.nativeSystemPrompt, 'TEST-L0-casual');
+  } finally {
+    process.env.PROMPT_CAPTURE = prevEnv ?? '';
+  }
+});
+
 test('AC-G10: capture bridge records captureDiagnostics when native L0 fetcher rejects (fail-safe)', async () => {
   const prevEnv = process.env.PROMPT_CAPTURE;
   process.env.PROMPT_CAPTURE = 'on';

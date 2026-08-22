@@ -408,7 +408,7 @@ function copyIdentityFields(
   fields: readonly string[],
 ): void {
   for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(source, field)) {
+    if (Object.hasOwn(source, field)) {
       target[field] = source[field];
     } else {
       delete target[field];
@@ -463,7 +463,8 @@ function projectLegacyPersonaIdentityToModelMembers(
 
     for (const variant of variants) {
       const catId = resolvedVariantCatId(breed, variant);
-      const templateVariant = templateVariantById.get(String(variant.id)) ?? (catId ? templateVariantByCatId.get(catId) : null);
+      const templateVariant =
+        templateVariantById.get(String(variant.id)) ?? (catId ? templateVariantByCatId.get(catId) : null);
       if (!templateVariant) continue;
       if (
         !templateBreedLooksLegacy &&
@@ -1114,9 +1115,15 @@ export function getRoster(config?: CatCafeConfig): Roster {
   // v1 config has no roster
   if (cfg.version === 1) return {};
 
-  // v2 config has roster — TypeScript narrows type after version check
-  _cachedRoster = cfg.roster;
-  return _cachedRoster;
+  // v2 config has roster — TypeScript narrows type after version check.
+  // F032 fix: only cache the canonical runtime roster; an explicit config
+  // override (e.g. the template-only roster in /api/cat-templates) must not
+  // pollute the global cache.
+  const roster = cfg.roster;
+  if (!config) {
+    _cachedRoster = roster;
+  }
+  return roster;
 }
 
 /**

@@ -14,7 +14,7 @@ const { parseA2AMentions } = await import('../dist/domains/cats/services/agents/
 const { _clearRuntimeOverrides, getRuntimeOverride, setRuntimeOverride } = await import(
   '../dist/config/session-strategy-overrides.js'
 );
-const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
+const { getRoster, loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
 const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
 
 const tempDirs = [];
@@ -2048,6 +2048,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
         mentionPatterns: ['@runtime-coding-cat'],
         roleDescription: '开发验证',
         clientId: 'openai',
+        modelFamily: 'openai',
         accountRef: 'codex',
         defaultModel: 'gpt-5.6-luna',
         roles: ['coding'],
@@ -2057,6 +2058,11 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(createRes.statusCode, 201, `expected 201, got ${createRes.statusCode}: ${createRes.body}`);
     const body = JSON.parse(createRes.body);
     assert.deepEqual(body.cat.roster.roles, ['coding']);
+    assert.equal(
+      body.cat.roster.family,
+      'openai',
+      'roster family should be the canonical model family, not the runtime catId',
+    );
   });
 
   it('PATCH /api/cats/:id updates roster roles', async () => {
@@ -2084,6 +2090,33 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(patchRes.statusCode, 200, `expected 200, got ${patchRes.statusCode}: ${patchRes.body}`);
     const body = JSON.parse(patchRes.body);
     assert.deepEqual(body.cat.roster.roles, ['architect', 'peer-reviewer']);
+  });
+
+  it('PATCH /api/cats/:id updates roster family when modelFamily changes', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/opus',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        modelFamily: 'google',
+      }),
+    });
+
+    assert.equal(patchRes.statusCode, 200, `expected 200, got ${patchRes.statusCode}: ${patchRes.body}`);
+    const body = JSON.parse(patchRes.body);
+    assert.equal(body.cat.roster.family, 'google', 'roster family should sync when modelFamily is patched');
   });
 
   it('runtime cat roles drive development-mode workflow routing', async () => {
@@ -2142,6 +2175,58 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     const ragdoll = body.templates.find((t) => t.id === 'ragdoll');
     assert.ok(ragdoll, 'ragdoll template should be present');
     assert.deepEqual(ragdoll.roles, ['architect'], 'template should expose roster roles so UI can seed new members');
+  });
+
+  it('GET /api/cat-templates does not pollute the global runtime roster cache', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    // Create a runtime-only member.
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-cache-cat',
+        name: '缓存猫',
+        displayName: '缓存猫',
+        avatar: '/avatars/cache.png',
+        color: { primary: '#155e75', secondary: '#a5f3fc' },
+        mentionPatterns: ['@runtime-cache-cat'],
+        roleDescription: '缓存验证',
+        clientId: 'openai',
+        accountRef: 'codex',
+        defaultModel: 'gpt-5.6-luna',
+        roles: ['coding'],
+      }),
+    });
+    assert.equal(createRes.statusCode, 201, `expected 201, got ${createRes.statusCode}: ${createRes.body}`);
+
+    // Prime the global roster cache with the runtime roster.
+    loadCatConfig();
+    assert.ok(
+      getRoster()['runtime-cache-cat'],
+      'runtime member should be in global roster cache before templates call',
+    );
+
+    // Call the template endpoint, which historically overwrote the cache with a template-only roster.
+    const res = await app.inject({ method: 'GET', url: '/api/cat-templates' });
+    assert.equal(res.statusCode, 200, `expected 200, got ${res.statusCode}: ${res.body}`);
+
+    // The runtime member must still be reachable after the templates call.
+    assert.ok(
+      getRoster()['runtime-cache-cat'],
+      'GET /api/cat-templates must not evict runtime-only members from the global roster cache',
+    );
   });
 
   it('DELETE /api/cats/:id removes runtime session-strategy override for deleted cat', async () => {

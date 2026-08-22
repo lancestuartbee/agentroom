@@ -318,7 +318,7 @@ export function createRuntimeCat(projectRoot: string, input: RuntimeCatInput): C
       ...catalog.roster,
       [input.catId]: buildDefaultRuntimeRosterEntry(
         input.catId,
-        String(nextBreed.id ?? input.catId),
+        input.modelFamily?.trim() || input.catId,
         String(nextBreed.displayName ?? nextBreed.name ?? input.catId),
         true,
         input.roles,
@@ -422,6 +422,13 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
     } else {
       delete variant.modelFamily;
       if (located.isDefaultVariant) delete breed.modelFamily;
+    }
+    // F032: keep roster family in sync so reviewer matching sees the canonical model family.
+    if (catalog.version === 2 && catalog.roster[catId]) {
+      catalog.roster = {
+        ...catalog.roster,
+        [catId]: { ...catalog.roster[catId], family: patch.modelFamily?.trim() || catId },
+      };
     }
   }
   if (patch.modelLine !== undefined) {
@@ -532,7 +539,7 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
         ? { ...existingEntry, available: patch.available }
         : buildDefaultRuntimeRosterEntry(
             catId,
-            String(breed.id ?? catId),
+            String(breed.modelFamily ?? breed.id ?? catId),
             String(breed.displayName ?? breed.name ?? catId),
             patch.available,
           ),
@@ -547,7 +554,7 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
         ? { ...existingEntry, roles: nextRoles }
         : buildDefaultRuntimeRosterEntry(
             catId,
-            String(breed.id ?? catId),
+            String(breed.modelFamily ?? breed.id ?? catId),
             String(breed.displayName ?? breed.name ?? catId),
             true,
             nextRoles,

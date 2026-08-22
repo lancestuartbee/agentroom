@@ -143,6 +143,7 @@ describe('FirstRunQuestWizard', () => {
               color: { primary: '#9B7EBD', secondary: '#E8DFF5' },
               roleDescription: '主架构师',
               personality: '温柔',
+              roles: ['architect'],
             },
           ],
         });
@@ -244,5 +245,6 @@ describe('FirstRunQuestWizard', () => {
     expect(catsPayload).not.toBeNull();
     expect(catsPayload!.clientId).toBe('anthropic');
     expect(catsPayload!.client).toBeUndefined();
+    expect(catsPayload!.roles).toEqual(['architect']);
   });
 });
