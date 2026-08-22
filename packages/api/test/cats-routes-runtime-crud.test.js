@@ -15,6 +15,7 @@ const { _clearRuntimeOverrides, getRuntimeOverride, setRuntimeOverride } = await
   '../dist/config/session-strategy-overrides.js'
 );
 const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
+const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
 
 const tempDirs = [];
 let savedTemplatePath;
@@ -2019,6 +2020,110 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(enableRes.statusCode, 200);
     const enableBody = JSON.parse(enableRes.body);
     assert.equal(enableBody.cat.roster.available, true);
+  });
+
+  it('POST /api/cats persists explicit roster roles', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-coding-cat',
+        name: '开发猫',
+        displayName: '开发猫',
+        avatar: '/avatars/coding.png',
+        color: { primary: '#155e75', secondary: '#a5f3fc' },
+        mentionPatterns: ['@runtime-coding-cat'],
+        roleDescription: '开发验证',
+        clientId: 'openai',
+        accountRef: 'codex',
+        defaultModel: 'gpt-5.6-luna',
+        roles: ['coding'],
+      }),
+    });
+
+    assert.equal(createRes.statusCode, 201, `expected 201, got ${createRes.statusCode}: ${createRes.body}`);
+    const body = JSON.parse(createRes.body);
+    assert.deepEqual(body.cat.roster.roles, ['coding']);
+  });
+
+  it('PATCH /api/cats/:id updates roster roles', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/opus',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        roles: ['architect', 'peer-reviewer'],
+      }),
+    });
+
+    assert.equal(patchRes.statusCode, 200, `expected 200, got ${patchRes.statusCode}: ${patchRes.body}`);
+    const body = JSON.parse(patchRes.body);
+    assert.deepEqual(body.cat.roster.roles, ['architect', 'peer-reviewer']);
+  });
+
+  it('runtime cat roles drive development-mode workflow routing', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-routing-cat',
+        name: '路由猫',
+        displayName: '路由猫',
+        avatar: '/avatars/routing.png',
+        color: { primary: '#155e75', secondary: '#a5f3fc' },
+        mentionPatterns: ['@runtime-routing-cat'],
+        roleDescription: '路由验证',
+        clientId: 'openai',
+        accountRef: 'codex',
+        defaultModel: 'gpt-5.6-luna',
+        roles: ['coding'],
+      }),
+    });
+    assert.equal(createRes.statusCode, 201, `expected 201, got ${createRes.statusCode}: ${createRes.body}`);
+
+    // Reload registry so buildStaticIdentity sees the runtime catalog + roles.
+    resetRegistryToBuiltins();
+
+    const prompt = buildStaticIdentity('runtime-routing-cat', { threadMode: 'development' });
+    assert.ok(prompt.includes('完成开发/修复 → @codex'), 'coding-role runtime cat should receive code-review handoff');
   });
 
   it('DELETE /api/cats/:id removes runtime session-strategy override for deleted cat', async () => {

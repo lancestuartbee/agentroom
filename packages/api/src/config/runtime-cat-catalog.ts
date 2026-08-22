@@ -56,6 +56,8 @@ export interface RuntimeCatInput {
   provider?: string;
   /** F161: ACP transport config — presence triggers ACP transport instead of CLI. */
   acp?: AcpVariantConfig;
+  /** Roster roles for development-mode workflow routing (defaults to ['assistant']). */
+  roles?: string[];
 }
 
 export interface RuntimeCatUpdate {
@@ -92,6 +94,8 @@ export interface RuntimeCatUpdate {
   available?: boolean;
   /** F161: ACP transport config — null to remove, undefined to skip. */
   acp?: AcpVariantConfig | null;
+  /** Roster roles for development-mode workflow routing. Empty array resets to ['assistant']. */
+  roles?: string[];
 }
 
 export interface RuntimeCoCreatorUpdate {
@@ -287,10 +291,11 @@ function buildDefaultRuntimeRosterEntry(
   family: string,
   displayName: string,
   available: boolean,
+  roles?: string[],
 ): { family: string; roles: string[]; lead: false; available: boolean; evaluation: string } {
   return {
     family,
-    roles: ['assistant'],
+    roles: roles && roles.length > 0 ? roles : ['assistant'],
     lead: false,
     available,
     evaluation: `${displayName} runtime member`,
@@ -316,6 +321,7 @@ export function createRuntimeCat(projectRoot: string, input: RuntimeCatInput): C
         String(nextBreed.id ?? input.catId),
         String(nextBreed.displayName ?? nextBreed.name ?? input.catId),
         true,
+        input.roles,
       ),
     };
   }
@@ -529,6 +535,22 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
             String(breed.id ?? catId),
             String(breed.displayName ?? breed.name ?? catId),
             patch.available,
+          ),
+    };
+  }
+  if (patch.roles !== undefined && catalog.version === 2) {
+    const existingEntry = catalog.roster[catId];
+    const nextRoles = patch.roles.length > 0 ? patch.roles : ['assistant'];
+    catalog.roster = {
+      ...catalog.roster,
+      [catId]: existingEntry
+        ? { ...existingEntry, roles: nextRoles }
+        : buildDefaultRuntimeRosterEntry(
+            catId,
+            String(breed.id ?? catId),
+            String(breed.displayName ?? breed.name ?? catId),
+            true,
+            nextRoles,
           ),
     };
   }

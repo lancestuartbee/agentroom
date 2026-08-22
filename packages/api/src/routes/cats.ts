@@ -186,6 +186,7 @@ const baseCatSchema = z.object({
   strengths: z.array(z.string().min(1)).optional(),
   sessionChain: z.boolean().optional(),
   voiceConfig: voiceConfigSchema.optional(),
+  roles: z.array(z.string().min(1)).optional(),
 });
 
 /** Strip trailing slashes from model names — prevents "MiniMax-M2.7/" artifacts.
@@ -259,6 +260,7 @@ const updateCatSchema = z.object({
   provider: z.string().min(1).nullable().optional(),
   voiceConfig: voiceConfigSchema.nullable().optional(),
   acp: acpConfigSchema.nullable().optional(), // F161: nullable to allow removing ACP transport
+  roles: z.array(z.string().min(1)).optional(),
 });
 
 type UpdateCatRequestBody = z.infer<typeof updateCatSchema>;
@@ -660,6 +662,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
       if (body.clientId === 'antigravity') {
         createRuntimeCat(projectRoot, {
           catId: body.catId,
+          roles: body.roles,
           name: body.name,
           displayName: body.displayName,
           variantLabel: body.variantLabel,
@@ -693,6 +696,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         // F161: Generic ACP client — no CLI config, ACP section is the transport.
         createRuntimeCat(projectRoot, {
           catId: body.catId,
+          roles: body.roles,
           name: body.name,
           displayName: body.displayName,
           variantLabel: body.variantLabel,
@@ -724,6 +728,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         const resolvedCli = buildResolvedCliConfig(body.clientId, defaultCliForClient(body.clientId), body.cli);
         createRuntimeCat(projectRoot, {
           catId: body.catId,
+          roles: body.roles,
           name: body.name,
           displayName: body.displayName,
           variantLabel: body.variantLabel,
@@ -943,6 +948,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           : {}),
         ...(nextCli !== undefined ? { cli: nextCli } : {}),
         ...(body.available !== undefined ? { available: body.available } : {}),
+        ...(body.roles !== undefined ? { roles: body.roles } : {}),
         ...(body.cliConfigArgs !== undefined ? { cliConfigArgs: body.cliConfigArgs } : {}),
         ...(body.agyProfile !== undefined
           ? body.agyProfile === null
