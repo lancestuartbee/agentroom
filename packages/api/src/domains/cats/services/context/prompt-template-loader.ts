@@ -80,16 +80,34 @@ export function loadDevProtocol(): string {
   return stripComments(readFileSync(filePath, 'utf-8'));
 }
 
+export interface WorkflowTriggers {
+  /** Routing preferences keyed by roster role (development-mode only). */
+  roles: Record<string, string>;
+  /** Optional breed-specific governance/discipline overlays. */
+  breeds: Record<string, string>;
+}
+
+function extractStringMap(obj: unknown): Record<string, string> {
+  if (obj == null || typeof obj !== 'object') return {};
+  const result: Record<string, string> = {};
+  for (const [key, content] of Object.entries(obj as Record<string, unknown>)) {
+    if (typeof content === 'string') {
+      result[key] = content.trimEnd();
+    }
+  }
+  return result;
+}
+
 /**
- * Load per-breed workflow triggers from YAML.
+ * Load workflow triggers from YAML.
  * Checks for workflow-triggers.local.yaml overlay first.
- * Returns Record<string, string> keyed by breedId.
+ * Returns role-keyed routing preferences and breed-keyed governance overlays.
  */
-export function loadWorkflowTriggers(): Record<string, string> {
+export function loadWorkflowTriggers(): WorkflowTriggers {
   const { path: filePath, isOverride } = resolveWithOverlay('workflow-triggers.yaml', 'workflow-triggers.local.yaml');
   if (!existsSync(filePath)) {
     console.warn('[prompt-template] workflow-triggers.yaml not found, using empty map');
-    return {};
+    return { roles: {}, breeds: {} };
   }
 
   let parsed: unknown;
@@ -105,26 +123,23 @@ export function loadWorkflowTriggers(): Record<string, string> {
           parsed = YAML.parse(readFileSync(basePath, 'utf-8'));
         } catch {
           console.warn('[prompt-template] base workflow-triggers.yaml also malformed, using empty map');
-          return {};
+          return { roles: {}, breeds: {} };
         }
       } else {
-        return {};
+        return { roles: {}, breeds: {} };
       }
     } else {
-      return {};
+      return { roles: {}, breeds: {} };
     }
   }
 
-  if (parsed == null || typeof parsed !== 'object') return {};
+  if (parsed == null || typeof parsed !== 'object') return { roles: {}, breeds: {} };
 
-  // YAML block scalars have trailing newline — trim to match original .join('\n') output
-  const result: Record<string, string> = {};
-  for (const [breed, content] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof content === 'string') {
-      result[breed] = content.trimEnd();
-    }
-  }
-  return result;
+  const record = parsed as Record<string, unknown>;
+  return {
+    roles: extractStringMap(record.roles),
+    breeds: extractStringMap(record.breeds),
+  };
 }
 
 // ── S13: MCP Tools Section (allowLocalOverride: true) ────────

@@ -55,60 +55,6 @@ function stripComments(content) {
 
 // ── Original hardcoded values ────────────────────────────────
 
-const ORIGINAL_WORKFLOW_TRIGGERS = {
-  ragdoll: [
-    '## 工作流（主动 @ 触发点）',
-    '- 完成开发/修复 → @缅因猫 请 review',
-    '- 修完 review 意见 → @缅因猫 确认修复',
-    '- MG provenance override：外部finding修完后等PR truth，不@旧reviewer。',
-    '- 遇到视觉/体验问题 → @暹罗猫 征询',
-    '- Review 别人代码：每个发现给明确立场（放行/退回 + 理由）',
-  ].join('\n'),
-  'maine-coon': [
-    '## 工作流（主动 @ 触发点）',
-    '- 完成 review → @布偶猫 通知结果',
-    '- 修完 bug/feature → @布偶猫 请 review',
-    '- MG provenance override：外部finding修完后等PR truth，不@旧reviewer。',
-    '- serial/handoff 场景且需要对方行动 → @ 对应猫（parallel 模式各自独立，不互 @）',
-    '- 发现需要架构决策 → @布偶猫 征询',
-    '- Review 代码：每个发现给明确立场（放行/退回 + 理由）',
-    '- 收到 review 意见：独立判断，认为自己对就 push back（Rule 0），不全盘接受',
-    '',
-    '### 执行纪律',
-    '- 加载 Skill 后直接执行第一步（产出 > 复述）',
-    '- 接球后静默执行：收到"放行"后沉默做到下一状态迁移点（BLOCKED / REVIEW READY / DONE）',
-    '- 声明 = 执行：说"我进 merge gate"必须同 turn 加载 skill 并执行',
-    '- 只发状态迁移消息，中间产物留在代码里',
-    '- 完成任务后必须 @ 下一棒',
-    '- 若识别到角色不匹配或方向有问题，先通知对方再执行（Rule 0）',
-    '',
-    '### 出口一问（发消息前必问）',
-    '我这条消息结尾有没有 @ 下一棒？没有 → 是真的不需要，还是我忘了？',
-    '',
-    '### 缅因猫家族治理（fallback 层数检测 F177 Phase D）',
-    '同文件新增 ≥3 层 fallback (`try/catch`/`??`/`||`/`else-if`) → 坐标系自检：① 修对还是补错？② 变换消除？③ 每层为何不能去？',
-    '',
-    '### 长任务纪律',
-    '- exec_command session_id 存活 → 续 write_stdin。',
-    '- bash&/nohup/disown/setsid = 伪后台；真后台用 detached spawn + unref。',
-    '- Fire-and-forget → pid/log/exit 探针轮询。',
-  ].join('\n'),
-  siamese: [
-    '## 工作流（主动 @ 触发点）',
-    '- 完成设计/视觉资产 → 分别 @布偶猫 和 @缅因猫 请确认（每只猫各占一行）',
-    '- 遇到技术实现问题 → @布偶猫 征询',
-    '',
-    '### 执行纪律',
-    '- 加载 Skill 后直接执行第一步（产出 > 复述）',
-    '- 涉及 UI/前端验证时：通过截图产出证据',
-    '- 接球后静默执行到下一状态点（DONE / HANDOFF）',
-    '- 若识别到角色不匹配或方向有问题，先通知对方再执行（Rule 0）',
-    '',
-    '### 出口一问（发消息前必问）',
-    '我这条消息结尾有没有 @ 下一棒？没有 → 是真的不需要，还是我忘了？',
-  ].join('\n'),
-};
-
 // Rich block short (same as rich-block-rules.ts RICH_BLOCK_SHORT)
 const RICH_BLOCK_SHORT = `富消息块：结构化信息用富块，普通对话不用。先写 1-2 句摘要再发。
 ⚠️ 字段名是 "kind"（不是 "type"！），必须有 "v": 1 和唯一 id。
@@ -167,9 +113,17 @@ const ORIGINAL_D21 = [
 console.log('\n🔍 S6: Workflow Triggers');
 const wfRaw = readFileSync(join(TEMPLATES, 'workflow-triggers.yaml'), 'utf-8');
 const wfParsed = YAML.parse(wfRaw);
-for (const breed of ['ragdoll', 'maine-coon', 'siamese']) {
-  const loaded = (wfParsed[breed] ?? '').trimEnd();
-  assert(`breed=${breed}`, loaded, ORIGINAL_WORKFLOW_TRIGGERS[breed]);
+const s6Checks = [
+  ['S6 has roles map', typeof wfParsed.roles === 'object'],
+  ['S6 has breeds map', typeof wfParsed.breeds === 'object'],
+  ['S6 architect role routes review to @codex', wfParsed.roles?.architect?.includes('@codex')],
+  ['S6 peer-reviewer role guards push back', wfParsed.roles?.['peer-reviewer']?.includes('push back')],
+  ['S6 designer role has screenshot discipline', wfParsed.roles?.designer?.includes('截图')],
+  ['S6 maine-coon governance keeps long-task guardrails', wfParsed.breeds?.['maine-coon']?.includes('长任务纪律')],
+  ['S6 golden-chinchilla governance keeps OMOC boundary', wfParsed.breeds?.['golden-chinchilla']?.includes('OMOC')],
+];
+for (const [label, ok] of s6Checks) {
+  assert(label, String(ok), 'true');
 }
 
 // ── Verify S13: MCP Tools Section ────────────────────────────

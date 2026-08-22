@@ -470,6 +470,24 @@ describe('SystemPromptBuilder', () => {
     );
   });
 
+  test('buildStaticIdentity routes coding-role cats to a reviewer in development mode', async () => {
+    const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+    const dareDev = buildStaticIdentity('dare', { threadMode: 'development' });
+    assert.ok(dareDev.includes('完成开发/修复 → @codex'), 'coding-role cat should get code-review routing');
+    assert.ok(dareDev.includes('MG provenance override'), 'coding-role cat should get MG provenance guard');
+  });
+
+  test('buildStaticIdentity gives designer-role cats design routing, not code review routing', async () => {
+    const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+    const geminiDev = buildStaticIdentity('gemini', { threadMode: 'development' });
+    assert.ok(
+      geminiDev.includes('完成设计/视觉资产'),
+      'designer-role cat should get design-asset confirmation routing',
+    );
+    assert.ok(geminiDev.includes('截图'), 'designer-role cat should keep screenshot validation discipline');
+    assert.ok(!geminiDev.includes('完成开发/修复 → @codex'), 'designer-role cat should not get code-review handoff');
+  });
+
   test('buildStaticIdentity is deterministic', async () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     assert.equal(buildStaticIdentity('opus'), buildStaticIdentity('opus'));

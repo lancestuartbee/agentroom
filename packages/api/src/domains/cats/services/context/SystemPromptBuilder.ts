@@ -350,10 +350,10 @@ export function getGovernanceDigest(): string {
   return _governanceDigestResolved;
 }
 
-/** @segment S6 — Per-breed workflow triggers (loaded from template)
- *  Keyed by breedId so all variants of a breed share the same workflow.
+/** @segment S6 — Workflow triggers (loaded from template)
+ *  Role-keyed routing preferences + optional breed governance overlays.
  *  Lazy-evaluated to pick up .local overlay changes (F237 Checkpoint C). */
-function getWorkflowTriggers(): Record<string, string> {
+function getWorkflowTriggers(): import('./prompt-template-loader.js').WorkflowTriggers {
   return loadWorkflowTriggers();
 }
 
@@ -667,7 +667,8 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
 
   /* @segment S6 — 工作流触发点 */
   // F064 P1: development-mode collaboration protocol is a mode-gated invariant,
-  // not a per-breed choice. Per-breed entries are routing preferences only.
+  // not a per-breed choice. Routing preferences are role-based; breed entries
+  // are governance/discipline overlays only.
   // Missing/legacy records default to development per ThreadStore contract.
   const mode = options?.threadMode ?? DEFAULT_THREAD_MODE;
   if (mode === 'development') {
@@ -678,10 +679,38 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
     }
 
     const wfTriggers = getWorkflowTriggers();
-    const triggers = wfTriggers[config.breedId ?? ''] ?? wfTriggers[catId as string];
-    if (triggers) {
+    const s6Parts: string[] = [];
+
+    // Inject the highest-priority dev-role routing preference. Order matters:
+    // a cat with multiple dev roles (e.g. codex = peer-reviewer + security)
+    // should get one coherent routing block, not duplicated bullets.
+    const devRolePriority = ['architect', 'peer-reviewer', 'coding', 'security'] as const;
+    for (const role of devRolePriority) {
+      if (catHasRole(catId as string, role)) {
+        const roleTriggers = wfTriggers.roles[role];
+        if (roleTriggers) {
+          s6Parts.push(roleTriggers);
+          break;
+        }
+      }
+    }
+
+    // Non-dev roles (e.g. designer) get their own routing preference when present.
+    if (catHasRole(catId as string, 'designer')) {
+      const designerTriggers = wfTriggers.roles.designer;
+      if (designerTriggers) {
+        s6Parts.push(designerTriggers);
+      }
+    }
+
+    const breedGovernance = wfTriggers.breeds[config.breedId ?? ''] ?? wfTriggers.breeds[catId as string];
+    if (breedGovernance) {
+      s6Parts.push(breedGovernance);
+    }
+
+    if (s6Parts.length > 0) {
       mark('S6', '工作流触发点');
-      lines.push(triggers, '');
+      lines.push(s6Parts.join('\n\n'), '');
     }
   }
 

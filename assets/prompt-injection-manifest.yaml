@@ -250,9 +250,9 @@ segments:
     lifecycleStage: session-init
     source: assets/prompt-templates/workflow-triggers.yaml
     sourceType: template
-    trigger: "WORKFLOW_TRIGGERS[breedId] exists"
-    purpose: "Per-breed workflow triggers: when to proactively @-mention other cats"
-    userExplanation: "告诉每只猫在什么情况下应该 @提及 哪位队友（如完成开发后 @缅因猫 review）"
+    trigger: "mode === 'development' and cat has a mapped role or breed governance"
+    purpose: "Role-based workflow triggers + optional breed governance: when to proactively @-mention other cats"
+    userExplanation: "根据当前猫的角色（如 coding/peer-reviewer/designer）告诉它完成工作后 @提及 哪位队友；breed 治理叠加在角色偏好之上"
     priority: medium
     safetyTier: editable
     transparencyTier: visible-by-default

@@ -96,11 +96,11 @@ describe('prompt-injection review guard scripts', () => {
     assert.match(source, /YAML\.parse/, 'native L0 compiler must load S6 workflow trigger YAML');
   });
 
-  it('Maine Coon S6 template preserves native L0 long-task guardrails', () => {
+  it('Maine Coon S6 breed governance preserves native L0 long-task guardrails', () => {
     const workflowTriggers = YAML.parse(readFileSync('assets/prompt-templates/workflow-triggers.yaml', 'utf-8'));
-    const maineCoon = workflowTriggers['maine-coon'];
+    const maineCoon = workflowTriggers.breeds?.['maine-coon'];
 
-    assert.equal(typeof maineCoon, 'string', 'maine-coon workflow trigger template must be a string block');
+    assert.equal(typeof maineCoon, 'string', 'maine-coon workflow governance template must be a string block');
     assert.match(
       maineCoon,
       /### 缅因猫家族治理（fallback 层数检测 F177 Phase D）/,

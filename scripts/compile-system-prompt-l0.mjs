@@ -168,17 +168,24 @@ function workflowTriggersOverlayPath(filename) {
   return resolve(PROMPT_OVERLAYS_DIR, filename);
 }
 
-function parseWorkflowTriggersFile(filePath) {
-  const parsed = YAML.parse(readFileSync(filePath, 'utf-8'));
-  if (parsed == null || typeof parsed !== 'object') return {};
-
+function extractStringMap(obj) {
+  if (obj == null || typeof obj !== 'object') return {};
   const result = {};
-  for (const [breed, content] of Object.entries(parsed)) {
+  for (const [key, content] of Object.entries(obj)) {
     if (typeof content === 'string') {
-      result[breed] = content.trimEnd();
+      result[key] = content.trimEnd();
     }
   }
   return result;
+}
+
+function parseWorkflowTriggersFile(filePath) {
+  const parsed = YAML.parse(readFileSync(filePath, 'utf-8'));
+  if (parsed == null || typeof parsed !== 'object') return { roles: {}, breeds: {} };
+  return {
+    roles: extractStringMap(parsed.roles),
+    breeds: extractStringMap(parsed.breeds),
+  };
 }
 
 function loadWorkflowTriggers() {
@@ -188,7 +195,7 @@ function loadWorkflowTriggers() {
 
   if (!existsSync(effectivePath)) {
     console.warn('[compile-l0] workflow-triggers.yaml not found, using empty map');
-    return {};
+    return { roles: {}, breeds: {} };
   }
 
   try {
@@ -202,8 +209,26 @@ function loadWorkflowTriggers() {
         console.warn('[compile-l0] base workflow-triggers.yaml also malformed, using empty map');
       }
     }
-    return {};
+    return { roles: {}, breeds: {} };
   }
+}
+
+function loadDevProtocol() {
+  const basePath = resolve(PROMPT_TEMPLATES_DIR, 's6-dev-protocol.md');
+  const localPath = resolve(PROMPT_OVERLAYS_DIR, 's6-dev-protocol.local.md');
+  const effectivePath = existsSync(localPath) ? localPath : basePath;
+  if (!existsSync(effectivePath)) {
+    console.warn('[compile-l0] s6-dev-protocol.md not found, using empty string');
+    return '';
+  }
+  return readFileSync(effectivePath, 'utf8')
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith('<!--');
+    })
+    .join('\n')
+    .trim();
 }
 
 function buildIdentityBlock(config, runtimeModel) {
@@ -300,11 +325,53 @@ const DISPLAY_NAME_TO_BREED = {
 
 function buildWorkflowTriggers(breedId, catId, displayName) {
   const workflowTriggers = loadWorkflowTriggers();
-  const direct = workflowTriggers[breedId] ?? workflowTriggers[catId];
-  if (direct) return direct;
-  const familyBreed = DISPLAY_NAME_TO_BREED[displayName];
-  if (familyBreed && workflowTriggers[familyBreed]) {
-    return workflowTriggers[familyBreed];
+  const rosterEntry = _loadedConfig?.roster?.[catId];
+  const roles = rosterEntry?.roles ?? [];
+  const devRoles = ['coding', 'peer-reviewer', 'architect', 'security'];
+  const hasDevRole = roles.some((role) => devRoles.includes(role));
+
+  const parts = [];
+
+  // Common development-mode protocol is part of the workflow-triggers section in L0.
+  if (hasDevRole) {
+    const devProtocol = loadDevProtocol();
+    if (devProtocol) {
+      parts.push(devProtocol);
+    }
+  }
+
+  // Inject the highest-priority dev-role routing preference to avoid duplication.
+  let devRoleInjected = false;
+  for (const role of devRoles) {
+    if (roles.includes(role)) {
+      const roleTriggers = workflowTriggers.roles[role];
+      if (roleTriggers) {
+        parts.push(roleTriggers);
+        devRoleInjected = true;
+        break;
+      }
+    }
+  }
+
+  // Non-dev designer role still gets design routing.
+  if (!devRoleInjected && roles.includes('designer')) {
+    const designerTriggers = workflowTriggers.roles.designer;
+    if (designerTriggers) {
+      parts.push(designerTriggers);
+    }
+  }
+
+  // Breed-specific governance/discipline overlay.
+  const breedGovernance =
+    workflowTriggers.breeds[breedId ?? ''] ??
+    workflowTriggers.breeds[catId] ??
+    workflowTriggers.breeds[DISPLAY_NAME_TO_BREED[displayName]];
+  if (breedGovernance) {
+    parts.push(breedGovernance);
+  }
+
+  if (parts.length > 0) {
+    return parts.join('\n\n');
   }
   return '## 工作流\n（无 per-breed 触发点配置）';
 }
