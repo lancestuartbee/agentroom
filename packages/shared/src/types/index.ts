@@ -594,22 +594,6 @@ export {
   type ThreadAudience,
   type ThreadMode,
 } from './modes.js';
-// F247 A2A Sandbox types
-export type {
-  CreateSandboxInput,
-  Sandbox,
-  SandboxDataSourceV1,
-  SandboxLearnedItemV1,
-  SandboxMemoryV1,
-  SandboxRunRecordV1,
-  SandboxScheduleV1,
-  SandboxSettingsV1,
-  SandboxSpecV1,
-  SandboxStateFileV1,
-  UpdateSandboxSettingsInput,
-  UpdateSandboxSpecInput,
-  UpdateSandboxStatusInput,
-} from './sandbox.js';
 // Mount Rules types (F228 Skill 挂载规则解耦)
 export type {
   CustomMountPointRule,
@@ -718,6 +702,23 @@ export type {
   RichMessageExtra,
 } from './rich.js';
 export { isValidRichBlock, normalizeRichBlock } from './rich.js';
+// F247 A2A Sandbox types
+export type {
+  CreateSandboxInput,
+  Sandbox,
+  SandboxDataSourceV1,
+  SandboxLearnedItemV1,
+  SandboxLearningPromotionProvenanceV1,
+  SandboxMemoryV1,
+  SandboxRunRecordV1,
+  SandboxScheduleV1,
+  SandboxSettingsV1,
+  SandboxSpecV1,
+  SandboxStateFileV1,
+  UpdateSandboxSettingsInput,
+  UpdateSandboxSpecInput,
+  UpdateSandboxStatusInput,
+} from './sandbox.js';
 // Session chain types (F24 Session Chain + Context Health)
 export type {
   ContextHealth,

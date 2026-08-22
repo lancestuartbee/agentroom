@@ -5,6 +5,8 @@
 import type {
   CreateSandboxInput,
   Sandbox,
+  SandboxLearnedItemV1,
+  SandboxLearningPromotionProvenanceV1,
   SandboxMemoryV1,
   SandboxRunRecordV1,
   SandboxStateFileV1,
@@ -43,6 +45,17 @@ export interface ISandboxStore {
 
   /** 更新沙盒滚动记忆 */
   updateMemory(sandboxId: string, memory: SandboxMemoryV1): Promise<void>;
+
+  /**
+   * 标记一个 learned item 已被提升为系统级知识，并记录 provenance。
+   * 返回更新后的条目；找不到 item 时返回 null。
+   */
+  promoteLearning(
+    sandboxId: string,
+    itemId: string,
+    provenance: SandboxLearningPromotionProvenanceV1,
+    evidenceAnchor: string,
+  ): Promise<SandboxLearnedItemV1 | null>;
 
   /** 读取最近一次运行记录 */
   getLastRun(sandboxId: string): Promise<SandboxRunRecordV1 | null>;

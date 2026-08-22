@@ -55,12 +55,16 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
 
   const [triggering, setTriggering] = useState(false);
   const [triggerNote, setTriggerNote] = useState<string | null>(null);
+  const [promotingId, setPromotingId] = useState<string | null>(null);
+  const [promoteNote, setPromoteNote] = useState<string | null>(null);
 
   // A trigger note is about one sandbox's run; carrying it across a switch would tell the
   // operator something about B that only ever happened to A.
   useEffect(() => {
     setTriggerNote(null);
     setTriggering(false);
+    setPromotingId(null);
+    setPromoteNote(null);
   }, [sandboxId]);
 
   // A failed poll still leaves the last good snapshot on screen — an empty pane would be
@@ -110,6 +114,35 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
       if (isCurrent(targetId)) setTriggering(false);
     }
   }, [sandboxId, triggering, load, isCurrent]);
+
+  const promote = useCallback(
+    async (itemId: string) => {
+      const targetId = sandboxId;
+      if (!targetId || promotingId === itemId) return;
+      setPromotingId(itemId);
+      setPromoteNote(null);
+      try {
+        const res = await apiFetch(
+          `/api/sandboxes/${encodeURIComponent(targetId)}/learned-items/${encodeURIComponent(itemId)}/promote`,
+          { method: 'POST' },
+        );
+        if (!isCurrent(targetId)) return;
+        if (res.ok) {
+          setPromoteNote('已提升为系统知识。');
+          void load();
+        } else {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          if (!isCurrent(targetId)) return;
+          setPromoteNote(body.error ?? `提升失败（HTTP ${res.status}）`);
+        }
+      } catch (err) {
+        if (isCurrent(targetId)) setPromoteNote(err instanceof Error ? err.message : '提升失败');
+      } finally {
+        if (isCurrent(targetId)) setPromotingId(null);
+      }
+    },
+    [sandboxId, promotingId, load, isCurrent],
+  );
 
   if (!sandboxId) return null;
 
@@ -194,6 +227,12 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
         )}
       </section>
 
+      {promoteNote && (
+        <div className="text-xs text-[var(--console-text-muted)]" data-testid="sandbox-promote-note">
+          {promoteNote}
+        </div>
+      )}
+
       <section className="flex flex-col gap-1">
         <h3 className="font-medium">已积累的认知</h3>
         <div className="text-[var(--console-text-muted)]" data-testid="sandbox-runs-incorporated">
@@ -206,7 +245,21 @@ export function SandboxRunPane({ threadId }: { threadId: string | null | undefin
               .slice(-20)
               .reverse()
               .map((item) => (
-                <li key={item.id}>· {item.content}</li>
+                <li key={item.id} className="flex items-start justify-between gap-2">
+                  <span className="flex-1">· {item.content}</span>
+                  {sandbox.settings.allowBackflow && !item.promoted && (
+                    <button
+                      type="button"
+                      onClick={() => void promote(item.id)}
+                      disabled={promotingId === item.id}
+                      data-testid={`sandbox-promote-${item.id}`}
+                      className="shrink-0 text-xs px-2 py-0.5 rounded border border-[var(--console-border)] disabled:opacity-50"
+                    >
+                      {promotingId === item.id ? '提升中…' : '提升为系统知识'}
+                    </button>
+                  )}
+                  {item.promoted && <span className="shrink-0 text-xs text-[var(--console-text-muted)]">已提升</span>}
+                </li>
               ))}
           </ul>
         ) : (

@@ -113,6 +113,16 @@ export interface SandboxLearnedItemV1 {
   /** 提升时间 */
   promotedAt?: number;
   /**
+   * 提升后写入全局 evidence 的 anchor（F247 Phase E）。
+   * 格式 `sandbox:<sandboxId>:learned:<itemId>`，用于追踪与幂等重试。
+   */
+  promotedEvidenceAnchor?: string;
+  /**
+   * 提升操作的 provenance（F247 Phase E AC-E3）。
+   * 记录来源 sandbox、来源 run、被提升的原始内容以及操作时间。
+   */
+  promotionProvenance?: SandboxLearningPromotionProvenanceV1;
+  /**
    * 已 promoted 条目与其来源报告不再一致时的记录（F247 Phase E 前置）。
    *
    * promoted 条目是冻结的——内容已导出到沙盒外，静默改写本地副本会让两边不一致。
@@ -120,6 +130,20 @@ export interface SandboxLearnedItemV1 {
    * **来源指纹**（报告现在说什么）一起持久化在条目上，由 operator 决定是否撤回已发布的副本。
    */
   divergence?: SandboxLearningDivergenceV1;
+}
+
+/**
+ * 学习条目被提升为系统级知识时的 provenance（F247 Phase E AC-E3）。
+ */
+export interface SandboxLearningPromotionProvenanceV1 {
+  /** 来源沙盒 id */
+  sandboxId: string;
+  /** 来源运行 id */
+  sourceRunId: string;
+  /** 被提升时的原始内容 */
+  originalContent: string;
+  /** 提升时间（Unix 时间戳） */
+  promotedAt: number;
 }
 
 export interface SandboxLearningDivergenceV1 {

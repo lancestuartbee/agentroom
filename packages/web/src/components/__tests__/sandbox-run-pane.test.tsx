@@ -254,7 +254,7 @@ describe('SandboxRunPane follows the thread it was given', () => {
   // Review: clearing the note on switch only clears the value that exists AT the switch.
   // A POST still in flight resurrects it afterwards — B's panel then reports a run that
   // happened to A. The source fix cannot reach this; the callback has to check for itself.
-  it('does not resurrect A\'s trigger note after the operator has moved to B', async () => {
+  it("does not resurrect A's trigger note after the operator has moved to B", async () => {
     const slowPost = deferred();
     mockApiFetch.mockImplementation((_path: string, init?: { method?: string }) => {
       if (init?.method === 'POST') return slowPost.promise;
@@ -296,7 +296,7 @@ describe('SandboxRunPane follows the thread it was given', () => {
     await act(async () => root.unmount());
   });
 
-  it('does not report A\'s trigger failure on B either', async () => {
+  it("does not report A's trigger failure on B either", async () => {
     const slowPost = deferred();
     mockApiFetch.mockImplementation((_path: string, init?: { method?: string }) => {
       if (init?.method === 'POST') return slowPost.promise;
@@ -429,6 +429,86 @@ describe('SandboxRunPane stale state', () => {
     expect(container.querySelector('[data-testid="sandbox-stale-banner"]')).not.toBeNull();
     // The last good snapshot must remain — an empty pane would be worse than a stale one.
     expect(container.textContent).toContain('上次成功读到的运行');
+
+    await act(async () => root.unmount());
+  });
+});
+
+describe('SandboxRunPane promote learning', () => {
+  beforeEach(() => {
+    mockThreads = [{ id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-1' }];
+    mockApiFetch.mockReset();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  it('does not offer promote when allowBackflow is false', async () => {
+    mockApiFetch.mockResolvedValue(
+      jsonResponse({
+        sandbox: SANDBOX,
+        memory: {
+          v: 1,
+          summary: 's',
+          runsIncorporated: 1,
+          learnedItems: [{ id: 'l1', content: 'A', sourceRunAt: 1, promoted: false }],
+          updatedAt: 1,
+        },
+        runs: [],
+        runsAvailable: true,
+      }),
+    );
+
+    const { container, root } = await render();
+    expect(container.querySelector('[data-testid="sandbox-promote-l1"]')).toBeNull();
+    expect(container.textContent).toContain('学习成果回流：关闭');
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows promote buttons and calls the API when clicked', async () => {
+    mockApiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === 'POST' && path.includes('/learned-items/')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ item: { id: 'l1', content: 'A', promoted: true }, evidenceAnchor: 'ev-1' }),
+        });
+      }
+      return Promise.resolve(
+        jsonResponse({
+          sandbox: { ...SANDBOX, settings: { ...SANDBOX.settings, allowBackflow: true } },
+          memory: {
+            v: 1,
+            summary: 's',
+            runsIncorporated: 1,
+            learnedItems: [{ id: 'l1', content: 'A', sourceRunAt: 1, promoted: false }],
+            updatedAt: 1,
+          },
+          runs: [],
+          runsAvailable: true,
+        }),
+      );
+    });
+
+    const { container, root } = await render();
+    expect(container.textContent).toContain('学习成果回流：开启');
+
+    const button = container.querySelector('[data-testid="sandbox-promote-l1"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    expect(button.textContent).toContain('提升为系统知识');
+
+    await act(async () => {
+      button.click();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/sandboxes/sandbox%3Asb-1/learned-items/l1/promote'),
+      expect.objectContaining({ method: 'POST' }),
+    );
 
     await act(async () => root.unmount());
   });

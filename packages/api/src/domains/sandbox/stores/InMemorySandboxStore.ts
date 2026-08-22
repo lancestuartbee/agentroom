@@ -14,6 +14,8 @@ import { dirname, join } from 'node:path';
 import type {
   CreateSandboxInput,
   Sandbox,
+  SandboxLearnedItemV1,
+  SandboxLearningPromotionProvenanceV1,
   SandboxMemoryV1,
   SandboxRunRecordV1,
   SandboxSettingsV1,
@@ -332,6 +334,32 @@ export class InMemorySandboxStore implements ISandboxStore {
     if (sandbox) {
       await this.persistMemory(sandbox.projectPath, memory);
     }
+  }
+
+  async promoteLearning(
+    sandboxId: string,
+    itemId: string,
+    provenance: SandboxLearningPromotionProvenanceV1,
+    evidenceAnchor: string,
+  ): Promise<SandboxLearnedItemV1 | null> {
+    const memory = this.memories.get(sandboxId);
+    if (!memory) return null;
+
+    const item = memory.learnedItems?.find((i) => i.id === itemId);
+    if (!item) return null;
+
+    const updated: SandboxLearnedItemV1 = {
+      ...item,
+      promoted: true,
+      promotedAt: provenance.promotedAt,
+      promotedEvidenceAnchor: evidenceAnchor,
+      promotionProvenance: provenance,
+    };
+
+    const learnedItems = (memory.learnedItems ?? []).map((i) => (i.id === itemId ? updated : i));
+    const nextMemory: SandboxMemoryV1 = { ...memory, learnedItems, updatedAt: provenance.promotedAt };
+    await this.updateMemory(sandboxId, nextMemory);
+    return updated;
   }
 
   async getLastRun(sandboxId: string): Promise<SandboxRunRecordV1 | null> {

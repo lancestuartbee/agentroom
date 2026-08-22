@@ -434,4 +434,59 @@ describe('Sandbox store', () => {
 
     await rm(tmpDir, { recursive: true, force: true });
   });
+
+  test('promoteLearning marks an item promoted and records provenance', async () => {
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-promote-store-'));
+    const projectPath = join(tmpDir, 'project');
+    await mkdir(join(projectPath, '.a2a-sandbox', 'runs'), { recursive: true });
+
+    const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
+    const sandbox = await store.create(
+      {
+        title: 'Promote',
+        projectPath,
+        members: ['opus'],
+        spec: { specVersion: '1', name: 'Promote', goal: 'g', members: ['opus'] },
+      },
+      'user-1',
+    );
+    await store.bindThread(sandbox.id, 'thread-1');
+
+    await store.updateMemory(sandbox.id, {
+      v: 1,
+      summary: '',
+      runsIncorporated: 1,
+      updatedAt: 1000,
+      learnedItems: [{ id: 'run-1\x1fa', content: 'A', sourceRunId: 'run-1', sourceRunAt: 1000, promoted: false }],
+    });
+
+    const promotedAt = Date.now();
+    const provenance = {
+      sandboxId: sandbox.id,
+      sourceRunId: 'run-1',
+      originalContent: 'A',
+      promotedAt,
+    };
+    const evidenceAnchor = `sandbox:${sandbox.id}:learned:run-1\x1fa`;
+    const updated = await store.promoteLearning(sandbox.id, 'run-1\x1fa', provenance, evidenceAnchor);
+
+    assert.ok(updated);
+    assert.equal(updated.promoted, true);
+    assert.equal(updated.promotedAt, promotedAt);
+    assert.equal(updated.promotedEvidenceAnchor, evidenceAnchor);
+    assert.deepEqual(updated.promotionProvenance, provenance);
+
+    const memory = await store.getMemory(sandbox.id);
+    assert.equal(memory.learnedItems[0].promoted, true);
+    assert.equal(memory.updatedAt, promotedAt);
+
+    // Missing item returns null and must not mutate other items.
+    const missing = await store.promoteLearning(sandbox.id, 'missing', provenance, 'anchor:missing');
+    assert.equal(missing, null);
+    assert.equal((await store.getMemory(sandbox.id)).learnedItems.length, 1);
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
 });

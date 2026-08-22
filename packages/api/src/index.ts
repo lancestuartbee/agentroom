@@ -2571,6 +2571,8 @@ async function main(): Promise<void> {
         triggerNow: (id, o) => taskRunnerV2.triggerNow(id, o),
       },
     },
+    // F247 Phase E: promote sandbox learnings into the global evidence store.
+    evidenceStore: memoryServices.evidenceStore,
   });
   await app.register(labelsRoutes, { labelStore, threadStore });
   await app.register(threadBranchRoutes, {

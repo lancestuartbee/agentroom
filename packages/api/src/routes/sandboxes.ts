@@ -23,6 +23,7 @@ import {
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { IThreadStore, Thread } from '../domains/cats/services/stores/ports/ThreadStore.js';
+import type { IEvidenceStore } from '../domains/memory/interfaces.js';
 import type { ISandboxStore } from '../domains/sandbox/ports/SandboxStore.js';
 import type { SandboxScheduleDeps } from '../domains/sandbox/services/sandbox-schedule.js';
 import { syncSandboxSchedule, triggerSandboxRunNow } from '../domains/sandbox/services/sandbox-schedule.js';
@@ -49,6 +50,11 @@ export interface SandboxesRoutesOptions {
    * field instead of registering the real hook.
    */
   callbackRegistry: CallbackAuthRegistry;
+  /**
+   * F247 Phase E: global evidence store for promoting sandbox learnings. Optional so
+   * tests that only exercise sandbox CRUD do not need a full memory stack.
+   */
+  evidenceStore?: IEvidenceStore;
 }
 
 /**
@@ -143,7 +149,7 @@ function sanitizeSandboxForResponse(sandbox: Sandbox): Sandbox {
 }
 
 export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async (app, opts) => {
-  const { threadStore, sandboxStore, scheduleDeps, callbackRegistry } = opts;
+  const { threadStore, sandboxStore, scheduleDeps, callbackRegistry, evidenceStore } = opts;
   // Fail FAST rather than degrading. When this was optional, a missing registry silently
   // turned the whole dev-pane write path into a 401 — production was broken for a wiring
   // omission no startup check would surface. Crashing at boot is the cheap failure.
@@ -543,6 +549,53 @@ export const sandboxesRoutes: FastifyPluginAsync<SandboxesRoutesOptions> = async
       return { error: 'Failed to trigger sandbox run', detail: String(err) };
     }
   });
+
+  // POST /api/sandboxes/:id/learned-items/:itemId/promote — F247 Phase E.
+  //
+  // Manually promote one durable learning from the sandbox memory into the global
+  // evidence store. This is gated by the sandbox's `allowBackflow` setting: the default
+  // is isolation, so an accidental click cannot pollute system memory.
+  app.post<{ Params: { id: string; itemId: string } }>(
+    '/api/sandboxes/:id/learned-items/:itemId/promote',
+    async (request, reply) => {
+      const { id, itemId } = request.params;
+      const userId = resolveUserId(request);
+      if (!userId) {
+        reply.status(401);
+        return { error: 'Identity required' };
+      }
+
+      const sandbox = await sandboxStore.get(id);
+      if (!sandbox) {
+        reply.status(404);
+        return { error: 'Sandbox not found' };
+      }
+
+      const thread = await threadStore.get(sandbox.threadId);
+      if (!thread || thread.createdBy !== userId) {
+        reply.status(403);
+        return { error: 'Sandbox does not belong to this user' };
+      }
+
+      if (!evidenceStore) {
+        reply.status(503);
+        return { error: 'Evidence store not available' };
+      }
+
+      const { promoteSandboxLearning } = await import('../domains/sandbox/services/promote-learning.js');
+      try {
+        const result = await promoteSandboxLearning({ sandboxStore, evidenceStore }, { sandboxId: id, itemId });
+        return { item: result.item, evidenceAnchor: result.evidenceAnchor };
+      } catch (err) {
+        const statusCode = (err as Error & { statusCode?: number }).statusCode ?? 500;
+        if (statusCode >= 500) {
+          log.error({ err, sandboxId: id, itemId }, 'Failed to promote sandbox learning');
+        }
+        reply.status(statusCode);
+        return { error: err instanceof Error ? err.message : 'Failed to promote learning' };
+      }
+    },
+  );
 };
 
 // Re-export route type guard helper for tests
