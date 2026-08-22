@@ -16,6 +16,8 @@ export interface TemplateCard {
   capabilityLevel?: 1 | 2 | 3;
   runtimeClient?: string;
   teamStrengths?: string;
+  /** F032: structured capability/role bindings seeded from roster. */
+  roles?: string[];
 }
 
 interface TemplateStepProps {

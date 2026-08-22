@@ -83,6 +83,7 @@ export function IdentitySection({
   onRefAudioUpload: (file: File) => Promise<void>;
 }) {
   const strengthTags = splitStrengthTags(form.strengths);
+  const roleTags = splitStrengthTags(form.roles);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const avatarSrc = safeAvatarSrc(form.avatar);
   const [personaOpen, setPersonaOpen] = useState(false);
@@ -91,7 +92,8 @@ export function IdentitySection({
       form.personality.trim() ||
       form.teamStrengths.trim() ||
       form.caution.trim() ||
-      strengthTags.length > 0,
+      strengthTags.length > 0 ||
+      roleTags.length > 0,
   );
 
   return (
@@ -254,6 +256,24 @@ export function IdentitySection({
                 aria-label="Strengths"
                 value={form.strengths}
                 onChange={(event) => onChange({ strengths: event.target.value })}
+                className="sr-only"
+              />
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="w-[150px] shrink-0 pt-1 text-xs font-bold text-cafe-secondary">角色 / 能力</span>
+              <div className="min-w-0 flex-1">
+                <TagEditor
+                  tags={roleTags}
+                  onChange={(tags) => onChange({ roles: joinTags(tags) })}
+                  addLabel="+ 选择"
+                  placeholder="输入角色，例如 coding、designer"
+                  emptyLabel="(无)"
+                />
+              </div>
+              <input
+                aria-label="Roles"
+                value={form.roles}
+                onChange={(event) => onChange({ roles: event.target.value })}
                 className="sr-only"
               />
             </div>

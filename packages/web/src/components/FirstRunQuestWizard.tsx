@@ -106,6 +106,7 @@ export function FirstRunQuestWizard({ open, onClose, onCreated }: FirstRunQuestW
               capabilityLevel: selectedTemplate.capabilityLevel,
               runtimeClient: selectedTemplate.runtimeClient,
               teamStrengths: selectedTemplate.teamStrengths,
+              roles: selectedTemplate.roles,
               clientId: selectedClient.provider,
               accountRef: config.accountRef,
               defaultModel: config.model,

@@ -48,6 +48,8 @@ export interface HubCatEditorFormState {
   teamStrengths: string;
   caution: string;
   strengths: string;
+  /** F032: comma-separated capability/role tags (e.g. coding,designer). */
+  roles: string;
   clientId: ClientId;
   accountRef: string;
   defaultModel: string;
@@ -93,6 +95,8 @@ export interface HubCatEditorDraft {
   templateCapabilityLevel?: 1 | 2 | 3;
   templateRuntimeClient?: string;
   templateTeamStrengths?: string;
+  /** F032: roster roles to seed for a new member created from a template. */
+  templateRoles?: string[];
 }
 
 export interface StrategyFormState {
@@ -586,6 +590,7 @@ export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | n
     teamStrengths: cat?.teamStrengths ?? createDraft?.templateTeamStrengths ?? '',
     caution: cat?.caution ?? '',
     strengths: cat?.strengths?.join(', ') ?? '',
+    roles: cat?.roster?.roles?.join(', ') ?? createDraft?.templateRoles?.join(', ') ?? '',
     clientId,
     accountRef: cat?.accountRef ?? createDraft?.accountRef ?? '',
     defaultModel,
