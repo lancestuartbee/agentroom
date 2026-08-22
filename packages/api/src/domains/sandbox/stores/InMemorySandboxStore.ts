@@ -15,6 +15,7 @@ import type {
   CreateSandboxInput,
   Sandbox,
   SandboxLearnedItemV1,
+  SandboxLearningPromotionClaimV1,
   SandboxLearningPromotionProvenanceV1,
   SandboxMemoryV1,
   SandboxRunRecordV1,
@@ -336,26 +337,53 @@ export class InMemorySandboxStore implements ISandboxStore {
     }
   }
 
-  async promoteLearning(
+  async claimPromotion(
     sandboxId: string,
     itemId: string,
-    provenance: SandboxLearningPromotionProvenanceV1,
-    evidenceAnchor: string,
-    fingerprint?: { sourceRunId: string; content: string },
+    claim: SandboxLearningPromotionClaimV1,
   ): Promise<SandboxLearnedItemV1 | null> {
     const memory = this.memories.get(sandboxId);
     if (!memory) return null;
 
     const item = memory.learnedItems?.find((i) => i.id === itemId);
     if (!item) return null;
+    if (item.promoted) return null;
 
-    // F247 Phase E review: promotion is a snapshot. If the item has been rewritten
-    // under the same stable id between the caller's read and this write, completing
-    // the promotion would freeze a stale content/evidence pairing. Reject the race
-    // so the caller can retry with the current snapshot.
-    if (fingerprint && (item.sourceRunId !== fingerprint.sourceRunId || item.content !== fingerprint.content)) {
+    // A stale claim from a crashed previous attempt can be resumed if it points at the
+    // same content; otherwise treat it as a concurrent conflict.
+    const existingClaim = item.promotionClaim;
+    if (
+      existingClaim &&
+      existingClaim.attemptId !== claim.attemptId &&
+      (existingClaim.fingerprint.sourceRunId !== claim.fingerprint.sourceRunId ||
+        existingClaim.fingerprint.content !== claim.fingerprint.content)
+    ) {
       return null;
     }
+
+    const updated: SandboxLearnedItemV1 = { ...item, promotionClaim: claim };
+    const learnedItems = (memory.learnedItems ?? []).map((i) => (i.id === itemId ? updated : i));
+    const nextMemory: SandboxMemoryV1 = { ...memory, learnedItems, updatedAt: claim.attemptedAt };
+    await this.updateMemory(sandboxId, nextMemory);
+    return updated;
+  }
+
+  async completePromotion(
+    sandboxId: string,
+    itemId: string,
+    provenance: SandboxLearningPromotionProvenanceV1,
+    evidenceAnchor: string,
+    fingerprint: { sourceRunId: string; content: string },
+    attemptId: string,
+  ): Promise<SandboxLearnedItemV1 | null> {
+    const memory = this.memories.get(sandboxId);
+    if (!memory) return null;
+
+    const item = memory.learnedItems?.find((i) => i.id === itemId);
+    if (!item) return null;
+    if (item.promoted) return null;
+    if (!item.promotionClaim || item.promotionClaim.attemptId !== attemptId) return null;
+    if (item.sourceRunId !== fingerprint.sourceRunId || item.content !== fingerprint.content) return null;
 
     const updated: SandboxLearnedItemV1 = {
       ...item,
@@ -363,10 +391,26 @@ export class InMemorySandboxStore implements ISandboxStore {
       promotedAt: provenance.promotedAt,
       promotedEvidenceAnchor: evidenceAnchor,
       promotionProvenance: provenance,
+      promotionClaim: undefined,
     };
 
     const learnedItems = (memory.learnedItems ?? []).map((i) => (i.id === itemId ? updated : i));
     const nextMemory: SandboxMemoryV1 = { ...memory, learnedItems, updatedAt: provenance.promotedAt };
+    await this.updateMemory(sandboxId, nextMemory);
+    return updated;
+  }
+
+  async releasePromotionClaim(sandboxId: string, itemId: string): Promise<SandboxLearnedItemV1 | null> {
+    const memory = this.memories.get(sandboxId);
+    if (!memory) return null;
+
+    const item = memory.learnedItems?.find((i) => i.id === itemId);
+    if (!item) return null;
+    if (!item.promotionClaim) return item;
+
+    const updated: SandboxLearnedItemV1 = { ...item, promotionClaim: undefined };
+    const learnedItems = (memory.learnedItems ?? []).map((i) => (i.id === itemId ? updated : i));
+    const nextMemory: SandboxMemoryV1 = { ...memory, learnedItems, updatedAt: Date.now() };
     await this.updateMemory(sandboxId, nextMemory);
     return updated;
   }

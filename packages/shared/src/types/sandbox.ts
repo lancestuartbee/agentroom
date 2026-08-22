@@ -123,6 +123,14 @@ export interface SandboxLearnedItemV1 {
    */
   promotionProvenance?: SandboxLearningPromotionProvenanceV1;
   /**
+   * 待处理的提升声明（F247 Phase E review follow-up）。
+   *
+   * 提升不是原子的：它跨越 memory 读取、全局 evidence upsert、memory 标记三步。
+   * 在这三步之间 fold 可能删除或改写同一条 stable learning。声明状态让 fold 知道
+   * 这条 item 正在被提升，从而不要删除它；崩溃后也可根据声明恢复或清理。
+   */
+  promotionClaim?: SandboxLearningPromotionClaimV1;
+  /**
    * 已 promoted 条目与其来源报告不再一致时的记录（F247 Phase E 前置）。
    *
    * promoted 条目是冻结的——内容已导出到沙盒外，静默改写本地副本会让两边不一致。
@@ -144,6 +152,28 @@ export interface SandboxLearningPromotionProvenanceV1 {
   originalContent: string;
   /** 提升时间（Unix 时间戳） */
   promotedAt: number;
+}
+
+/**
+ * 待处理的提升声明（F247 Phase E review follow-up）。
+ *
+ * 提升跨越 memory 读取、全局 evidence upsert、memory 标记三个步骤。声明存在时，
+ * fold 不得删除或改写该条目；崩溃后也可根据声明恢复或清理。
+ */
+export interface SandboxLearningPromotionClaimV1 {
+  /** 本次提升尝试的唯一 id，用于幂等重试与 resume。 */
+  attemptId: string;
+  /** 声明创建时间（Unix 时间戳）。 */
+  attemptedAt: number;
+  /**
+   * 声明创建时该条目的内容指纹。
+   *
+   * complete 时用它校验条目在 claim 之后未被改写；也用于区分“同一尝试 resume”
+   * 与“并发冲突”。
+   */
+  fingerprint: { sourceRunId: string; content: string };
+  /** 本次尝试要写入的全局 evidence anchor。 */
+  evidenceAnchor: string;
 }
 
 export interface SandboxLearningDivergenceV1 {

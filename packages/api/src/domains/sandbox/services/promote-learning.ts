@@ -7,7 +7,13 @@
  * and the operator decides it is worth keeping outside the sandbox.
  */
 
-import type { Sandbox, SandboxLearnedItemV1, SandboxLearningPromotionProvenanceV1 } from '@cat-cafe/shared';
+import { randomUUID } from 'node:crypto';
+import type {
+  Sandbox,
+  SandboxLearnedItemV1,
+  SandboxLearningPromotionClaimV1,
+  SandboxLearningPromotionProvenanceV1,
+} from '@cat-cafe/shared';
 import type { EvidenceItem, IEvidenceStore } from '../../memory/interfaces.js';
 import type { ISandboxStore } from '../ports/SandboxStore.js';
 
@@ -96,9 +102,39 @@ export async function promoteSandboxLearning(
   const evidenceItem = buildEvidenceItem(sandbox, item);
   const fingerprint = { sourceRunId: item.sourceRunId, content: item.content };
 
-  // Write evidence FIRST. If this fails the local item is still promotable on retry;
-  // the opposite order would mark it done while leaving no system-level evidence.
-  await evidenceStore.upsert([evidenceItem]);
+  // Idempotent re-promote: the item is already exported, so just refresh the evidence
+  // anchor and return. Do not create a new claim or rewrite provenance.
+  if (item.promoted) {
+    await evidenceStore.upsert([evidenceItem]);
+    return { item, evidenceAnchor };
+  }
+
+  const attemptId = randomUUID();
+  const attemptedAt = Date.now();
+  const claim: SandboxLearningPromotionClaimV1 = {
+    attemptId,
+    attemptedAt,
+    fingerprint,
+    evidenceAnchor,
+  };
+
+  // Claim the item BEFORE writing evidence. The claim tells fold to leave this item alone
+  // until we either complete or release it. If the item has already been retracted (claim
+  // returns null), we never write evidence — retraction wins cleanly.
+  const claimed = await sandboxStore.claimPromotion(sandboxId, itemId, claim);
+  if (!claimed) {
+    const err = new Error('Learned item changed during promotion');
+    (err as Error & { statusCode?: number }).statusCode = 409;
+    throw err;
+  }
+
+  try {
+    await evidenceStore.upsert([evidenceItem]);
+  } catch (upsertErr) {
+    // Evidence write failed: release the claim so the item remains promotable on retry.
+    await sandboxStore.releasePromotionClaim(sandboxId, itemId);
+    throw upsertErr;
+  }
 
   const promotedAt = Date.now();
   const provenance: SandboxLearningPromotionProvenanceV1 = {
@@ -108,14 +144,19 @@ export async function promoteSandboxLearning(
     promotedAt,
   };
 
-  // Pass a fingerprint so the store can reject a race where fold rewrote this stable id
-  // between our read above and the mark-below. Without this guard the local item could be
-  // marked promoted while the evidence doc contains stale content.
-  const updated = await sandboxStore.promoteLearning(sandboxId, itemId, provenance, evidenceAnchor, fingerprint);
+  const updated = await sandboxStore.completePromotion(
+    sandboxId,
+    itemId,
+    provenance,
+    evidenceAnchor,
+    fingerprint,
+    attemptId,
+  );
   if (!updated) {
-    // The item disappeared or changed identity between the read and the write. The evidence
-    // doc already exists with a stable anchor; the operator can retry and the upsert will
-    // converge to the current content. Surface the conflict rather than freezing stale data.
+    // The claim did not survive to completion (the item changed or the claim was lost).
+    // Release the claim so a retry can converge; the evidence anchor is stable, so the
+    // next successful promotion will overwrite it with the current content.
+    await sandboxStore.releasePromotionClaim(sandboxId, itemId);
     const err = new Error('Learned item changed during promotion');
     (err as Error & { statusCode?: number }).statusCode = 409;
     throw err;

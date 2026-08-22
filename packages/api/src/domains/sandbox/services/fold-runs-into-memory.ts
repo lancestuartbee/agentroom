@@ -233,6 +233,13 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
       assertedIds.add(id);
       const existing = byId.get(id);
 
+      // An active promotion claim means this item is a snapshot being written to global
+      // evidence right now. Fold must not rewrite or retract it mid-flight — the promotion
+      // path will record divergence afterwards if the report has changed.
+      if (existing?.promotionClaim) {
+        continue;
+      }
+
       if (!existing) {
         byId.set(id, { id, content: trimmed, sourceRunId, sourceRunAt: record.triggeredAt, promoted: false });
         learningsChanged = true;
@@ -299,6 +306,12 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
     if (assertedIds.has(id)) continue;
     const sourceRunId = item.sourceRunId;
     if (!retractionVisibleRunIds.has(sourceRunId)) continue;
+
+    // Do not retract an item that has an active promotion claim. The claim will be
+    // completed (and the item frozen) or released before the next fold can reconsider it.
+    if (item.promotionClaim) {
+      continue;
+    }
 
     if (item.promoted) {
       // Same rule as a rewrite: keep reporting it, but only the first observation is a

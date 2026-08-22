@@ -298,6 +298,7 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
 
     const memoryAfterConflict = await sandboxStore.getMemory(sandbox.id);
     assert.equal(memoryAfterConflict.learnedItems[0].promoted, false);
+    assert.equal(memoryAfterConflict.learnedItems[0].promotionClaim, undefined);
 
     // Retry converges: the current memory has the new content, so the second attempt
     // writes evidence with the new content and marks it promoted with matching provenance.
@@ -312,6 +313,76 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
     assert.equal(upserted.length, 2);
     assert.equal(upserted[0].summary, 'old conclusion');
     assert.equal(upserted[1].summary, 'new conclusion');
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('retraction before claim wins cleanly and writes no evidence', async () => {
+    const { app, sandbox, sandboxStore, tmpDir, evidenceStore } = await buildApp({
+      memory: makeMemoryWithItem({
+        id: 'r1\x1fa',
+        content: 'will be retracted',
+        sourceRunId: 'r1',
+        sourceRunAt: 1000,
+        promoted: false,
+      }),
+    });
+
+    // Simulate a fold that retracted the item before the promotion claim could land.
+    sandboxStore.claimPromotion = async () => null;
+
+    const url = `/api/sandboxes/${encodeURIComponent(sandbox.id)}/learned-items/${encodeURIComponent('r1\x1fa')}/promote`;
+    const res = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(res.statusCode, 409);
+    assert.match(res.json().error, /changed/i);
+
+    assert.equal(evidenceStore.getUpserted().length, 0, 'evidence must not be written when retraction wins');
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('a stale claim from a crashed attempt can be resumed and completed', async () => {
+    const { app, sandbox, sandboxStore, tmpDir, evidenceStore } = await buildApp({
+      memory: makeMemoryWithItem({
+        id: 'r1\x1fa',
+        content: 'A',
+        sourceRunId: 'r1',
+        sourceRunAt: 1000,
+        promoted: false,
+      }),
+    });
+
+    // Seed a stale claim as if a previous attempt crashed after claim but before complete.
+    await sandboxStore.updateMemory(sandbox.id, {
+      v: 1,
+      summary: '',
+      runsIncorporated: 1,
+      updatedAt: 1000,
+      learnedItems: [
+        {
+          id: 'r1\x1fa',
+          content: 'A',
+          sourceRunId: 'r1',
+          sourceRunAt: 1000,
+          promoted: false,
+          promotionClaim: {
+            attemptId: 'crashed-attempt',
+            attemptedAt: 900,
+            fingerprint: { sourceRunId: 'r1', content: 'A' },
+            evidenceAnchor: `sandbox:${sandbox.id}:learned:r1\x1fa`,
+          },
+        },
+      ],
+    });
+
+    const url = `/api/sandboxes/${encodeURIComponent(sandbox.id)}/learned-items/${encodeURIComponent('r1\x1fa')}/promote`;
+    const res = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().item.promoted, true);
+    assert.equal(res.json().item.promotionClaim, undefined);
+    assert.equal(evidenceStore.getUpserted().length, 1);
 
     await app.close();
     await rm(tmpDir, { recursive: true, force: true });

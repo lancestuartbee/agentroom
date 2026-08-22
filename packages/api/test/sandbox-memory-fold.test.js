@@ -511,4 +511,27 @@ describe('stable learned item ids', () => {
     assert.equal(result.memory.learnedItems.length, 1, 'parse error must not cause amnesia');
     assert.equal(result.memory.learnedItems[0].content, '真实结论');
   });
+
+  test('an active promotion claim shields the item from fold rewrite and retraction', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const first = foldRunsIntoMemory(null, [
+      runWithIds('r1', 1000, '第一天', [{ id: 'a', content: '原始结论' }]),
+    ]).memory;
+    first.learnedItems[0].promotionClaim = {
+      attemptId: 'attempt-1',
+      attemptedAt: 1500,
+      fingerprint: { sourceRunId: 'r1', content: '原始结论' },
+      evidenceAnchor: 'sandbox:sb-1:learned:r1\x1fa',
+    };
+
+    // The report rewrites AND retracts the id while promotion is in flight.
+    const result = foldRunsIntoMemory(first, [
+      runWithIds('r1', 1000, '第一天', [{ id: 'a', content: '改写后的结论' }]),
+    ]);
+
+    const item = result.memory.learnedItems[0];
+    assert.equal(item.content, '原始结论', 'claim must preserve the snapshot being promoted');
+    assert.equal(item.promotionClaim.attemptId, 'attempt-1', 'claim must survive the fold');
+    assert.equal(item.divergence, undefined, 'divergence is only recorded after promotion completes');
+  });
 });

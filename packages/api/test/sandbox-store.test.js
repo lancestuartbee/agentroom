@@ -435,7 +435,7 @@ describe('Sandbox store', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  test('promoteLearning marks an item promoted and records provenance', async () => {
+  test('claim/complete/release promotion lifecycle', async () => {
     const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-promote-store-'));
@@ -462,6 +462,41 @@ describe('Sandbox store', () => {
       learnedItems: [{ id: 'run-1\x1fa', content: 'A', sourceRunId: 'run-1', sourceRunAt: 1000, promoted: false }],
     });
 
+    const fingerprint = { sourceRunId: 'run-1', content: 'A' };
+    const evidenceAnchor = `sandbox:${sandbox.id}:learned:run-1\x1fa`;
+
+    // Missing item cannot be claimed.
+    const missingClaim = await store.claimPromotion(sandbox.id, 'missing', {
+      attemptId: 'attempt-missing',
+      attemptedAt: Date.now(),
+      fingerprint,
+      evidenceAnchor,
+    });
+    assert.equal(missingClaim, null);
+
+    const claim = {
+      attemptId: 'attempt-1',
+      attemptedAt: Date.now(),
+      fingerprint,
+      evidenceAnchor,
+    };
+    const claimed = await store.claimPromotion(sandbox.id, 'run-1\x1fa', claim);
+    assert.ok(claimed);
+    assert.equal(claimed.promotionClaim.attemptId, 'attempt-1');
+    assert.equal((await store.getMemory(sandbox.id)).learnedItems[0].promotionClaim.attemptId, 'attempt-1');
+
+    // Complete with a stale fingerprint is rejected.
+    const staleComplete = await store.completePromotion(
+      sandbox.id,
+      'run-1\x1fa',
+      { sandboxId: sandbox.id, sourceRunId: 'run-1', originalContent: 'A', promotedAt: Date.now() },
+      evidenceAnchor,
+      { sourceRunId: 'run-1', content: 'stale' },
+      'attempt-1',
+    );
+    assert.equal(staleComplete, null);
+
+    // Complete with the right fingerprint succeeds and removes the claim.
     const promotedAt = Date.now();
     const provenance = {
       sandboxId: sandbox.id,
@@ -469,41 +504,61 @@ describe('Sandbox store', () => {
       originalContent: 'A',
       promotedAt,
     };
-    const evidenceAnchor = `sandbox:${sandbox.id}:learned:run-1\x1fa`;
-    const updated = await store.promoteLearning(sandbox.id, 'run-1\x1fa', provenance, evidenceAnchor);
-
+    const updated = await store.completePromotion(
+      sandbox.id,
+      'run-1\x1fa',
+      provenance,
+      evidenceAnchor,
+      fingerprint,
+      'attempt-1',
+    );
     assert.ok(updated);
     assert.equal(updated.promoted, true);
     assert.equal(updated.promotedAt, promotedAt);
     assert.equal(updated.promotedEvidenceAnchor, evidenceAnchor);
     assert.deepEqual(updated.promotionProvenance, provenance);
+    assert.equal(updated.promotionClaim, undefined);
 
     const memory = await store.getMemory(sandbox.id);
     assert.equal(memory.learnedItems[0].promoted, true);
     assert.equal(memory.updatedAt, promotedAt);
 
-    // Missing item returns null and must not mutate other items.
-    const missing = await store.promoteLearning(sandbox.id, 'missing', provenance, 'anchor:missing');
-    assert.equal(missing, null);
-    assert.equal((await store.getMemory(sandbox.id)).learnedItems.length, 1);
-
-    // Fingerprint mismatch rejects the promotion: a concurrent fold rewrote the same
-    // stable id with new content/sourceRunId. Returning null prevents the stale evidence
-    // content from being frozen as the promoted version.
+    // A stale claim from a crashed attempt can be resumed when the content still matches.
     await store.updateMemory(sandbox.id, {
       v: 1,
       summary: '',
       runsIncorporated: 1,
-      updatedAt: 2000,
-      learnedItems: [{ id: 'run-1\x1fa', content: 'B', sourceRunId: 'run-2', sourceRunAt: 2000, promoted: false }],
+      updatedAt: 3000,
+      learnedItems: [
+        {
+          id: 'run-1\x1fa',
+          content: 'B',
+          sourceRunId: 'run-1',
+          sourceRunAt: 3000,
+          promoted: false,
+          promotionClaim: {
+            attemptId: 'crashed-attempt',
+            attemptedAt: 2900,
+            fingerprint: { sourceRunId: 'run-1', content: 'B' },
+            evidenceAnchor,
+          },
+        },
+      ],
     });
-    const mismatch = await store.promoteLearning(sandbox.id, 'run-1\x1fa', provenance, evidenceAnchor, {
-      sourceRunId: 'run-1',
-      content: 'A',
+    const resumed = await store.claimPromotion(sandbox.id, 'run-1\x1fa', {
+      attemptId: 'new-attempt',
+      attemptedAt: Date.now(),
+      fingerprint: { sourceRunId: 'run-1', content: 'B' },
+      evidenceAnchor,
     });
-    assert.equal(mismatch, null);
-    const memoryAfterMismatch = await store.getMemory(sandbox.id);
-    assert.equal(memoryAfterMismatch.learnedItems[0].promoted, false);
+    assert.ok(resumed);
+    assert.equal(resumed.promotionClaim.attemptId, 'new-attempt');
+
+    // Release removes the claim without promoting.
+    const released = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa');
+    assert.ok(released);
+    assert.equal(released.promotionClaim, undefined);
+    assert.equal(released.promoted, false);
 
     await rm(tmpDir, { recursive: true, force: true });
   });

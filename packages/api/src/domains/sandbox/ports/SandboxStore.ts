@@ -6,6 +6,7 @@ import type {
   CreateSandboxInput,
   Sandbox,
   SandboxLearnedItemV1,
+  SandboxLearningPromotionClaimV1,
   SandboxLearningPromotionProvenanceV1,
   SandboxMemoryV1,
   SandboxRunRecordV1,
@@ -47,21 +48,37 @@ export interface ISandboxStore {
   updateMemory(sandboxId: string, memory: SandboxMemoryV1): Promise<void>;
 
   /**
-   * 标记一个 learned item 已被提升为系统级知识，并记录 provenance。
-   * 返回更新后的条目；找不到 item 时返回 null。
+   * 声明一条 learned item 正在被提升。
    *
-   * F247 Phase E review: promotion is a snapshot operation. If the item has been
-   * rewritten between the caller's read and this write (stable id but different
-   * content/sourceRunId), the promotion must not silently complete with stale data.
-   * The optional fingerprint lets the store reject such races with `null`.
+   * 声明写入 memory 后，fold 在看到 `promotionClaim` 时不得删除或改写该条目。
+   * 返回带声明的条目；找不到 item 或已有冲突声明时返回 null。
    */
-  promoteLearning(
+  claimPromotion(
+    sandboxId: string,
+    itemId: string,
+    claim: SandboxLearningPromotionClaimV1,
+  ): Promise<SandboxLearnedItemV1 | null>;
+
+  /**
+   * 完成提升：把 item 标为 promoted，并写入 provenance / evidenceAnchor，同时移除声明。
+   *
+   * 返回更新后的条目；找不到 item、声明不匹配或 fingerprint 不一致时返回 null。
+   */
+  completePromotion(
     sandboxId: string,
     itemId: string,
     provenance: SandboxLearningPromotionProvenanceV1,
     evidenceAnchor: string,
-    fingerprint?: { sourceRunId: string; content: string },
+    fingerprint: { sourceRunId: string; content: string },
+    attemptId: string,
   ): Promise<SandboxLearnedItemV1 | null>;
+
+  /**
+   * 释放未完成的提升声明（例如 evidence upsert 失败后清理）。
+   *
+   * 返回移除声明后的条目；找不到 item 时返回 null。
+   */
+  releasePromotionClaim(sandboxId: string, itemId: string): Promise<SandboxLearnedItemV1 | null>;
 
   /** 读取最近一次运行记录 */
   getLastRun(sandboxId: string): Promise<SandboxRunRecordV1 | null>;

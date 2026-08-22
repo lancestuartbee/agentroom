@@ -708,6 +708,7 @@ export type {
   Sandbox,
   SandboxDataSourceV1,
   SandboxLearnedItemV1,
+  SandboxLearningPromotionClaimV1,
   SandboxLearningPromotionProvenanceV1,
   SandboxMemoryV1,
   SandboxRunRecordV1,
