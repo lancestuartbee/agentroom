@@ -119,6 +119,7 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
     assert.equal(upserted[0].summary, 'Low turnover + volume breakout is a strong signal');
     assert.equal(upserted[0].provenance.tier, 'derived');
     assert.ok(upserted[0].provenance.source.includes('r1'));
+    assert.equal(upserted[0].sourcePath, undefined, 'project directory must not be used as sourcePath');
 
     await app.close();
     await rm(tmpDir, { recursive: true, force: true });
@@ -222,6 +223,46 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
 
     const memory = await sandboxStore.getMemory(sandbox.id);
     assert.equal(memory.learnedItems[0].promoted, true);
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('evidence store failure leaves the item promotable on retry', async () => {
+    const failOnceStore = fakeEvidenceStore();
+    let calls = 0;
+    failOnceStore.upsert = async (items) => {
+      calls += 1;
+      if (calls === 1) throw new Error('simulated evidence outage');
+      failOnceStore.getUpserted().push(...items);
+    };
+
+    const { app, sandbox, sandboxStore, tmpDir, evidenceStore } = await buildApp({
+      evidenceStore: failOnceStore,
+      memory: makeMemoryWithItem({
+        id: 'r1\x1fa',
+        content: 'A',
+        sourceRunId: 'r1',
+        sourceRunAt: 1000,
+        promoted: false,
+      }),
+    });
+
+    const url = `/api/sandboxes/${encodeURIComponent(sandbox.id)}/learned-items/${encodeURIComponent('r1\x1fa')}/promote`;
+    const first = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(first.statusCode, 500);
+
+    const memoryAfterFailure = await sandboxStore.getMemory(sandbox.id);
+    assert.equal(
+      memoryAfterFailure.learnedItems[0].promoted,
+      false,
+      'failed evidence write must not mark item promoted',
+    );
+
+    const second = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(second.statusCode, 200);
+    assert.equal(second.json().item.promoted, true);
+    assert.equal(evidenceStore.getUpserted().length, 1);
 
     await app.close();
     await rm(tmpDir, { recursive: true, force: true });

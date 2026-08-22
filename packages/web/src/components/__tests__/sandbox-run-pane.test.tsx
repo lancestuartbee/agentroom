@@ -512,4 +512,71 @@ describe('SandboxRunPane promote learning', () => {
 
     await act(async () => root.unmount());
   });
+
+  // A POST still in flight can outlive the thread switch. The response must not paint
+  // A's outcome onto B, and the success branch must not call A's load() closure.
+  it("does not resurrect A's promote note after the operator has moved to B", async () => {
+    const slowPost = deferred();
+    mockApiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === 'POST' && path.includes('/learned-items/')) {
+        return slowPost.promise as Promise<Response>;
+      }
+      return Promise.resolve(
+        jsonResponse({
+          sandbox: { ...SANDBOX, settings: { ...SANDBOX.settings, allowBackflow: true } },
+          memory: {
+            v: 1,
+            summary: 's',
+            runsIncorporated: 1,
+            learnedItems: [{ id: 'l1', content: 'A', sourceRunAt: 1, promoted: false }],
+            updatedAt: 1,
+          },
+          runs: [],
+          runsAvailable: true,
+        }),
+      );
+    });
+
+    mockThreads = [
+      { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-1' },
+      { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-2' },
+    ];
+
+    const { SandboxRunPane } = await import('../SandboxRunPane');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-1" />);
+    });
+
+    const button = container.querySelector('[data-testid="sandbox-promote-l1"]') as HTMLButtonElement;
+    await act(async () => {
+      button.click();
+    });
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain('提升中');
+
+    await act(async () => {
+      root.render(<SandboxRunPane threadId="thread-2" />);
+    });
+    expect(container.querySelector('[data-testid="sandbox-promote-note"]')).toBeNull();
+
+    // Capture calls after B has mounted and loaded.
+    mockApiFetch.mockClear();
+
+    await act(async () => {
+      slowPost.release({
+        ok: true,
+        status: 200,
+        json: async () => ({ item: { id: 'l1', content: 'A', promoted: true }, evidenceAnchor: 'ev-1' }),
+      });
+    });
+
+    expect(container.querySelector('[data-testid="sandbox-promote-note"]')).toBeNull();
+    // A's late response must not trigger a reload of A's runtime now that B is rendered.
+    expect(mockApiFetch.mock.calls.some((call) => (call[0] as string).includes('sandbox%3Asb-1'))).toBe(false);
+
+    await act(async () => root.unmount());
+  });
 });

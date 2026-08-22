@@ -50,7 +50,9 @@ export function buildEvidenceItem(sandbox: Sandbox, item: SandboxLearnedItemV1):
     status: 'active',
     title: truncateTitle(`${sandbox.title}: ${item.content}`, 200),
     summary: item.content,
-    sourcePath: sandbox.projectPath,
+    // sourcePath is intentionally omitted: the project directory is not the concrete
+    // source file, and an absolute path would be misinterpreted as relative to repoRoot
+    // by global evidence health checks. Provenance lives in `provenance.source`.
     provenance: {
       tier: 'derived',
       source: `sandbox:${sandbox.id}:run:${item.sourceRunId}`,
@@ -80,44 +82,41 @@ export async function promoteSandboxLearning(
     throw err;
   }
 
-  const evidenceAnchor = buildPromotedEvidenceAnchor(sandbox.id, itemId);
-  const promotedAt = Date.now();
-  const provenance: SandboxLearningPromotionProvenanceV1 = {
-    sandboxId,
-    sourceRunId: '', // filled in after we locate the item
-    originalContent: '',
-    promotedAt,
-  };
-
-  // First mark the item in memory. If the item does not exist we stop before touching
-  // the global evidence store — promoting a phantom item would be a worse failure than
-  // returning a 404.
-  const item = await sandboxStore.promoteLearning(sandboxId, itemId, provenance, evidenceAnchor);
+  // Locate the item before touching the global evidence store. Promoting a phantom
+  // item must not write an orphan evidence doc.
+  const memory = await sandboxStore.getMemory(sandboxId);
+  const item = memory?.learnedItems?.find((i) => i.id === itemId);
   if (!item) {
     const err = new Error('Learned item not found');
     (err as Error & { statusCode?: number }).statusCode = 404;
     throw err;
   }
 
-  // Now that we have the real sourceRunId and content, update the provenance and write
-  // the evidence item. We re-call promoteLearning to persist the corrected provenance.
-  const correctedProvenance: SandboxLearningPromotionProvenanceV1 = {
+  const evidenceAnchor = buildPromotedEvidenceAnchor(sandbox.id, itemId);
+  const evidenceItem = buildEvidenceItem(sandbox, item);
+
+  // Write evidence FIRST. If this fails the local item is still promotable on retry;
+  // the opposite order would mark it done while leaving no system-level evidence.
+  await evidenceStore.upsert([evidenceItem]);
+
+  const promotedAt = Date.now();
+  const provenance: SandboxLearningPromotionProvenanceV1 = {
     sandboxId,
     sourceRunId: item.sourceRunId,
     originalContent: item.content,
     promotedAt,
   };
-  const correctedItem = await sandboxStore.promoteLearning(sandboxId, itemId, correctedProvenance, evidenceAnchor);
-  if (!correctedItem) {
-    // Extremely unlikely: the item was deleted between the two calls. Roll back the
-    // evidence write by not performing it and surface the failure.
+
+  const updated = await sandboxStore.promoteLearning(sandboxId, itemId, provenance, evidenceAnchor);
+  if (!updated) {
+    // The item disappeared between the read and the write (e.g. a concurrent fold that
+    // retracted it). The evidence doc already exists with a stable anchor; the operator
+    // can retry and the upsert will converge. Surface the inconsistency rather than
+    // pretending it succeeded.
     const err = new Error('Learned item disappeared during promotion');
     (err as Error & { statusCode?: number }).statusCode = 500;
     throw err;
   }
 
-  const evidenceItem = buildEvidenceItem(sandbox, correctedItem);
-  await evidenceStore.upsert([evidenceItem]);
-
-  return { item: correctedItem, evidenceAnchor };
+  return { item: updated, evidenceAnchor };
 }
