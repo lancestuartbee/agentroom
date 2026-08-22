@@ -88,6 +88,22 @@ function formatSummaryEntry(record: SandboxRunRecordV1): string {
   return `- [${day}] ${record.summary.replace(/\s+/g, ' ').trim()}`;
 }
 
+/**
+ * Internal separator for the memory item identity namespace.
+ *
+ * Report ids are local to one run (the prompt only requires uniqueness within the
+ * report). Using them directly as sandbox-global memory keys makes two runs that both
+ * use `finding-1` collide silently. The memory key is therefore `sourceRunId<sep>localId`.
+ *
+ * The unit separator is chosen because it cannot appear in markdown bullet text without
+ * deliberate binary injection, so it is unambiguous for both joining and parsing.
+ */
+const ID_NAMESPACE_SEP = '\x1f';
+
+function makeMemoryId(sourceRunId: string, localId: string): string {
+  return `${sourceRunId}${ID_NAMESPACE_SEP}${localId}`;
+}
+
 function deriveSourceRunId(itemId: string): string {
   const lastDash = itemId.lastIndexOf('-');
   return lastDash > 0 ? itemId.slice(0, lastDash) : itemId;
@@ -95,12 +111,16 @@ function deriveSourceRunId(itemId: string): string {
 
 function listLearnedFromRecord(
   record: SandboxRunRecordV1,
-): Array<{ id: string; content: string; sourceRunId: string }> {
+): Array<{ localId: string; content: string; sourceRunId: string }> {
   if (record.learnedWithIds && record.learnedWithIds.length > 0) {
-    return record.learnedWithIds.map((item) => ({ id: item.id, content: item.content, sourceRunId: record.runId }));
+    return record.learnedWithIds.map((item) => ({
+      localId: item.id,
+      content: item.content,
+      sourceRunId: record.runId,
+    }));
   }
   return (record.learned ?? []).map((content, index) => ({
-    id: `${record.runId}-${index}`,
+    localId: `${record.runId}-${index}`,
     content,
     sourceRunId: record.runId,
   }));
@@ -128,10 +148,15 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   const base = memory
     ? {
         ...memory,
-        learnedItems: (memory.learnedItems ?? []).map((item) => ({
-          ...item,
-          sourceRunId: item.sourceRunId ?? deriveSourceRunId(item.id),
-        })),
+        learnedItems: (memory.learnedItems ?? []).map((item) => {
+          const sourceRunId = item.sourceRunId ?? deriveSourceRunId(item.id);
+          // Migrate items whose id was written before namespacing (bare local id, including
+          // legacy runId-index ids like `r1-0`) to the namespaced form. A pre-existing id
+          // that already begins with `sourceRunId<sep>` is left untouched.
+          const namespacePrefix = makeMemoryId(sourceRunId, '');
+          const id = item.id.startsWith(namespacePrefix) ? item.id : makeMemoryId(sourceRunId, item.id);
+          return { ...item, id, sourceRunId };
+        }),
       }
     : emptyMemory();
 
@@ -191,12 +216,16 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   let learningsChanged = false;
   /** Ids the currently visible reports still assert, so absence can be told from archival. */
   const assertedIds = new Set<string>();
-  const visibleRunIds = new Set(runs.map((r) => r.runId));
+  // A run whose learning section failed to parse is still visible as a run (its summary
+  // is real and it should be counted), but it must not be treated as evidence that the
+  // member retracted any learning. Exclude it from the retraction check.
+  const retractionVisibleRunIds = new Set(runs.filter((r) => !r.learningParseError).map((r) => r.runId));
 
   for (const record of runs) {
-    for (const { id, content, sourceRunId } of listLearnedFromRecord(record)) {
+    for (const { localId, content, sourceRunId } of listLearnedFromRecord(record)) {
       const trimmed = content.trim();
       if (!trimmed) continue;
+      const id = makeMemoryId(sourceRunId, localId);
       assertedIds.add(id);
       const existing = byId.get(id);
 
@@ -265,7 +294,7 @@ export function foldRunsIntoMemory(memory: SandboxMemoryV1 | null, runs: readonl
   for (const [id, item] of [...byId.entries()]) {
     if (assertedIds.has(id)) continue;
     const sourceRunId = item.sourceRunId;
-    if (!visibleRunIds.has(sourceRunId)) continue;
+    if (!retractionVisibleRunIds.has(sourceRunId)) continue;
 
     if (item.promoted) {
       // Same rule as a rewrite: keep reporting it, but only the first observation is a

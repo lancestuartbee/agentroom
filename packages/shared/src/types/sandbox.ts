@@ -167,6 +167,12 @@ export interface SandboxRunRecordV1 {
    * "内容改写 / 条目删除 / 顺序重排"，而不会因数组下标漂移产生假 divergence。
    */
   learnedWithIds?: Array<{ id: string; content: string }>;
+  /**
+   * 解析 `## Learned` 时遇到格式错误（例如 mixed-id 或 duplicate-id）。
+   * fold 看到此标记后，不把这个 run 当作“显式撤回旧结论”的证据——否则格式错误
+   * 会伪装成成员主动删除 learning。
+   */
+  learningParseError?: boolean;
   /** 运行产物路径（相对沙盒目录） */
   artifacts?: string[];
 }

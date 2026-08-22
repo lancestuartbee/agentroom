@@ -78,35 +78,70 @@ function countBullets(section: string | undefined): number {
   return section.split('\n').filter((line) => line.trim().startsWith('- ')).length;
 }
 
-interface ParsedLearnedBullet {
-  id?: string;
-  content: string;
+interface ParsedLearnedStable {
+  kind: 'stable';
+  items: Array<{ id: string; content: string }>;
 }
+interface ParsedLearnedLegacy {
+  kind: 'legacy';
+  items: string[];
+}
+interface ParsedLearnedMixed {
+  kind: 'mixed';
+}
+interface ParsedLearnedDuplicate {
+  kind: 'duplicate';
+}
+type ParsedLearnedResult = ParsedLearnedStable | ParsedLearnedLegacy | ParsedLearnedMixed | ParsedLearnedDuplicate;
 
-function parseLearnedBullets(section: string | undefined): ParsedLearnedBullet[] {
-  if (!section) return [];
-  const parsed = section
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('- '))
-    .map((line) => {
-      const body = line.slice(2).trim();
-      const idMatch = /^id:([^\s]+)\s+(.*)$/.exec(body);
-      if (idMatch) {
-        return { id: idMatch[1], content: idMatch[2].trim() };
+function parseLearnedBullets(section: string | undefined): ParsedLearnedResult {
+  const raw = section
+    ? section
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('- '))
+        .map((line) => {
+          const body = line.slice(2).trim();
+          const idMatch = /^id:([^\s]+)\s+(.*)$/.exec(body);
+          if (idMatch) {
+            return { id: idMatch[1], content: idMatch[2].trim() };
+          }
+          return { content: body };
+        })
+        // Drop ONLY the exact template placeholder. An earlier version matched any
+        // fully-parenthesised line, which would have silently discarded genuine
+        // conclusions that happen to be written inside brackets.
+        .filter((item) => item.content.length > 0 && item.content !== SANDBOX_NO_LEARNING_PLACEHOLDER)
+    : [];
+
+  if (raw.length === 0) {
+    return { kind: 'legacy', items: [] };
+  }
+
+  const withIdCount = raw.filter((item) => item.id !== undefined).length;
+  const allHaveIds = withIdCount === raw.length;
+  const noneHaveIds = withIdCount === 0;
+
+  // A report either uses explicit ids or it doesn't. Mixing the two is a malformed
+  // report: falling back to legacy indexing would silently drop the lines that DO
+  // have ids, and treating it as stable would invent ids for the rest. Reject the
+  // whole learning section so the format error does not masquerade as a retraction.
+  if (!allHaveIds && !noneHaveIds) {
+    return { kind: 'mixed' };
+  }
+
+  if (allHaveIds) {
+    const seen = new Set<string>();
+    for (const item of raw) {
+      if (seen.has(item.id as string)) {
+        return { kind: 'duplicate' };
       }
-      return { content: body };
-    })
-    // Drop ONLY the exact template placeholder. An earlier version matched any
-    // fully-parenthesised line, which would have silently discarded genuine
-    // conclusions that happen to be written inside brackets.
-    .filter((item) => item.content.length > 0 && item.content !== SANDBOX_NO_LEARNING_PLACEHOLDER);
+      seen.add(item.id as string);
+    }
+    return { kind: 'stable', items: raw as Array<{ id: string; content: string }> };
+  }
 
-  // A report either uses explicit ids or it doesn't. Mixing the two in one report
-  // is an operator error; falling back to legacy indexing keeps the fold deterministic.
-  const hasIds = parsed.length > 0 && parsed.every((item) => item.id !== undefined);
-  if (hasIds) return parsed as ParsedLearnedBullet[];
-  return parsed.filter((item) => item.id === undefined);
+  return { kind: 'legacy', items: raw.map((item) => item.content) };
 }
 
 function getSandboxDir(projectPath: string): string {
@@ -494,11 +529,31 @@ export class InMemorySandboxStore implements ISandboxStore {
         const afterSummary = content.split('## Summary')[1] ?? content;
         const [summaryPart, learnedPart] = afterSummary.split('## Learned');
         const parsedLearned = parseLearnedBullets(learnedPart);
-        const hasExplicitIds = parsedLearned.length > 0 && parsedLearned.every((item) => item.id !== undefined);
-        const learned = hasExplicitIds ? undefined : parsedLearned.map((item) => item.content);
-        const learnedWithIds = hasExplicitIds
-          ? parsedLearned.map((item) => ({ id: item.id as string, content: item.content }))
-          : undefined;
+
+        // Malformed learning sections must not be silently partially parsed: a mix of
+        // id-ed and bare lines, or duplicate ids within one report, would either drop
+        // valid lines or invent false retractions on the next fold. Keep the run on
+        // record (the summary is real), but do not emit any learnings.
+        let learned: string[] | undefined;
+        let learnedWithIds: Array<{ id: string; content: string }> | undefined;
+        let learningParseError = false;
+        if (parsedLearned.kind === 'mixed') {
+          log.warn(
+            { projectPath, file: name },
+            'Sandbox run report mixes id-ed and bare learnings — treated as no learnings',
+          );
+          learningParseError = true;
+        } else if (parsedLearned.kind === 'duplicate') {
+          log.warn(
+            { projectPath, file: name },
+            'Sandbox run report has duplicate learning ids — treated as no learnings',
+          );
+          learningParseError = true;
+        } else if (parsedLearned.kind === 'stable') {
+          learnedWithIds = parsedLearned.items;
+        } else {
+          learned = parsedLearned.items;
+        }
         // Completeness is judged on RAW bullets, before the placeholder is filtered out:
         // "nothing durable today" is a normal, fully-written report, and most days look
         // like that. Judging on filtered learnings would have branded every ordinary run
@@ -541,6 +596,7 @@ export class InMemorySandboxStore implements ISandboxStore {
             : learned && learned.length > 0
               ? { learned }
               : {}),
+          ...(learningParseError ? { learningParseError } : {}),
         });
       } catch (err) {
         log.warn({ err, projectPath, file: name }, 'Failed to read sandbox run report — skipped this file only');
