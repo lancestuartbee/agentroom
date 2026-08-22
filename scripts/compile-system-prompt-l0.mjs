@@ -256,7 +256,13 @@ const DISPLAY_NAME_TO_BREED = {
   暹罗猫: 'siamese',
 };
 
-function buildWorkflowTriggers(breedId, catId, displayName) {
+function buildWorkflowTriggers(breedId, catId, displayName, promptProfile = 'development') {
+  // S6 is development-mode only. Lightweight profiles (casual/roundtable/sandbox)
+  // must not receive dev protocol or role routing through the native L0 channel.
+  if (isLightweightProfile(promptProfile)) {
+    return '';
+  }
+
   const workflowTriggers = loadWorkflowTriggers();
   const rosterEntry = _loadedConfig?.roster?.[catId];
   const roles = rosterEntry?.roles ?? [];
@@ -437,11 +443,19 @@ export function resolveUserCapsule(profileDir, catId) {
  * @param {string} options.catId - cat ID (must be registered in catRegistry)
  * @param {string} [options.runtimeModel] - resolved runtime model (e.g. claude-opus-4-7)
  * @param {string} [options.profileDir] - override for user profile directory (fixture isolation)
+ * @param {string} [options.promptProfile] - thread prompt profile; lightweight profiles skip S6
  * @returns {Promise<string>} compiled L0 ready for system-prompt injection
  */
+
+const LIGHTWEIGHT_PROFILES = new Set(['casual', 'roundtable', 'sandbox']);
+
+function isLightweightProfile(profile) {
+  return LIGHTWEIGHT_PROFILES.has(profile);
+}
+
 export async function compileL0(options) {
   await bootstrapCatRegistry();
-  const { catId, runtimeModel, profileDir } = options;
+  const { catId, runtimeModel, profileDir, promptProfile = 'development' } = options;
   const entry = catRegistry.tryGet(catId);
   if (!entry) {
     throw new Error(`compileL0: unknown catId "${catId}". Registered: ${catRegistry.getAllIds().join(', ')}`);
@@ -459,7 +473,9 @@ export async function compileL0(options) {
   // F231: resolve user capsule (profileDir > env > default 'private/profile')
   // Note: REPO_ROOT default only works when script runs from actual project dir.
   // In symlink/packaged layouts, caller (l0-compiler.ts) passes --profile-dir
-  // explicitly via subprocess args (gpt52 review P1 fix).
+  // explicitly via subprocess args (gpt52 review P1 fix
+  //   node scripts/compile-system-prompt-l0.mjs --cat opus-47 --prompt-profile casual
+  //     -> compile L0 for a lightweight thread profile (skips S6 dev protocol)).
   const resolvedProfileDir = profileDir ?? process.env.CAT_CAFE_PROFILE_DIR ?? resolve(REPO_ROOT, 'private/profile');
   const capsuleSection = resolveUserCapsule(resolvedProfileDir, catId);
 
@@ -470,13 +486,22 @@ export async function compileL0(options) {
   }
 
   // Dynamic per-cat substitutions
-  return result
+  result = result
     .replace('{{IDENTITY_BLOCK}}', buildIdentityBlock(config, runtimeModel))
     .replace('{{USER_CAPSULE}}', capsuleSection)
     .replace('{{TEAMMATE_ROSTER}}', buildTeammateRoster(catId))
     .replace('{{GOVERNANCE_L0}}', governanceL0.content)
-    .replace('{{WORKFLOW_TRIGGERS}}', buildWorkflowTriggers(config.breedId, catId, config.displayName))
+    .replace('{{WORKFLOW_TRIGGERS}}', buildWorkflowTriggers(config.breedId, catId, config.displayName, promptProfile))
     .replace('{{CVO_REF}}', renderCvoRef());
+
+  // For lightweight profiles the S6 placeholder is intentionally empty; drop
+  // the whole section heading so casual/roundtable/sandbox L0 does not carry
+  // a bare "工作流触发点" section.
+  if (isLightweightProfile(promptProfile)) {
+    result = result.replace(/\n## 6\. 工作流触发点（per-cat overlay）\n[\s\S]*?\n---\n/, '\n---\n');
+  }
+
+  return result;
 }
 
 /**
@@ -506,19 +531,21 @@ if (isCliEntrypoint(import.meta.url, process.argv[1])) {
   const catIdx = args.indexOf('--cat');
   if (catIdx < 0 || !args[catIdx + 1]) {
     console.error(
-      'Usage: node scripts/compile-system-prompt-l0.mjs --cat <catId> [--out <path>] [--profile-dir <path>]',
+      'Usage: node scripts/compile-system-prompt-l0.mjs --cat <catId> [--out <path>] [--profile-dir <path>] [--prompt-profile <profile>]',
     );
     process.exit(2);
   }
   const catId = args[catIdx + 1];
   const profileDirIdx = args.indexOf('--profile-dir');
   const profileDir = profileDirIdx >= 0 ? args[profileDirIdx + 1] : undefined;
+  const promptProfileIdx = args.indexOf('--prompt-profile');
+  const promptProfile = promptProfileIdx >= 0 ? args[promptProfileIdx + 1] : undefined;
   const outIdx = args.indexOf('--out');
   if (outIdx >= 0 && args[outIdx + 1]) {
     const outPath = args[outIdx + 1];
-    await writeL0File({ catId, profileDir }, outPath);
+    await writeL0File({ catId, profileDir, promptProfile }, outPath);
     console.error(`Wrote compiled L0 for ${catId} → ${outPath}`);
   } else {
-    process.stdout.write(await compileL0({ catId, profileDir }));
+    process.stdout.write(await compileL0({ catId, profileDir, promptProfile }));
   }
 }

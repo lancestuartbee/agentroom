@@ -13,9 +13,10 @@
  */
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, test } from 'node:test';
+import { after, before, describe, test } from 'node:test';
 import { OpenCodeAgentService } from '../dist/domains/cats/services/agents/providers/OpenCodeAgentService.js';
 import {
   generateOpenCodeRuntimeConfig,
@@ -32,6 +33,29 @@ const projectRuntimeInvariantOptions = hasProjectOpenCodeRuntimeFiles
   : {
       skip: 'public checkout does not include local OpenCode runtime config files; committed template tests still run',
     };
+
+// F032 / #772 hermetic guard: local `.cat-cafe/cat-catalog.json` filters runtime breeds
+// to catalog-only members. These L0 shape tests need the full template roster
+// (opencode, gemini, opus), so point CAT_TEMPLATE_PATH at a temp template-only
+// fixture with no sibling catalog overlay.
+let originalTemplatePath;
+let hermeticTemplateDir;
+before(() => {
+  originalTemplatePath = process.env.CAT_TEMPLATE_PATH;
+  hermeticTemplateDir = mkdtempSync(join(tmpdir(), 'f203-hermetic-'));
+  cpSync(resolve(projectRoot, 'cat-template.json'), resolve(hermeticTemplateDir, 'cat-template.json'));
+  process.env.CAT_TEMPLATE_PATH = resolve(hermeticTemplateDir, 'cat-template.json');
+});
+after(() => {
+  if (originalTemplatePath === undefined) {
+    delete process.env.CAT_TEMPLATE_PATH;
+  } else {
+    process.env.CAT_TEMPLATE_PATH = originalTemplatePath;
+  }
+  if (hermeticTemplateDir) {
+    rmSync(hermeticTemplateDir, { recursive: true, force: true });
+  }
+});
 
 // ── AC-I3: OpenCodeAgentService.injectsL0Natively() ──
 
@@ -180,6 +204,21 @@ describe('F203 Phase I — native L0 role-based routing parity', () => {
     assert.ok(l0.includes('完成设计/视觉资产'), 'designer-role cat should get design routing in L0');
     assert.ok(!l0.includes('完成开发/修复 → @codex'), 'designer-only cat should not get code-review handoff in L0');
   });
+});
+
+// ── AC-I5c: lightweight profiles skip S6 dev protocol entirely ──
+
+describe('F203 Phase I — native L0 lightweight profile boundary', () => {
+  for (const profile of ['casual', 'roundtable', 'sandbox']) {
+    test(`${profile} L0 omits dev protocol and workflow trigger section`, async () => {
+      const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
+      const l0 = await compileL0({ catId: 'opencode', promptProfile: profile });
+
+      assert.ok(!l0.includes('出口一问'), `${profile} L0 must not include 出口一问`);
+      assert.ok(!l0.includes('完成开发/修复 → @codex'), `${profile} L0 must not include code-review handoff`);
+      assert.ok(!l0.includes('## 6. 工作流触发点'), `${profile} L0 must not include workflow trigger heading`);
+    });
+  }
 });
 
 // ── AC-I6: permission/plugin/compaction not broken ──

@@ -1679,7 +1679,12 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         // the undefined branch is unreachable post-guard — avoids biome noNonNullAssertion.
         const compilerFn = (hasL0CompilerSeam(service) && service.l0CompilerFn) || compileL0ViaSubprocess;
 
-        const l0Content = nativeSystemPromptOverride ?? (await compilerFn({ catId: catId as string }));
+        const l0Content =
+          nativeSystemPromptOverride ??
+          (await compilerFn({
+            catId: catId as string,
+            promptProfile: promptProfile === 'development' ? undefined : promptProfile,
+          }));
         // Write compiled L0 into the runtime config dir (created below or reused).
         const safeCatId = (catId as string).replace(/[^a-zA-Z0-9._-]+/g, '-');
         const safeInvocationId = invocationId.replace(/[^a-zA-Z0-9._-]+/g, '-');

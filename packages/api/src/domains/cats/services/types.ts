@@ -380,7 +380,11 @@ export interface AgentService {
  * F203 Phase I — L0 compiler function signature.
  * Same as `compileL0ViaSubprocess` but injectable for testing.
  */
-export type L0CompilerFn = (options: { catId: string; outPath?: string }) => Promise<string>;
+export type L0CompilerFn = (options: {
+  catId: string;
+  outPath?: string;
+  promptProfile?: PromptProfile;
+}) => Promise<string>;
 
 /**
  * F203 Phase I — AgentService that carries an injectable L0 compiler seam.

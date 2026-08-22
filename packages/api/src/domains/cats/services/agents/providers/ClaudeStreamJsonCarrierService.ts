@@ -354,7 +354,7 @@ export class ClaudeStreamJsonCarrierService implements AgentService {
         ? options?.nativeSystemPrompt?.trim() || undefined
         : undefined) ||
       options?.resumeFallbackSystemPrompt?.trim() ||
-      (await this.l0CompilerFn({ catId: this.catId as string }));
+      (await this.l0CompilerFn({ catId: this.catId as string, promptProfile: options?.promptProfile }));
 
     let envOverrides = buildClaudeEnvOverrides(options?.callbackEnv);
     if (options?.accountEnv) {

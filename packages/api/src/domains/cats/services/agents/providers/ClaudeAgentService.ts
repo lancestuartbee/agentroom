@@ -34,6 +34,7 @@ import {
   type AgentServiceOptions,
   isLightweightPromptProfile,
   type MessageMetadata,
+  type PromptProfile,
 } from '../../types.js';
 import type { RawArchiveSink } from '../providers/codex-audit-hooks.js';
 import { sanitizeRawEvent } from '../providers/codex-audit-hooks.js';
@@ -370,11 +371,15 @@ export class ClaudeAgentService implements AgentService {
     return true;
   }
 
-  private async compileL0ToTempFile(): Promise<string> {
+  private async compileL0ToTempFile(promptProfile?: PromptProfile): Promise<string> {
     const l0Dir = mkdtempSync(join(tmpdir(), 'cat-cafe-l0-'));
     const l0Path = join(l0Dir, 'system-prompt-l0.md');
     try {
-      await this.l0CompilerFn({ catId: this.catId as string, outPath: l0Path });
+      await this.l0CompilerFn({
+        catId: this.catId as string,
+        outPath: l0Path,
+        promptProfile,
+      });
     } catch (err) {
       removeL0TempDir(l0Path);
       throw new Error(`L0 compile failed for ${this.catId as string}: ${(err as Error).message}`);
@@ -474,7 +479,7 @@ export class ClaudeAgentService implements AgentService {
         : undefined;
       l0Path = nativeSystemPromptOverride
         ? this.writeNativeSystemPromptOverrideToTempFile(nativeSystemPromptOverride)
-        : await this.compileL0ToTempFile();
+        : await this.compileL0ToTempFile(options?.promptProfile);
       args.push('--system-prompt-file', l0Path);
       // Route layer passes pack-only systemPrompt for native-L0 providers.
       // Keep it as an append layer, but never use it as the carrier's L0 source.

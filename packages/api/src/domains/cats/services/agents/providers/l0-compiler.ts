@@ -25,6 +25,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveProfileDir } from '../../profile/profile-dir.js';
+import type { PromptProfile } from '../../types.js';
 
 const SCRIPT_BASENAME = 'compile-system-prompt-l0.mjs';
 
@@ -69,12 +70,21 @@ function isL0GenerationCurrent(catId: string, generation: { global: number; cat:
 /** Clear cached L0 for one cat or all cats (call on hot-reload / re-sync). */
 export function clearL0Cache(catId?: string): void {
   if (catId) {
-    l0Cache.delete(catId);
+    const prefix = `${catId}:`;
+    for (const key of l0Cache.keys()) {
+      if (key.startsWith(prefix)) {
+        l0Cache.delete(key);
+      }
+    }
     bumpL0Generation(catId);
     // Also drop any in-flight promise — next call will re-spawn fresh. The
     // generation guard prevents the older promise from repopulating l0Cache
     // when it eventually resolves after this clear.
-    l0InflightPromises.delete(catId);
+    for (const key of l0InflightPromises.keys()) {
+      if (key.startsWith(prefix)) {
+        l0InflightPromises.delete(key);
+      }
+    }
   } else {
     l0Cache.clear();
     bumpL0Generation();
@@ -159,10 +169,16 @@ export interface CompileL0Options {
    * stdout and returned (Codex `-c developer_instructions=`).
    */
   outPath?: string;
+  /** Thread prompt profile; lightweight profiles skip S6 dev protocol. Defaults to development. */
+  promptProfile?: PromptProfile;
   /** Working dir used to resolve the script + spawn (defaults to process.cwd()). */
   cwd?: string;
   /** Test seam — replaces the real spawn. */
   spawnFn?: typeof nodeSpawn;
+}
+
+function l0CacheKey(catId: string, promptProfile?: PromptProfile): string {
+  return `${catId}:${promptProfile ?? 'development'}`;
 }
 
 /**
@@ -172,10 +188,11 @@ export interface CompileL0Options {
  *   exits non-zero, or produces empty output (fail-closed).
  */
 export async function compileL0ViaSubprocess(options: CompileL0Options): Promise<string> {
-  const { catId, outPath } = options;
+  const { catId, outPath, promptProfile } = options;
+  const cacheKey = l0CacheKey(catId, promptProfile);
 
   // Cache hit — skip subprocess entirely
-  const cached = l0Cache.get(catId);
+  const cached = l0Cache.get(cacheKey);
   if (cached) {
     if (outPath) writeFileSync(outPath, cached, 'utf8');
     return cached;
@@ -186,7 +203,7 @@ export async function compileL0ViaSubprocess(options: CompileL0Options): Promise
   // await the same one. Per-call `outPath` is honored: any caller that
   // passed `outPath` writes the resolved L0 to that path before returning.
   // Phase G AC-G10 — see comment block at l0InflightPromises declaration.
-  const inflight = l0InflightPromises.get(catId);
+  const inflight = l0InflightPromises.get(cacheKey);
   if (inflight) {
     const result = await inflight;
     if (outPath) writeFileSync(outPath, result, 'utf8');
@@ -195,14 +212,14 @@ export async function compileL0ViaSubprocess(options: CompileL0Options): Promise
 
   const compileGeneration = getL0Generation(catId);
   const compilePromise = doCompileL0(options, compileGeneration);
-  l0InflightPromises.set(catId, compilePromise);
+  l0InflightPromises.set(cacheKey, compilePromise);
   try {
     return await compilePromise;
   } finally {
     // Always clean up the in-flight entry once settled — subsequent calls
     // will read from l0Cache (on success) or re-attempt (on failure).
-    if (l0InflightPromises.get(catId) === compilePromise) {
-      l0InflightPromises.delete(catId);
+    if (l0InflightPromises.get(cacheKey) === compilePromise) {
+      l0InflightPromises.delete(cacheKey);
     }
   }
 }
@@ -215,7 +232,7 @@ async function doCompileL0(
   options: CompileL0Options,
   compileGeneration: { global: number; cat: number },
 ): Promise<string> {
-  const { catId, outPath, cwd = process.cwd(), spawnFn = nodeSpawn } = options;
+  const { catId, outPath, promptProfile, cwd = process.cwd(), spawnFn = nodeSpawn } = options;
   const scriptPath = resolveL0CompilerScriptPath(cwd);
   if (!scriptPath) {
     throw new Error(
@@ -228,7 +245,15 @@ async function doCompileL0(
   // write (routes) MUST resolve identically or the nurturing loop silently breaks (a primer
   // written to one path while the injector reads another).
   const profileDir = resolveProfileDir(cwd, scriptPath);
-  const args = [scriptPath, '--cat', catId, '--profile-dir', profileDir, ...(outPath ? ['--out', outPath] : [])];
+  const args = [
+    scriptPath,
+    '--cat',
+    catId,
+    '--profile-dir',
+    profileDir,
+    ...(promptProfile ? ['--prompt-profile', promptProfile] : []),
+    ...(outPath ? ['--out', outPath] : []),
+  ];
 
   const stdout = await new Promise<string>((resolvePromise, rejectPromise) => {
     const child = spawnFn(process.execPath, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -272,7 +297,7 @@ async function doCompileL0(
   }
 
   if (isL0GenerationCurrent(catId, compileGeneration)) {
-    l0Cache.set(catId, result);
+    l0Cache.set(l0CacheKey(catId, options.promptProfile), result);
   }
   return result;
 }

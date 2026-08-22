@@ -462,7 +462,10 @@ export class CodexAgentService implements AgentService {
       return { args: ['--config', `developer_instructions=${toTomlString(nativeSystemPromptOverride)}`] };
     }
     try {
-      const compiledL0 = await this.l0CompilerFn({ catId: this.catId as string });
+      const compiledL0 = await this.l0CompilerFn({
+        catId: this.catId as string,
+        promptProfile: options?.promptProfile,
+      });
       return { args: ['--config', `developer_instructions=${toTomlString(compiledL0)}`] };
     } catch (err) {
       return {

@@ -38,6 +38,7 @@ import {
   type AgentService,
   type AgentServiceOptions,
   isLightweightPromptProfile,
+  type PromptProfile,
 } from '../../types.js';
 import {
   accumulateUsageFromEntries,
@@ -199,11 +200,15 @@ export class ClaudeBgCarrierService implements AgentService {
    * (mirrors the per-instance mcp-config temp-file pattern, also not cleaned).
    * @returns absolute path to the written L0 file.
    */
-  private async compileL0ToTempFile(): Promise<string> {
+  private async compileL0ToTempFile(promptProfile?: PromptProfile): Promise<string> {
     const l0Dir = mkdtempSync(join(tmpdir(), 'cat-cafe-l0-'));
     const l0Path = join(l0Dir, 'system-prompt-l0.md');
     try {
-      await this.l0CompilerFn({ catId: this.catId as string, outPath: l0Path });
+      await this.l0CompilerFn({
+        catId: this.catId as string,
+        outPath: l0Path,
+        promptProfile,
+      });
     } catch (err) {
       throw new CarrierError(`L0 compile failed for ${this.catId as string}: ${(err as Error).message}`, err);
     }
@@ -232,7 +237,7 @@ export class ClaudeBgCarrierService implements AgentService {
       : undefined;
     const l0Path = nativeSystemPromptOverride
       ? this.writeNativeSystemPromptOverrideToTempFile(nativeSystemPromptOverride)
-      : await this.compileL0ToTempFile();
+      : await this.compileL0ToTempFile(options?.promptProfile);
     return new Promise<StartJobResult>((resolve, reject) => {
       // Critical: even with --bg, the child inherits parent env unless we
       // explicitly strip CLAUDE_CODE_ENTRYPOINT. Otherwise transcript entrypoint
