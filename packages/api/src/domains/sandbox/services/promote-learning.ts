@@ -128,16 +128,21 @@ export async function promoteSandboxLearning(
     throw err;
   }
 
-  // If a previous in-flight/crashed attempt already holds a matching claim, claimPromotion
-  // returns that existing claim instead of overwriting it. We must complete/release using
-  // its attemptId so we do not accidentally release a sibling attempt's claim.
-  const activeAttemptId = claimed.promotionClaim?.attemptId ?? attemptId;
+  // If the returned claim belongs to another active request, we must not share its
+  // attemptId: do not write evidence and do not release someone else's claim. Surface the
+  // in-progress state so the caller can retry later. A stale crashed claim is resumed by
+  // claimPromotion with our own attemptId, which passes this check.
+  if (claimed.promotionClaim?.attemptId !== attemptId) {
+    const err = new Error('Promotion already in progress');
+    (err as Error & { statusCode?: number }).statusCode = 409;
+    throw err;
+  }
 
   try {
     await evidenceStore.upsert([evidenceItem]);
   } catch (upsertErr) {
     // Evidence write failed: release the claim so the item remains promotable on retry.
-    await sandboxStore.releasePromotionClaim(sandboxId, itemId, activeAttemptId);
+    await sandboxStore.releasePromotionClaim(sandboxId, itemId, attemptId);
     throw upsertErr;
   }
 
@@ -155,13 +160,13 @@ export async function promoteSandboxLearning(
     provenance,
     evidenceAnchor,
     fingerprint,
-    activeAttemptId,
+    attemptId,
   );
   if (!updated) {
     // The claim did not survive to completion (the item changed or the claim was lost).
     // Release the claim so a retry can converge; the evidence anchor is stable, so the
     // next successful promotion will overwrite it with the current content.
-    await sandboxStore.releasePromotionClaim(sandboxId, itemId, activeAttemptId);
+    await sandboxStore.releasePromotionClaim(sandboxId, itemId, attemptId);
     const err = new Error('Learned item changed during promotion');
     (err as Error & { statusCode?: number }).statusCode = 409;
     throw err;

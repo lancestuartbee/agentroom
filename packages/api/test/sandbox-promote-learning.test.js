@@ -394,15 +394,69 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
     ]);
 
     const statuses = [first.statusCode, second.statusCode].sort();
-    assert.deepEqual(statuses, [200, 409], 'one promotion completes, the other gets a conflict');
+    assert.deepEqual(statuses, [200, 409], 'one promotion completes, the other gets in-progress');
 
     const winner = first.statusCode === 200 ? first : second;
     assert.equal(winner.json().item.promoted, true);
 
-    // Both attempts may have upserted evidence, but the anchor is stable; the winner's
-    // content is what ends up marked promoted. No attempt should have released the other's
-    // active claim (the conflict response must not leave the item in a broken state).
-    assert.ok(evidenceStore.getUpserted().length >= 1);
+    // The in-progress request must not write evidence or release the winner's claim.
+    assert.equal(evidenceStore.getUpserted().length, 1);
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('an in-progress duplicate cannot release the active claim when its own upsert fails', async () => {
+    const { app, sandbox, tmpDir, evidenceStore } = await buildApp({
+      memory: makeMemoryWithItem({
+        id: 'r1\x1fa',
+        content: 'A',
+        sourceRunId: 'r1',
+        sourceRunAt: 1000,
+        promoted: false,
+      }),
+    });
+
+    const url = `/api/sandboxes/${encodeURIComponent(sandbox.id)}/learned-items/${encodeURIComponent('r1\x1fa')}/promote`;
+
+    // A's upsert blocks until we release it; this keeps A's claim active.
+    let resolveA = () => {};
+    let signalAEntered = () => {};
+    const aEntered = new Promise((resolve) => {
+      signalAEntered = resolve;
+    });
+    const aBlock = new Promise((resolve) => {
+      resolveA = resolve;
+    });
+    const originalUpsert = evidenceStore.upsert.bind(evidenceStore);
+    let aStarted = false;
+    evidenceStore.upsert = async (items) => {
+      if (!aStarted) {
+        aStarted = true;
+        signalAEntered();
+        await aBlock;
+        return originalUpsert(items);
+      }
+      // B must never reach upsert.
+      throw new Error('B must not upsert');
+    };
+
+    const promiseA = app.inject({ method: 'POST', url, headers: AUTH });
+    await aEntered;
+
+    // B arrives while A is still inside upsert; it must see an active claim and return
+    // in-progress without touching evidence or releasing A's claim.
+    const resB = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(resB.statusCode, 409);
+    assert.match(resB.json().error, /in progress/i);
+    assert.equal(evidenceStore.getUpserted().length, 0, 'B must not trigger upsert');
+
+    // Let A finish and wait for it to complete.
+    resolveA();
+    const resA = await promiseA;
+    assert.equal(resA.statusCode, 200);
+    assert.equal(resA.json().item.promoted, true);
+    assert.equal(evidenceStore.getUpserted().length, 1);
 
     await app.close();
     await rm(tmpDir, { recursive: true, force: true });

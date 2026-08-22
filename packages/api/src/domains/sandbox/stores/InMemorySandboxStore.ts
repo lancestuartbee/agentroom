@@ -37,6 +37,31 @@ const DEFAULT_SETTINGS: SandboxSettingsV1 = {
 };
 
 /**
+ * A claim older than this is treated as stale (e.g., a previous attempt crashed after
+ * writing the claim but before completing). A stale claim can be resumed by a new request
+ * with the same snapshot. A newer claim is considered in-progress and must not share its
+ * attemptId with concurrent callers.
+ */
+const PROMOTION_CLAIM_STALE_MS = 30_000;
+
+function fingerprintMatches(
+  a: { sourceRunId: string; content: string },
+  b: { sourceRunId: string; content: string },
+): boolean {
+  return a.sourceRunId === b.sourceRunId && a.content === b.content;
+}
+
+function resolveClaimConflict(
+  existingClaim: SandboxLearningPromotionClaimV1,
+  claim: SandboxLearningPromotionClaimV1,
+): 'overwrite' | 'return-existing' | 'conflict' {
+  if (existingClaim.attemptId === claim.attemptId) return 'overwrite';
+  if (!fingerprintMatches(existingClaim.fingerprint, claim.fingerprint)) return 'conflict';
+  if (claim.attemptedAt - existingClaim.attemptedAt > PROMOTION_CLAIM_STALE_MS) return 'overwrite';
+  return 'return-existing';
+}
+
+/**
  * Sandbox ids double as evidence collection ids (`<kind>:<name>`), so they must
  * satisfy COLLECTION_ID_RE (`^[a-z]+:[a-z][a-z0-9-]*$`) — the name segment has to
  * START WITH A LETTER. A bare UUID starts with a hex digit ~62.5% of the time, so
@@ -358,20 +383,17 @@ export class InMemorySandboxStore implements ISandboxStore {
 
     const existingClaim = item.promotionClaim;
     if (existingClaim) {
-      if (existingClaim.attemptId === claim.attemptId) {
-        // Idempotent re-claim from the same attempt: refresh the claim record.
-      } else if (
-        existingClaim.fingerprint.sourceRunId === claim.fingerprint.sourceRunId &&
-        existingClaim.fingerprint.content === claim.fingerprint.content
-      ) {
-        // A previous attempt with the same snapshot is still active (in-flight or crashed).
-        // Do not overwrite its attemptId — return the existing claim so the caller can
-        // resume/complete it without releasing a sibling attempt.
-        return item;
-      } else {
-        // A conflicting claim on a different snapshot is already held.
+      const action = resolveClaimConflict(existingClaim, claim);
+      if (action === 'conflict') {
         return null;
       }
+      if (action === 'return-existing') {
+        // An active in-flight claim with the same snapshot: surface it so the caller can
+        // report "already in progress" without touching evidence or releasing someone
+        // else's claim.
+        return item;
+      }
+      // action === 'overwrite': either idempotent same-attempt or stale crashed claim.
     }
 
     const updated: SandboxLearnedItemV1 = { ...item, promotionClaim: claim };

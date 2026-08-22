@@ -561,20 +561,50 @@ describe('Sandbox store', () => {
       evidenceAnchor,
     });
     assert.ok(resumed);
-    // A matching existing claim is returned as-is; the caller must complete/release using
-    // the original attemptId, not overwrite it with a new one.
-    assert.equal(resumed.promotionClaim.attemptId, 'crashed-attempt');
+    // A stale matching claim is resumed by overwriting with the new attemptId.
+    assert.equal(resumed.promotionClaim.attemptId, 'new-attempt');
 
-    // Releasing with the wrong attemptId does nothing and returns null.
-    const wrongRelease = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa', 'new-attempt');
+    // Releasing with the old attemptId does nothing and returns null.
+    const wrongRelease = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa', 'crashed-attempt');
     assert.equal(wrongRelease, null);
-    assert.equal((await store.getMemory(sandbox.id)).learnedItems[0].promotionClaim.attemptId, 'crashed-attempt');
+    assert.equal((await store.getMemory(sandbox.id)).learnedItems[0].promotionClaim.attemptId, 'new-attempt');
 
     // Release with the right attemptId removes the claim without promoting.
-    const released = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa', 'crashed-attempt');
+    const released = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa', 'new-attempt');
     assert.ok(released);
     assert.equal(released.promotionClaim, undefined);
     assert.equal(released.promoted, false);
+
+    // An active (non-stale) matching claim is returned as-is and must not be resumed.
+    await store.updateMemory(sandbox.id, {
+      v: 1,
+      summary: '',
+      runsIncorporated: 1,
+      updatedAt: Date.now(),
+      learnedItems: [
+        {
+          id: 'run-1\x1fa',
+          content: 'C',
+          sourceRunId: 'run-1',
+          sourceRunAt: Date.now(),
+          promoted: false,
+          promotionClaim: {
+            attemptId: 'active-attempt',
+            attemptedAt: Date.now(),
+            fingerprint: { sourceRunId: 'run-1', content: 'C' },
+            evidenceAnchor,
+          },
+        },
+      ],
+    });
+    const inProgress = await store.claimPromotion(sandbox.id, 'run-1\x1fa', {
+      attemptId: 'another-attempt',
+      attemptedAt: Date.now(),
+      fingerprint: { sourceRunId: 'run-1', content: 'C' },
+      evidenceAnchor,
+    });
+    assert.ok(inProgress);
+    assert.equal(inProgress.promotionClaim.attemptId, 'active-attempt');
 
     await rm(tmpDir, { recursive: true, force: true });
   });
