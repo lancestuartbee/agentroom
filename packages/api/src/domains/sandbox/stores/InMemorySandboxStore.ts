@@ -341,12 +341,21 @@ export class InMemorySandboxStore implements ISandboxStore {
     itemId: string,
     provenance: SandboxLearningPromotionProvenanceV1,
     evidenceAnchor: string,
+    fingerprint?: { sourceRunId: string; content: string },
   ): Promise<SandboxLearnedItemV1 | null> {
     const memory = this.memories.get(sandboxId);
     if (!memory) return null;
 
     const item = memory.learnedItems?.find((i) => i.id === itemId);
     if (!item) return null;
+
+    // F247 Phase E review: promotion is a snapshot. If the item has been rewritten
+    // under the same stable id between the caller's read and this write, completing
+    // the promotion would freeze a stale content/evidence pairing. Reject the race
+    // so the caller can retry with the current snapshot.
+    if (fingerprint && (item.sourceRunId !== fingerprint.sourceRunId || item.content !== fingerprint.content)) {
+      return null;
+    }
 
     const updated: SandboxLearnedItemV1 = {
       ...item,

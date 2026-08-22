@@ -561,6 +561,9 @@ describe('SandboxRunPane promote learning', () => {
       root.render(<SandboxRunPane threadId="thread-2" />);
     });
     expect(container.querySelector('[data-testid="sandbox-promote-note"]')).toBeNull();
+    // B must have actually rendered, not still be loading or in an error state that would
+    // make the "no A note" assertion trivially true.
+    expect(container.querySelector('[data-testid="sandbox-status"]')).not.toBeNull();
 
     // Capture calls after B has mounted and loaded.
     mockApiFetch.mockClear();

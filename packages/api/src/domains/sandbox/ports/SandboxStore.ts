@@ -49,12 +49,18 @@ export interface ISandboxStore {
   /**
    * 标记一个 learned item 已被提升为系统级知识，并记录 provenance。
    * 返回更新后的条目；找不到 item 时返回 null。
+   *
+   * F247 Phase E review: promotion is a snapshot operation. If the item has been
+   * rewritten between the caller's read and this write (stable id but different
+   * content/sourceRunId), the promotion must not silently complete with stale data.
+   * The optional fingerprint lets the store reject such races with `null`.
    */
   promoteLearning(
     sandboxId: string,
     itemId: string,
     provenance: SandboxLearningPromotionProvenanceV1,
     evidenceAnchor: string,
+    fingerprint?: { sourceRunId: string; content: string },
   ): Promise<SandboxLearnedItemV1 | null>;
 
   /** 读取最近一次运行记录 */

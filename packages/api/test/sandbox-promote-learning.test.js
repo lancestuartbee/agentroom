@@ -267,4 +267,53 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
     await app.close();
     await rm(tmpDir, { recursive: true, force: true });
   });
+
+  test('detects a concurrent fold rewrite and returns retryable conflict', async () => {
+    const racingStore = fakeEvidenceStore();
+    racingStore.upsert = async (items) => {
+      racingStore.getUpserted().push(...items);
+      // Simulate a fold that rewrote the same stable id between our read and the mark.
+      const current = await sandboxStore.getMemory(sandbox.id);
+      const learnedItems = (current?.learnedItems ?? []).map((i) =>
+        i.id === 'r1\x1fa' ? { ...i, content: 'new conclusion', sourceRunId: 'r2', sourceRunAt: 2000 } : i,
+      );
+      await sandboxStore.updateMemory(sandbox.id, { ...current, learnedItems, updatedAt: 2000 });
+    };
+
+    const { app, sandbox, sandboxStore, tmpDir, evidenceStore } = await buildApp({
+      evidenceStore: racingStore,
+      memory: makeMemoryWithItem({
+        id: 'r1\x1fa',
+        content: 'old conclusion',
+        sourceRunId: 'r1',
+        sourceRunAt: 1000,
+        promoted: false,
+      }),
+    });
+
+    const url = `/api/sandboxes/${encodeURIComponent(sandbox.id)}/learned-items/${encodeURIComponent('r1\x1fa')}/promote`;
+    const first = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(first.statusCode, 409);
+    assert.match(first.json().error, /changed/i);
+
+    const memoryAfterConflict = await sandboxStore.getMemory(sandbox.id);
+    assert.equal(memoryAfterConflict.learnedItems[0].promoted, false);
+
+    // Retry converges: the current memory has the new content, so the second attempt
+    // writes evidence with the new content and marks it promoted with matching provenance.
+    const second = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(second.statusCode, 200);
+    const body = second.json();
+    assert.equal(body.item.promoted, true);
+    assert.equal(body.item.content, 'new conclusion');
+    assert.equal(body.item.promotionProvenance.originalContent, 'new conclusion');
+
+    const upserted = evidenceStore.getUpserted();
+    assert.equal(upserted.length, 2);
+    assert.equal(upserted[0].summary, 'old conclusion');
+    assert.equal(upserted[1].summary, 'new conclusion');
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
 });

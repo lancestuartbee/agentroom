@@ -94,6 +94,7 @@ export async function promoteSandboxLearning(
 
   const evidenceAnchor = buildPromotedEvidenceAnchor(sandbox.id, itemId);
   const evidenceItem = buildEvidenceItem(sandbox, item);
+  const fingerprint = { sourceRunId: item.sourceRunId, content: item.content };
 
   // Write evidence FIRST. If this fails the local item is still promotable on retry;
   // the opposite order would mark it done while leaving no system-level evidence.
@@ -107,14 +108,16 @@ export async function promoteSandboxLearning(
     promotedAt,
   };
 
-  const updated = await sandboxStore.promoteLearning(sandboxId, itemId, provenance, evidenceAnchor);
+  // Pass a fingerprint so the store can reject a race where fold rewrote this stable id
+  // between our read above and the mark-below. Without this guard the local item could be
+  // marked promoted while the evidence doc contains stale content.
+  const updated = await sandboxStore.promoteLearning(sandboxId, itemId, provenance, evidenceAnchor, fingerprint);
   if (!updated) {
-    // The item disappeared between the read and the write (e.g. a concurrent fold that
-    // retracted it). The evidence doc already exists with a stable anchor; the operator
-    // can retry and the upsert will converge. Surface the inconsistency rather than
-    // pretending it succeeded.
-    const err = new Error('Learned item disappeared during promotion');
-    (err as Error & { statusCode?: number }).statusCode = 500;
+    // The item disappeared or changed identity between the read and the write. The evidence
+    // doc already exists with a stable anchor; the operator can retry and the upsert will
+    // converge to the current content. Surface the conflict rather than freezing stale data.
+    const err = new Error('Learned item changed during promotion');
+    (err as Error & { statusCode?: number }).statusCode = 409;
     throw err;
   }
 

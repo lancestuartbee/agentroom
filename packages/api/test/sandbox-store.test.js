@@ -487,6 +487,24 @@ describe('Sandbox store', () => {
     assert.equal(missing, null);
     assert.equal((await store.getMemory(sandbox.id)).learnedItems.length, 1);
 
+    // Fingerprint mismatch rejects the promotion: a concurrent fold rewrote the same
+    // stable id with new content/sourceRunId. Returning null prevents the stale evidence
+    // content from being frozen as the promoted version.
+    await store.updateMemory(sandbox.id, {
+      v: 1,
+      summary: '',
+      runsIncorporated: 1,
+      updatedAt: 2000,
+      learnedItems: [{ id: 'run-1\x1fa', content: 'B', sourceRunId: 'run-2', sourceRunAt: 2000, promoted: false }],
+    });
+    const mismatch = await store.promoteLearning(sandbox.id, 'run-1\x1fa', provenance, evidenceAnchor, {
+      sourceRunId: 'run-1',
+      content: 'A',
+    });
+    assert.equal(mismatch, null);
+    const memoryAfterMismatch = await store.getMemory(sandbox.id);
+    assert.equal(memoryAfterMismatch.learnedItems[0].promoted, false);
+
     await rm(tmpDir, { recursive: true, force: true });
   });
 });
