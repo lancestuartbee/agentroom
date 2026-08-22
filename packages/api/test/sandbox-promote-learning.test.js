@@ -318,6 +318,39 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
+  test('fold rewrite before claim is rejected and writes no evidence', async () => {
+    const { app, sandbox, sandboxStore, tmpDir, evidenceStore } = await buildApp({
+      memory: makeMemoryWithItem({
+        id: 'r1\x1fa',
+        content: 'old conclusion',
+        sourceRunId: 'r1',
+        sourceRunAt: 1000,
+        promoted: false,
+      }),
+    });
+
+    const url = `/api/sandboxes/${encodeURIComponent(sandbox.id)}/learned-items/${encodeURIComponent('r1\x1fa')}/promote`;
+
+    // The service reads memory once before claiming. Simulate a fold that rewrote the
+    // item between that read and the claim: the real memory has the new content, but the
+    // service's initial read still sees the old snapshot.
+    const staleRead = await sandboxStore.getMemory(sandbox.id);
+    const current = await sandboxStore.getMemory(sandbox.id);
+    const learnedItems = (current?.learnedItems ?? []).map((i) =>
+      i.id === 'r1\x1fa' ? { ...i, content: 'new conclusion', sourceRunId: 'r2', sourceRunAt: 2000 } : i,
+    );
+    await sandboxStore.updateMemory(sandbox.id, { ...current, learnedItems, updatedAt: 2000 });
+    sandboxStore.getMemory = async () => staleRead;
+
+    const res = await app.inject({ method: 'POST', url, headers: AUTH });
+    assert.equal(res.statusCode, 409);
+    assert.match(res.json().error, /changed/i);
+    assert.equal(evidenceStore.getUpserted().length, 0, 'evidence must not be written when claim fails');
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
   test('retraction before claim wins cleanly and writes no evidence', async () => {
     const { app, sandbox, sandboxStore, tmpDir, evidenceStore } = await buildApp({
       memory: makeMemoryWithItem({
@@ -338,6 +371,38 @@ describe('POST /api/sandboxes/:id/learned-items/:itemId/promote', () => {
     assert.match(res.json().error, /changed/i);
 
     assert.equal(evidenceStore.getUpserted().length, 0, 'evidence must not be written when retraction wins');
+
+    await app.close();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('concurrent same-content promotions complete at most once without releasing each other', async () => {
+    const { app, sandbox, tmpDir, evidenceStore } = await buildApp({
+      memory: makeMemoryWithItem({
+        id: 'r1\x1fa',
+        content: 'A',
+        sourceRunId: 'r1',
+        sourceRunAt: 1000,
+        promoted: false,
+      }),
+    });
+
+    const url = `/api/sandboxes/${encodeURIComponent(sandbox.id)}/learned-items/${encodeURIComponent('r1\x1fa')}/promote`;
+    const [first, second] = await Promise.all([
+      app.inject({ method: 'POST', url, headers: AUTH }),
+      app.inject({ method: 'POST', url, headers: AUTH }),
+    ]);
+
+    const statuses = [first.statusCode, second.statusCode].sort();
+    assert.deepEqual(statuses, [200, 409], 'one promotion completes, the other gets a conflict');
+
+    const winner = first.statusCode === 200 ? first : second;
+    assert.equal(winner.json().item.promoted, true);
+
+    // Both attempts may have upserted evidence, but the anchor is stable; the winner's
+    // content is what ends up marked promoted. No attempt should have released the other's
+    // active claim (the conflict response must not leave the item in a broken state).
+    assert.ok(evidenceStore.getUpserted().length >= 1);
 
     await app.close();
     await rm(tmpDir, { recursive: true, force: true });

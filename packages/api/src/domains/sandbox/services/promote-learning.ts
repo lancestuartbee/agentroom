@@ -119,8 +119,8 @@ export async function promoteSandboxLearning(
   };
 
   // Claim the item BEFORE writing evidence. The claim tells fold to leave this item alone
-  // until we either complete or release it. If the item has already been retracted (claim
-  // returns null), we never write evidence — retraction wins cleanly.
+  // until we either complete or release it. If the item has already been retracted or
+  // rewritten (claim returns null), we never write evidence — fold wins cleanly.
   const claimed = await sandboxStore.claimPromotion(sandboxId, itemId, claim);
   if (!claimed) {
     const err = new Error('Learned item changed during promotion');
@@ -128,11 +128,16 @@ export async function promoteSandboxLearning(
     throw err;
   }
 
+  // If a previous in-flight/crashed attempt already holds a matching claim, claimPromotion
+  // returns that existing claim instead of overwriting it. We must complete/release using
+  // its attemptId so we do not accidentally release a sibling attempt's claim.
+  const activeAttemptId = claimed.promotionClaim?.attemptId ?? attemptId;
+
   try {
     await evidenceStore.upsert([evidenceItem]);
   } catch (upsertErr) {
     // Evidence write failed: release the claim so the item remains promotable on retry.
-    await sandboxStore.releasePromotionClaim(sandboxId, itemId);
+    await sandboxStore.releasePromotionClaim(sandboxId, itemId, activeAttemptId);
     throw upsertErr;
   }
 
@@ -150,13 +155,13 @@ export async function promoteSandboxLearning(
     provenance,
     evidenceAnchor,
     fingerprint,
-    attemptId,
+    activeAttemptId,
   );
   if (!updated) {
     // The claim did not survive to completion (the item changed or the claim was lost).
     // Release the claim so a retry can converge; the evidence anchor is stable, so the
     // next successful promotion will overwrite it with the current content.
-    await sandboxStore.releasePromotionClaim(sandboxId, itemId);
+    await sandboxStore.releasePromotionClaim(sandboxId, itemId, activeAttemptId);
     const err = new Error('Learned item changed during promotion');
     (err as Error & { statusCode?: number }).statusCode = 409;
     throw err;

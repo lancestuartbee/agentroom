@@ -485,6 +485,15 @@ describe('Sandbox store', () => {
     assert.equal(claimed.promotionClaim.attemptId, 'attempt-1');
     assert.equal((await store.getMemory(sandbox.id)).learnedItems[0].promotionClaim.attemptId, 'attempt-1');
 
+    // A claim whose fingerprint does not match the current item is rejected.
+    const mismatchedClaim = await store.claimPromotion(sandbox.id, 'run-1\x1fa', {
+      attemptId: 'attempt-bad',
+      attemptedAt: Date.now(),
+      fingerprint: { sourceRunId: 'run-1', content: 'stale' },
+      evidenceAnchor,
+    });
+    assert.equal(mismatchedClaim, null);
+
     // Complete with a stale fingerprint is rejected.
     const staleComplete = await store.completePromotion(
       sandbox.id,
@@ -552,10 +561,17 @@ describe('Sandbox store', () => {
       evidenceAnchor,
     });
     assert.ok(resumed);
-    assert.equal(resumed.promotionClaim.attemptId, 'new-attempt');
+    // A matching existing claim is returned as-is; the caller must complete/release using
+    // the original attemptId, not overwrite it with a new one.
+    assert.equal(resumed.promotionClaim.attemptId, 'crashed-attempt');
 
-    // Release removes the claim without promoting.
-    const released = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa');
+    // Releasing with the wrong attemptId does nothing and returns null.
+    const wrongRelease = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa', 'new-attempt');
+    assert.equal(wrongRelease, null);
+    assert.equal((await store.getMemory(sandbox.id)).learnedItems[0].promotionClaim.attemptId, 'crashed-attempt');
+
+    // Release with the right attemptId removes the claim without promoting.
+    const released = await store.releasePromotionClaim(sandbox.id, 'run-1\x1fa', 'crashed-attempt');
     assert.ok(released);
     assert.equal(released.promotionClaim, undefined);
     assert.equal(released.promoted, false);

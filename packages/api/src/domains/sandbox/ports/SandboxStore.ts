@@ -76,9 +76,10 @@ export interface ISandboxStore {
   /**
    * 释放未完成的提升声明（例如 evidence upsert 失败后清理）。
    *
-   * 返回移除声明后的条目；找不到 item 时返回 null。
+   * 只有 `attemptId` 与当前 claim 匹配时才释放，防止并发/重试的 attempt 互相撤销。
+   * 返回移除声明后的条目；找不到 item 或 attemptId 不匹配时返回 null。
    */
-  releasePromotionClaim(sandboxId: string, itemId: string): Promise<SandboxLearnedItemV1 | null>;
+  releasePromotionClaim(sandboxId: string, itemId: string, attemptId: string): Promise<SandboxLearnedItemV1 | null>;
 
   /** 读取最近一次运行记录 */
   getLastRun(sandboxId: string): Promise<SandboxRunRecordV1 | null>;

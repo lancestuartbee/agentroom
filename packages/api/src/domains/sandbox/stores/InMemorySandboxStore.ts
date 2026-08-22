@@ -349,16 +349,29 @@ export class InMemorySandboxStore implements ISandboxStore {
     if (!item) return null;
     if (item.promoted) return null;
 
-    // A stale claim from a crashed previous attempt can be resumed if it points at the
-    // same content; otherwise treat it as a concurrent conflict.
-    const existingClaim = item.promotionClaim;
-    if (
-      existingClaim &&
-      existingClaim.attemptId !== claim.attemptId &&
-      (existingClaim.fingerprint.sourceRunId !== claim.fingerprint.sourceRunId ||
-        existingClaim.fingerprint.content !== claim.fingerprint.content)
-    ) {
+    // The claim is a linearization point: it must match the CURRENT snapshot. If fold
+    // rewrote the item between the caller's read and this write, the promotion must not
+    // proceed with a stale fingerprint.
+    if (item.sourceRunId !== claim.fingerprint.sourceRunId || item.content !== claim.fingerprint.content) {
       return null;
+    }
+
+    const existingClaim = item.promotionClaim;
+    if (existingClaim) {
+      if (existingClaim.attemptId === claim.attemptId) {
+        // Idempotent re-claim from the same attempt: refresh the claim record.
+      } else if (
+        existingClaim.fingerprint.sourceRunId === claim.fingerprint.sourceRunId &&
+        existingClaim.fingerprint.content === claim.fingerprint.content
+      ) {
+        // A previous attempt with the same snapshot is still active (in-flight or crashed).
+        // Do not overwrite its attemptId — return the existing claim so the caller can
+        // resume/complete it without releasing a sibling attempt.
+        return item;
+      } else {
+        // A conflicting claim on a different snapshot is already held.
+        return null;
+      }
     }
 
     const updated: SandboxLearnedItemV1 = { ...item, promotionClaim: claim };
@@ -400,13 +413,18 @@ export class InMemorySandboxStore implements ISandboxStore {
     return updated;
   }
 
-  async releasePromotionClaim(sandboxId: string, itemId: string): Promise<SandboxLearnedItemV1 | null> {
+  async releasePromotionClaim(
+    sandboxId: string,
+    itemId: string,
+    attemptId: string,
+  ): Promise<SandboxLearnedItemV1 | null> {
     const memory = this.memories.get(sandboxId);
     if (!memory) return null;
 
     const item = memory.learnedItems?.find((i) => i.id === itemId);
     if (!item) return null;
     if (!item.promotionClaim) return item;
+    if (item.promotionClaim.attemptId !== attemptId) return null;
 
     const updated: SandboxLearnedItemV1 = { ...item, promotionClaim: undefined };
     const learnedItems = (memory.learnedItems ?? []).map((i) => (i.id === itemId ? updated : i));

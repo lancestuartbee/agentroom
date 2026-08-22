@@ -512,7 +512,7 @@ describe('stable learned item ids', () => {
     assert.equal(result.memory.learnedItems[0].content, '真实结论');
   });
 
-  test('an active promotion claim shields the item from fold rewrite and retraction', async () => {
+  test('an active promotion claim shields the item from fold rewrite', async () => {
     const { foldRunsIntoMemory } = await load();
     const first = foldRunsIntoMemory(null, [
       runWithIds('r1', 1000, '第一天', [{ id: 'a', content: '原始结论' }]),
@@ -524,7 +524,7 @@ describe('stable learned item ids', () => {
       evidenceAnchor: 'sandbox:sb-1:learned:r1\x1fa',
     };
 
-    // The report rewrites AND retracts the id while promotion is in flight.
+    // The report rewrites the id while promotion is in flight.
     const result = foldRunsIntoMemory(first, [
       runWithIds('r1', 1000, '第一天', [{ id: 'a', content: '改写后的结论' }]),
     ]);
@@ -533,5 +533,34 @@ describe('stable learned item ids', () => {
     assert.equal(item.content, '原始结论', 'claim must preserve the snapshot being promoted');
     assert.equal(item.promotionClaim.attemptId, 'attempt-1', 'claim must survive the fold');
     assert.equal(item.divergence, undefined, 'divergence is only recorded after promotion completes');
+  });
+
+  test('an active promotion claim shields the item from fold retraction', async () => {
+    const { foldRunsIntoMemory } = await load();
+    const first = foldRunsIntoMemory(null, [
+      runWithIds('r1', 1000, '第一天', [{ id: 'a', content: '原始结论' }]),
+    ]).memory;
+    first.learnedItems[0].promotionClaim = {
+      attemptId: 'attempt-1',
+      attemptedAt: 1500,
+      fingerprint: { sourceRunId: 'r1', content: '原始结论' },
+      evidenceAnchor: 'sandbox:sb-1:learned:r1\x1fa',
+    };
+
+    // The report removes the bullet while promotion is in flight.
+    const result = foldRunsIntoMemory(first, [runWithIds('r1', 1000, '第一天', [])]);
+
+    const item = result.memory.learnedItems[0];
+    assert.equal(item.content, '原始结论', 'claim must keep the item until promotion completes');
+    assert.equal(item.promotionClaim.attemptId, 'attempt-1', 'claim must survive the retraction');
+
+    // Once the promotion completes (claim removed) and the report still lacks the bullet,
+    // the next fold records the divergence on the now-promoted item.
+    const completed = { ...item, promoted: true, promotionClaim: undefined };
+    const next = foldRunsIntoMemory({ ...result.memory, learnedItems: [completed] }, [
+      runWithIds('r1', 1000, '第一天', []),
+    ]);
+    assert.deepEqual(next.divergedPromotedIds, [nsId('r1', 'a')]);
+    assert.equal(next.memory.learnedItems[0].divergence.kind, 'retracted');
   });
 });
