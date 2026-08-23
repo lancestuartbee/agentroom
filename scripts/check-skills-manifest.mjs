@@ -10,6 +10,7 @@ import {
   loadManifestSkills,
   resolveRequiredMcpStatus,
 } from './lib/mcp-health.mjs';
+import { collectRosterRoutingIdentifiers } from './lib/skill-manifest-identities.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = resolve(scriptDir, '..');
@@ -56,27 +57,7 @@ function loadRosterHandles() {
     throw new Error('cat-template.json missing "roster" object');
   }
 
-  const handleSet = new Set(Object.keys(parsed.roster).map((id) => `@${id}`));
-  if (Array.isArray(parsed.breeds)) {
-    for (const breed of parsed.breeds) {
-      if (breed.catId) handleSet.add(`@${breed.catId}`);
-      for (const variant of Array.isArray(breed.variants) ? breed.variants : []) {
-        if (variant.catId) handleSet.add(`@${variant.catId}`);
-      }
-    }
-  }
-  const handles = [...handleSet].sort((a, b) => b.length - a.length);
-
-  const nicknames = new Set();
-  if (Array.isArray(parsed.breeds)) {
-    for (const breed of parsed.breeds) {
-      if (breed.nickname && typeof breed.nickname === 'string') {
-        nicknames.add(breed.nickname);
-      }
-    }
-  }
-
-  return { handles, nicknames: [...nicknames].sort((a, b) => b.length - a.length) };
+  return collectRosterRoutingIdentifiers(parsed);
 }
 
 function lintManifestStructure(skillsMap) {
