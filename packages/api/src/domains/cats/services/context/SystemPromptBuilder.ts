@@ -211,7 +211,7 @@ export interface InvocationContext {
   conciergeConfig?: ConciergeConfig;
   /**
    * Thread collaboration mode. When 'development', buildSystemPrompt forwards this
-   * to buildStaticIdentity so the common dev protocol + per-breed workflow triggers
+   * to buildStaticIdentity so the common dev protocol + roster role/behavior triggers
    * are injected. Other modes keep the lightweight identity-only prompt.
    */
   threadMode?: ThreadMode;
@@ -446,8 +446,8 @@ export interface StaticIdentityOptions {
   annotateSegments?: boolean;
   /**
    * Thread collaboration mode. When 'development', the common development
-   * collaboration protocol (S6-base) is injected in addition to per-breed
-   * workflow triggers.
+   * collaboration protocol (S6-base) is injected in addition to roster-driven
+   * role and behavior triggers.
    */
   threadMode?: ThreadMode;
 }
@@ -668,8 +668,8 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
 
   /* @segment S6 — 工作流触发点 */
   // F064 P1: development-mode collaboration protocol is a mode-gated invariant,
-  // not a per-breed choice. Routing preferences are role-based; breed entries
-  // are governance/discipline overlays only.
+  // not an identity choice. Routing preferences and reusable disciplines are
+  // independent roster fields; breed/provider/model/capability never imply them.
   // Missing/legacy records default to development per ThreadStore contract.
   const mode = options?.threadMode ?? DEFAULT_THREAD_MODE;
   if (mode === 'development') {
@@ -681,12 +681,16 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
 
     const wfTriggers = getWorkflowTriggers();
     const s6Parts: string[] = [];
+    const rosterEntry = getRoster()[catId as string];
+    const roles = rosterEntry?.roles ?? [];
+    const behaviors = rosterEntry?.behaviors ?? [];
+    const devRoles = new Set<string>(DEV_ROLE_PRIORITY);
 
     // Inject the highest-priority dev-role routing preference. Order matters:
     // a cat with multiple dev roles (e.g. codex = peer-reviewer + security)
     // should get one coherent routing block, not duplicated bullets.
     for (const role of DEV_ROLE_PRIORITY) {
-      if (catHasRole(catId as string, role)) {
+      if (roles.includes(role)) {
         const roleTriggers = wfTriggers.roles[role];
         if (roleTriggers) {
           s6Parts.push(roleTriggers);
@@ -695,17 +699,20 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
       }
     }
 
-    // Non-dev roles (e.g. designer) get their own routing preference when present.
-    if (catHasRole(catId as string, 'designer')) {
-      const designerTriggers = wfTriggers.roles.designer;
-      if (designerTriggers) {
-        s6Parts.push(designerTriggers);
+    // Non-dev roles get independent routing blocks when configured.
+    for (const role of roles) {
+      if (!devRoles.has(role)) {
+        const roleTriggers = wfTriggers.roles[role];
+        if (roleTriggers) s6Parts.push(roleTriggers);
       }
     }
 
-    const breedGovernance = wfTriggers.breeds[config.breedId ?? ''] ?? wfTriggers.breeds[catId as string];
-    if (breedGovernance) {
-      s6Parts.push(breedGovernance);
+    const seenBehaviors = new Set<string>();
+    for (const behavior of behaviors) {
+      if (seenBehaviors.has(behavior)) continue;
+      seenBehaviors.add(behavior);
+      const behaviorTriggers = wfTriggers.behaviors[behavior];
+      if (behaviorTriggers) s6Parts.push(behaviorTriggers);
     }
 
     if (s6Parts.length > 0) {

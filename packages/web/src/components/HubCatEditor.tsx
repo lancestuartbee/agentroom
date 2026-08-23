@@ -365,6 +365,7 @@ export function HubCatEditor({ cat, draft, existingCats, hasDossier, open, onClo
       runtimeClient: t.runtimeClient ?? form.runtimeClient,
       teamStrengths: t.teamStrengths ?? '',
       roles: t.roles?.join(', ') ?? '',
+      behaviors: t.behaviors?.join(', ') ?? '',
       catId,
       mentionPatterns: joinTags(deduped),
     });

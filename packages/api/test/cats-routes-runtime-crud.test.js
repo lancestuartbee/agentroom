@@ -57,6 +57,7 @@ function makeTemplate() {
       opus: {
         family: 'ragdoll',
         roles: ['architect'],
+        behaviors: ['architecture-checkpoint'],
         lead: true,
         available: true,
         evaluation: 'primary',
@@ -2022,7 +2023,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(enableBody.cat.roster.available, true);
   });
 
-  it('POST /api/cats persists explicit roster roles', async () => {
+  it('POST /api/cats persists explicit roster roles and behaviors independently', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
 
@@ -2052,12 +2053,14 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
         accountRef: 'codex',
         defaultModel: 'gpt-5.6-luna',
         roles: ['coding'],
+        behaviors: ['engineering-discipline'],
       }),
     });
 
     assert.equal(createRes.statusCode, 201, `expected 201, got ${createRes.statusCode}: ${createRes.body}`);
     const body = JSON.parse(createRes.body);
     assert.deepEqual(body.cat.roster.roles, ['coding']);
+    assert.deepEqual(body.cat.roster.behaviors, ['engineering-discipline']);
     assert.equal(
       body.cat.roster.family,
       'openai',
@@ -2065,7 +2068,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     );
   });
 
-  it('PATCH /api/cats/:id updates roster roles', async () => {
+  it('PATCH /api/cats/:id updates roster roles without replacing behaviors', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
 
@@ -2090,6 +2093,29 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(patchRes.statusCode, 200, `expected 200, got ${patchRes.statusCode}: ${patchRes.body}`);
     const body = JSON.parse(patchRes.body);
     assert.deepEqual(body.cat.roster.roles, ['architect', 'peer-reviewer']);
+    assert.deepEqual(body.cat.roster.behaviors, ['architecture-checkpoint']);
+  });
+
+  it('PATCH /api/cats/:id updates roster behaviors without replacing roles', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/opus',
+      headers: { 'content-type': 'application/json', 'x-cat-cafe-user': 'codex' },
+      body: JSON.stringify({ behaviors: ['engineering-discipline'] }),
+    });
+
+    assert.equal(patchRes.statusCode, 200, `expected 200, got ${patchRes.statusCode}: ${patchRes.body}`);
+    const body = JSON.parse(patchRes.body);
+    assert.deepEqual(body.cat.roster.roles, ['architect']);
+    assert.deepEqual(body.cat.roster.behaviors, ['engineering-discipline']);
   });
 
   it('PATCH /api/cats/:id updates roster family when modelFamily changes', async () => {
@@ -2159,7 +2185,59 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.ok(prompt.includes('完成开发/修复 → @codex'), 'coding-role runtime cat should receive code-review handoff');
   });
 
-  it('GET /api/cat-templates surfaces roster roles for UI seeding', async () => {
+  it('runtime workflow projection ignores identity when roles and behaviors match', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    for (const member of [
+      { catId: 'runtime-axis-a', displayName: '甲成员', modelFamily: 'family-a' },
+      { catId: 'runtime-axis-b', displayName: '乙成员', modelFamily: 'family-b' },
+    ]) {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/cats',
+        headers: { 'content-type': 'application/json', 'x-cat-cafe-user': 'codex' },
+        body: JSON.stringify({
+          ...member,
+          name: member.displayName,
+          avatar: '/avatars/axis.png',
+          color: { primary: '#155e75', secondary: '#a5f3fc' },
+          mentionPatterns: [`@${member.catId}`],
+          roleDescription: `${member.displayName} identity`,
+          clientId: 'openai',
+          accountRef: 'codex',
+          defaultModel: 'gpt-5.6-luna',
+          roles: ['coding'],
+          behaviors: ['engineering-discipline'],
+        }),
+      });
+      assert.equal(createRes.statusCode, 201, createRes.body);
+    }
+
+    resetRegistryToBuiltins();
+    const prompts = ['runtime-axis-a', 'runtime-axis-b'].map((id) =>
+      buildStaticIdentity(id, { threadMode: 'development' }),
+    );
+    const workflowSlice = (prompt) => {
+      const start = prompt.indexOf('## 开发协作协议');
+      const end = prompt.indexOf('## 3. 家规', start);
+      assert.ok(start >= 0 && end > start, 'prompt should expose a stable development workflow segment');
+      return prompt.slice(start, end);
+    };
+
+    assert.equal(
+      workflowSlice(prompts[0]),
+      workflowSlice(prompts[1]),
+      'catId, breedId, displayName, and model family must not change role/behavior projection',
+    );
+  });
+
+  it('GET /api/cat-templates surfaces roster roles and behaviors for UI seeding', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
 
@@ -2175,6 +2253,11 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     const ragdoll = body.templates.find((t) => t.id === 'ragdoll');
     assert.ok(ragdoll, 'ragdoll template should be present');
     assert.deepEqual(ragdoll.roles, ['architect'], 'template should expose roster roles so UI can seed new members');
+    assert.deepEqual(
+      ragdoll.behaviors,
+      ['architecture-checkpoint'],
+      'template should expose roster behaviors independently from roles',
+    );
   });
 
   it('GET /api/cat-templates does not pollute the global runtime roster cache', async () => {

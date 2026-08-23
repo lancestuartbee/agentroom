@@ -214,6 +214,7 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
     caution: trimText(form.caution) || null,
     strengths: splitStrengthTags(form.strengths ?? ''),
     roles: splitStrengthTags(form.roles ?? ''),
+    behaviors: splitStrengthTags(form.behaviors ?? ''),
     sessionChain: form.sessionChain === 'true',
     ...contextBudgetPatch,
     ...voiceConfigPatch,

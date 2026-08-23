@@ -18,7 +18,7 @@
  *   {{USER_CAPSULE}}        — per-user profile capsule (F231): owner portrait + optional primer pointer
  *   {{TEAMMATE_ROSTER}}     — [S5] 队友名册（available cats with @mention/model/strengths）
  *   {{GOVERNANCE_L0}}       — [S9] 治理摘要（from shared-rules.md deterministic extraction）
- *   {{WORKFLOW_TRIGGERS}}   — [S6] 工作流触发点（per-breed workflow triggers）
+ *   {{WORKFLOW_TRIGGERS}}   — [S6] 工作流触发点（roster roles + behaviors）
  *   {{CVO_REF}}             — [S8] 铲屎官引用（co-creator name + mention handles）
  *
  * Output: string ready for `claude --system-prompt <out>` or
@@ -245,18 +245,7 @@ function buildTeammateRoster(currentCatId) {
   return rows.join('\n');
 }
 
-// F203 Phase B fix: 现有 SystemPromptBuilder.ts:554 对 breedId 不在
-// {ragdoll,maine-coon,siamese} 的 cat（如 opus-47，breedId='opus-47'）
-// 无 workflow triggers（既有 gap，S1 baseline 实测 opus-47 workflow=0t）。
-// 这里加 displayName→breed fallback 修这个 gap：opus-47 是布偶猫家族，
-// 应共享 ragdoll workflow。**行为变更**：见 F203 spec KD-8。
-const DISPLAY_NAME_TO_BREED = {
-  布偶猫: 'ragdoll',
-  缅因猫: 'maine-coon',
-  暹罗猫: 'siamese',
-};
-
-function buildWorkflowTriggers(breedId, catId, displayName, promptProfile = 'development') {
+function buildWorkflowTriggers(catId, promptProfile = 'development') {
   // S6 is development-mode only. Lightweight profiles (casual/roundtable/sandbox)
   // must not receive dev protocol or role routing through the native L0 channel.
   if (isLightweightProfile(promptProfile)) {
@@ -266,7 +255,8 @@ function buildWorkflowTriggers(breedId, catId, displayName, promptProfile = 'dev
   const workflowTriggers = loadWorkflowTriggers();
   const rosterEntry = _loadedConfig?.roster?.[catId];
   const roles = rosterEntry?.roles ?? [];
-  const hasDevRole = roles.some((role) => DEV_ROLE_PRIORITY.includes(role));
+  const behaviors = rosterEntry?.behaviors ?? [];
+  const devRoles = new Set(DEV_ROLE_PRIORITY);
 
   const parts = [];
 
@@ -278,41 +268,34 @@ function buildWorkflowTriggers(breedId, catId, displayName, promptProfile = 'dev
   }
 
   // Inject the highest-priority dev-role routing preference to avoid duplication.
-  let devRoleInjected = false;
-  if (hasDevRole) {
-    for (const role of DEV_ROLE_PRIORITY) {
-      if (roles.includes(role)) {
-        const roleTriggers = workflowTriggers.roles[role];
-        if (roleTriggers) {
-          parts.push(roleTriggers);
-          devRoleInjected = true;
-          break;
-        }
+  for (const role of DEV_ROLE_PRIORITY) {
+    if (roles.includes(role)) {
+      const roleTriggers = workflowTriggers.roles[role];
+      if (roleTriggers) {
+        parts.push(roleTriggers);
+        break;
       }
     }
   }
 
-  // Designer role gets its own routing preference, independently of dev roles.
-  if (roles.includes('designer')) {
-    const designerTriggers = workflowTriggers.roles.designer;
-    if (designerTriggers) {
-      parts.push(designerTriggers);
-    }
+  for (const role of roles) {
+    if (devRoles.has(role)) continue;
+    const roleTriggers = workflowTriggers.roles[role];
+    if (roleTriggers) parts.push(roleTriggers);
   }
 
-  // Breed-specific governance/discipline overlay.
-  const breedGovernance =
-    workflowTriggers.breeds[breedId ?? ''] ??
-    workflowTriggers.breeds[catId] ??
-    workflowTriggers.breeds[DISPLAY_NAME_TO_BREED[displayName]];
-  if (breedGovernance) {
-    parts.push(breedGovernance);
+  const seenBehaviors = new Set();
+  for (const behavior of behaviors) {
+    if (seenBehaviors.has(behavior)) continue;
+    seenBehaviors.add(behavior);
+    const behaviorTriggers = workflowTriggers.behaviors[behavior];
+    if (behaviorTriggers) parts.push(behaviorTriggers);
   }
 
   if (parts.length > 0) {
     return parts.join('\n\n');
   }
-  return '## 工作流\n（无 per-breed 触发点配置）';
+  return '## 工作流\n（无角色或行为触发点配置）';
 }
 
 // Phase C Task 1 (A8 gap): 渲染 operator reference 行，对齐 buildStaticIdentity
@@ -492,7 +475,7 @@ export async function compileL0(options) {
     .replace('{{USER_CAPSULE}}', capsuleSection)
     .replace('{{TEAMMATE_ROSTER}}', buildTeammateRoster(catId))
     .replace('{{GOVERNANCE_L0}}', governanceL0.content)
-    .replace('{{WORKFLOW_TRIGGERS}}', buildWorkflowTriggers(config.breedId, catId, config.displayName, promptProfile))
+    .replace('{{WORKFLOW_TRIGGERS}}', buildWorkflowTriggers(catId, promptProfile))
     .replace('{{CVO_REF}}', renderCvoRef());
 
   // For lightweight profiles the S6 placeholder is intentionally empty; drop

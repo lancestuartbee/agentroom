@@ -140,24 +140,24 @@ describe('F203 Phase I — opencode-config-template instructions', () => {
   });
 });
 
-// ── AC-I5: golden-chinchilla workflow triggers ──
+// ── AC-I5: explicit OpenCode behavior triggers ──
 
-describe('F203 Phase I — golden-chinchilla workflow triggers', () => {
+describe('F203 Phase I — OpenCode behavior triggers', () => {
   // This test uses the compile CLI to verify workflow is not empty
   test('opencode catId compiles with workflow triggers (not fallback empty)', async () => {
     const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
     const l0 = await compileL0({ catId: 'opencode' });
 
-    assert.ok(l0.includes('金渐层家族治理'), 'must contain golden-chinchilla governance section');
+    assert.ok(l0.includes('OpenCode 运行时边界'), 'must contain explicit OpenCode runtime behavior');
     assert.ok(l0.includes('OMOC Sisyphus'), 'must mention OMOC orchestration boundary');
-    assert.ok(!l0.includes('（无 per-breed 触发点配置）'), 'must NOT fall back to empty triggers');
+    assert.ok(!l0.includes('（无角色或行为触发点配置）'), 'must NOT fall back to empty triggers');
   });
 
   test('opencode L0 contains identity block', async () => {
     const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
     const l0 = await compileL0({ catId: 'opencode' });
 
-    assert.ok(l0.includes('金渐层'), 'must contain 金渐层 identity');
+    assert.ok(l0.includes('你是 OpenCode/Provider model（OpenCode）'), 'must contain the configured OpenCode identity');
     assert.ok(l0.includes('@opencode'), 'must contain @opencode mention');
   });
 
@@ -182,6 +182,15 @@ describe('F203 Phase I — golden-chinchilla workflow triggers', () => {
 // ── AC-I5b: role-based routing parity between runtime and native L0 ──
 
 describe('F203 Phase I — native L0 role-based routing parity', () => {
+  test('codex L0 gets engineering behavior while opus does not', async () => {
+    const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
+    const codex = await compileL0({ catId: 'codex' });
+    const opus = await compileL0({ catId: 'opus' });
+
+    assert.ok(codex.includes('### 工程纪律'), 'explicit Codex behavior should compile into native L0');
+    assert.ok(!opus.includes('### 工程纪律'), 'role/family identity must not imply an engineering behavior');
+  });
+
   test('opus L0 uses architect role priority over peer-reviewer', async () => {
     const { compileL0 } = await import('../../../scripts/compile-system-prompt-l0.mjs');
     const l0 = await compileL0({ catId: 'opus' });

@@ -21,6 +21,27 @@ function assertWithinFullRuntimePromptBudget(prompt) {
   );
 }
 
+function configFor(catId) {
+  return catRegistry.getOrThrow(catId).config;
+}
+
+function staticIdentityName(catId) {
+  const config = configFor(catId);
+  return config.nickname ? `${config.displayName}/${config.nickname}` : config.displayName;
+}
+
+function rosterLabel(catId) {
+  const config = configFor(catId);
+  if (config.variantLabel) return `${config.displayName} ${config.variantLabel}`;
+  return config.nickname ? `${config.displayName}/${config.nickname}` : config.displayName;
+}
+
+function handleFreeLabel(catId) {
+  const config = configFor(catId);
+  const variantPart = config.variantLabel ? ` ${config.variantLabel}` : '';
+  return `${config.displayName}${variantPart}(${catId})`;
+}
+
 describe('SystemPromptBuilder', () => {
   // Dynamic import after build
   async function getBuilder() {
@@ -28,14 +49,14 @@ describe('SystemPromptBuilder', () => {
     return buildSystemPrompt;
   }
 
-  async function withFreshRuntimeRegistry(run) {
+  async function withFreshRuntimeRegistry(run, overrides = {}) {
     const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
     const originalConfigs = catRegistry.getAllConfigs();
     catRegistry.reset();
     try {
       const runtimeConfigs = toAllCatConfigs(loadCatConfig(CAT_TEMPLATE_PATH));
       for (const [id, config] of Object.entries(runtimeConfigs)) {
-        catRegistry.register(id, config);
+        catRegistry.register(id, { ...config, ...overrides[id] });
       }
       return await run();
     } finally {
@@ -54,7 +75,7 @@ describe('SystemPromptBuilder', () => {
       teammates: [],
       mcpAvailable: false,
     });
-    assert.ok(prompt.includes('布偶猫'));
+    assert.ok(prompt.includes(staticIdentityName('opus')));
     assert.ok(prompt.includes('opus'));
   });
 
@@ -66,7 +87,7 @@ describe('SystemPromptBuilder', () => {
       teammates: [],
       mcpAvailable: false,
     });
-    assert.ok(prompt.includes('缅因猫'));
+    assert.ok(prompt.includes(staticIdentityName('codex')));
     assert.ok(prompt.includes('codex'));
   });
 
@@ -78,7 +99,7 @@ describe('SystemPromptBuilder', () => {
       teammates: [],
       mcpAvailable: false,
     });
-    assert.ok(prompt.includes('暹罗猫'));
+    assert.ok(prompt.includes(staticIdentityName('gemini')));
     assert.ok(prompt.includes('gemini'));
   });
 
@@ -90,8 +111,8 @@ describe('SystemPromptBuilder', () => {
       teammates: ['codex', 'gemini'],
       mcpAvailable: false,
     });
-    assert.ok(prompt.includes('缅因猫'));
-    assert.ok(prompt.includes('暹罗猫'));
+    assert.ok(prompt.includes(staticIdentityName('codex')));
+    assert.ok(prompt.includes(staticIdentityName('gemini')));
     assert.ok(prompt.includes('队友'));
   });
 
@@ -395,7 +416,7 @@ describe('SystemPromptBuilder', () => {
   test('buildStaticIdentity returns identity for known cat', async () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     const identity = buildStaticIdentity('opus');
-    assert.ok(identity.includes('布偶猫'), 'Should contain display name');
+    assert.ok(identity.includes(staticIdentityName('opus')), 'Should contain configured identity name');
     assert.ok(identity.includes('Anthropic'), 'Should contain provider');
     assert.ok(identity.includes('## 协作'), 'Should contain collaboration guide');
     // Phase 0 正面化: 不冒充 → 用自己的身份签名 (L0 GOVERNANCE_L0_DIGEST)
@@ -426,6 +447,14 @@ describe('SystemPromptBuilder', () => {
       'Codex workflow should avoid local-reviewer ping after external merge-gate feedback',
     );
     assert.ok(codexId.includes('出口一问'), 'Codex workflow should include exit check (出口一问)');
+    assert.ok(
+      codexId.includes('### 工程纪律'),
+      'Codex should receive the explicitly assigned engineering-discipline behavior',
+    );
+    assert.ok(
+      !opusId.includes('### 工程纪律'),
+      'Architect/Claude identity must not implicitly receive Codex engineering discipline',
+    );
 
     const opencodeId = buildStaticIdentity('opencode', { threadMode: 'development' });
     assert.ok(opencodeId.includes('工作流'), 'OpenCode should have workflow triggers');
@@ -435,7 +464,8 @@ describe('SystemPromptBuilder', () => {
     );
     assert.ok(opencodeId.includes('### 执行纪律'), 'OpenCode workflow should include execution discipline');
     assert.ok(opencodeId.includes('出口一问'), 'OpenCode workflow should include exit check (出口一问)');
-    assert.ok(opencodeId.includes('OMOC Sisyphus'), 'OpenCode workflow should keep golden-chinchilla governance');
+    assert.ok(opencodeId.includes('### OpenCode 运行时边界'), 'OpenCode should receive its explicit runtime behavior');
+    assert.ok(opencodeId.includes('OMOC Sisyphus'), 'OpenCode workflow should keep its runtime boundary');
   });
 
   test('buildStaticIdentity omits development workflow triggers outside development mode', async () => {
@@ -459,7 +489,7 @@ describe('SystemPromptBuilder', () => {
     );
   });
 
-  test('buildStaticIdentity gives new breeds the common dev protocol even without per-breed overlay', async () => {
+  test('buildStaticIdentity gives every member the common dev protocol without role or behavior overlays', async () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     const moonshotDev = buildStaticIdentity('kimi', { threadMode: 'development' });
     assert.ok(moonshotDev.includes('### 执行纪律'), 'New breed in dev mode should get common dev protocol');
@@ -533,7 +563,9 @@ describe('SystemPromptBuilder', () => {
     const packOnly = buildStaticIdentityPackOnly('opus', { packBlocks: PACK_FIXTURE, mcpAvailable: true });
 
     // sanity: the full identity DOES carry non-pack + pack
-    assert.ok(full.includes('布偶猫') && full.includes('## 协作') && full.includes('PACK_MASKS_MARKER_§'));
+    assert.ok(
+      full.includes(staticIdentityName('opus')) && full.includes('## 协作') && full.includes('PACK_MASKS_MARKER_§'),
+    );
 
     // pack-only: all 5 pack blocks present
     for (const b of [
@@ -546,11 +578,11 @@ describe('SystemPromptBuilder', () => {
       assert.ok(packOnly.includes(b), `pack-only must include ${b}`);
     }
     // pack-only: ZERO non-pack anchors (identity / A2A / roster / governance / MCP)
-    assert.ok(!packOnly.includes('布偶猫'), 'pack-only must NOT include identity display name');
+    assert.ok(!packOnly.includes(staticIdentityName('opus')), 'pack-only must NOT include identity display name');
     assert.ok(!packOnly.includes('## 协作'), 'pack-only must NOT include A2A collaboration section');
     assert.ok(!packOnly.includes('用自己的身份签名'), 'pack-only must NOT include governance digest');
     assert.ok(!packOnly.includes('cat_cafe_search_evidence'), 'pack-only must NOT include MCP section');
-    assert.ok(!packOnly.includes('缅因猫'), 'pack-only must NOT include teammate roster');
+    assert.ok(!packOnly.includes(rosterLabel('codex')), 'pack-only must NOT include teammate roster');
   });
 
   test('buildStaticIdentityPackOnly orders blocks masks→workflows→guardrail→defaults→world', async () => {
@@ -580,10 +612,10 @@ describe('SystemPromptBuilder', () => {
     const p = buildStaticIdentityPackOnly('opus', { packBlocks: partial });
     assert.ok(p.includes('PACK_WORKFLOWS_MARKER_§') && p.includes('PACK_GUARDRAIL_MARKER_§'));
     assert.ok(!p.includes('PACK_MASKS_MARKER_§') && !p.includes('PACK_WORLD_MARKER_§'));
-    assert.ok(!p.includes('布偶猫'), 'still no non-pack');
+    assert.ok(!p.includes(staticIdentityName('opus')), 'still no non-pack');
   });
 
-  test('buildStaticIdentity disambiguates duplicate display names in runtime multi-variant config', async () => {
+  test('buildStaticIdentity uses unique handles for same-family runtime variants', async () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
 
@@ -599,11 +631,10 @@ describe('SystemPromptBuilder', () => {
       const mentionLine = identity.split('\n').find((line) => line.startsWith('你可以 @队友: '));
       assert.ok(mentionLine, 'should include teammate @mention line');
 
-      // Use lookahead to only match "@缅因猫" NOT followed by " Spark" (which is a different variant displayName)
-      const maineCount = (mentionLine.match(/@缅因猫(?=\s*\/)/g) ?? []).length;
-      assert.equal(maineCount, 1, 'default maine mention should appear only once');
+      const defaultGptCount = (mentionLine.match(/@gpt(?=\s*\/|$)/g) ?? []).length;
+      assert.equal(defaultGptCount, 1, 'default GPT mention should appear only once');
       assert.ok(mentionLine.includes('@gpt52'), 'should expose non-default variant handle');
-      assert.ok(identity.includes('同族多分身时'), 'should explicitly teach same-breed multi-variant rule');
+      assert.ok(identity.includes('同族多分身时'), 'should explicitly teach same-family multi-variant routing');
     } finally {
       catRegistry.reset();
       for (const [id, config] of Object.entries(originalConfigs)) {
@@ -642,8 +673,8 @@ describe('SystemPromptBuilder', () => {
     const identity = buildStaticIdentity('opus');
     assert.ok(identity.includes('## 队友名册'), 'Should have roster section');
     assert.ok(identity.includes('擅长'), 'Should have strengths column header');
-    assert.ok(identity.includes('@缅因猫') || identity.includes('@codex'), 'Should list codex mention');
-    assert.ok(identity.includes('@暹罗猫') || identity.includes('@gemini'), 'Should list gemini mention');
+    assert.ok(identity.includes('@codex'), 'Should list codex mention');
+    assert.ok(identity.includes('@gemini'), 'Should list gemini mention');
   });
 
   test('F127 V-1: buildStaticIdentity includes runtime-created cats in new-session roster', async () => {
@@ -654,6 +685,7 @@ describe('SystemPromptBuilder', () => {
         ...originalConfigs.codex,
         displayName: '火花猫',
         nickname: '小火花',
+        variantLabel: '小火花',
         mentionPatterns: ['@runtime-spark', '@火花猫'],
         defaultModel: 'gpt-5.4-mini',
         roleDescription: '快速执行',
@@ -662,7 +694,7 @@ describe('SystemPromptBuilder', () => {
 
       const identity = buildStaticIdentity('opus');
       assert.match(identity, /## 队友名册/, 'new session identity must include roster');
-      assert.match(identity, /火花猫\/小火花/, 'runtime-created cat must be listed');
+      assert.match(identity, /火花猫 小火花/, 'runtime-created cat must be listed');
       assert.match(identity, /@runtime-spark · gpt-5\.4-mini/, 'runtime-created model alias must be visible');
     } finally {
       catRegistry.reset();
@@ -681,6 +713,7 @@ describe('SystemPromptBuilder', () => {
         ...originalConfigs.codex,
         displayName: '火花猫',
         nickname: '小火花',
+        variantLabel: '小火花',
         mentionPatterns: ['@runtime-spark', '@火花猫'],
         defaultModel: 'gpt-5.4-mini',
         roleDescription: '快速执行',
@@ -709,7 +742,11 @@ describe('SystemPromptBuilder', () => {
     // The roster rows start after the header, each begins with "|"
     const rosterSection = opusRoster.split('## 队友名册')[1];
     assert.ok(rosterSection, 'Roster section should exist');
-    assert.ok(!rosterSection.includes('| 布偶猫/宪宪'), 'Opus default should not list itself');
+    const rosterRows = rosterSection.split('\n').filter((line) => line.startsWith('| '));
+    assert.ok(
+      !rosterRows.some((line) => line.startsWith(`| ${rosterLabel('opus')} |`)),
+      'Opus default should not list itself',
+    );
   });
 
   test('buildStaticIdentity roster uses teamStrengths from config', async () => {
@@ -727,9 +764,8 @@ describe('SystemPromptBuilder', () => {
       const identity = buildStaticIdentity('opus');
       // gpt52 keeps teamStrengths and has no explicit caution override in current config.
       assert.ok(identity.includes('架构思考'), 'Should include gpt52 teamStrengths');
-      assert.ok(identity.includes('| 缅因猫/砚砚（GPT-5.4） |') || identity.includes('| 缅因猫/砚砚 |'));
-      // gemini has caution about no coding
-      assert.ok(identity.includes('禁止写代码'), 'Should include gemini caution');
+      assert.ok(identity.includes(`| ${rosterLabel('gpt52')} |`), 'Should include the current gpt52 roster label');
+      assert.ok(identity.includes(runtimeConfigs.gemini.caution), 'Should include the configured gemini caution');
     } finally {
       catRegistry.reset();
       for (const [id, config] of Object.entries(originalConfigs)) {
@@ -794,7 +830,7 @@ describe('SystemPromptBuilder', () => {
       mcpAvailable: false,
     });
     assert.ok(ctx.includes('你的队友'), 'Should list teammates');
-    assert.ok(ctx.includes('缅因猫'), 'Should mention codex by display name');
+    assert.ok(ctx.includes(staticIdentityName('codex')), 'Should mention codex by configured identity name');
     assert.ok(ctx.includes('1/2'), 'Should show chain position');
   });
 
@@ -893,48 +929,30 @@ describe('SystemPromptBuilder', () => {
   });
 
   test('F167-E: teammate roster surfaces restrictions (硬限制) for teammates with them', async () => {
-    const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
-    const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
-    const originalConfigs = catRegistry.getAllConfigs();
-    catRegistry.reset();
-    try {
-      const runtimeConfigs = toAllCatConfigs(loadCatConfig(CAT_TEMPLATE_PATH));
-      for (const [id, config] of Object.entries(runtimeConfigs)) {
-        catRegistry.register(id, config);
-      }
-      const prompt = buildStaticIdentity('opus');
-      assert.match(prompt, /队友名册/, 'must include 队友名册 section');
-      assert.match(prompt, /禁止写代码/, 'teammate roster must surface gemini restrictions');
-      assert.match(prompt, /硬限制/, 'restrictions must carry a visible marker distinct from narrative caution');
-    } finally {
-      catRegistry.reset();
-      for (const [id, config] of Object.entries(originalConfigs)) {
-        catRegistry.register(id, config);
-      }
-    }
+    await withFreshRuntimeRegistry(
+      async () => {
+        const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+        const prompt = buildStaticIdentity('opus');
+        assert.match(prompt, /队友名册/, 'must include 队友名册 section');
+        assert.match(prompt, /禁止写代码/, 'teammate roster must surface gemini restrictions');
+        assert.match(prompt, /硬限制/, 'restrictions must carry a visible marker distinct from narrative caution');
+      },
+      { gemini: { restrictions: ['禁止写代码'] } },
+    );
   });
 
   test('F167-E: cat sees its own restrictions in self identity (self-awareness)', async () => {
     // gemini's own prompt must include its hard restrictions so it can
     // recognize illegitimate @-mentions and push back, without relying on harness gate.
-    const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
-    const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
-    const originalConfigs = catRegistry.getAllConfigs();
-    catRegistry.reset();
-    try {
-      const runtimeConfigs = toAllCatConfigs(loadCatConfig(CAT_TEMPLATE_PATH));
-      for (const [id, config] of Object.entries(runtimeConfigs)) {
-        catRegistry.register(id, config);
-      }
-      const prompt = buildStaticIdentity('gemini');
-      assert.match(prompt, /你的硬限制/, 'gemini own prompt must declare its restrictions');
-      assert.match(prompt, /禁止写代码/, 'gemini own prompt must name the 禁止写代码 ban');
-    } finally {
-      catRegistry.reset();
-      for (const [id, config] of Object.entries(originalConfigs)) {
-        catRegistry.register(id, config);
-      }
-    }
+    await withFreshRuntimeRegistry(
+      async () => {
+        const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+        const prompt = buildStaticIdentity('gemini');
+        assert.match(prompt, /你的硬限制/, 'gemini own prompt must declare its restrictions');
+        assert.match(prompt, /禁止写代码/, 'gemini own prompt must name the 禁止写代码 ban');
+      },
+      { gemini: { restrictions: ['禁止写代码'] } },
+    );
   });
 
   test('F167-E: cat without restrictions has NO self-restrictions block', async () => {
@@ -959,30 +977,21 @@ describe('SystemPromptBuilder', () => {
   });
 
   test('F167-E: teammate roster omits restrictions marker for teammates without them', async () => {
-    const { loadCatConfig, toAllCatConfigs } = await import('../dist/config/cat-config-loader.js');
-    const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
-    const originalConfigs = catRegistry.getAllConfigs();
-    catRegistry.reset();
-    try {
-      const runtimeConfigs = toAllCatConfigs(loadCatConfig(CAT_TEMPLATE_PATH));
-      for (const [id, config] of Object.entries(runtimeConfigs)) {
-        catRegistry.register(id, config);
-      }
-      const prompt = buildStaticIdentity('opus');
-      const rosterLines = prompt.split('\n').filter((l) => l.trim().startsWith('|'));
-      const geminiLine = rosterLines.find((l) => /@gemini|@烁烁|@暹罗/.test(l));
-      const codexLine = rosterLines.find((l) => /@codex/.test(l));
-      assert.ok(geminiLine && /硬限制/.test(geminiLine), `gemini row must include 硬限制; got: ${geminiLine}`);
-      assert.ok(
-        codexLine && !/硬限制/.test(codexLine),
-        `codex row (no restrictions) must NOT include 硬限制; got: ${codexLine}`,
-      );
-    } finally {
-      catRegistry.reset();
-      for (const [id, config] of Object.entries(originalConfigs)) {
-        catRegistry.register(id, config);
-      }
-    }
+    await withFreshRuntimeRegistry(
+      async () => {
+        const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+        const prompt = buildStaticIdentity('opus');
+        const rosterLines = prompt.split('\n').filter((l) => l.trim().startsWith('|'));
+        const geminiLine = rosterLines.find((l) => /@gemini/.test(l));
+        const codexLine = rosterLines.find((l) => /@codex/.test(l));
+        assert.ok(geminiLine && /硬限制/.test(geminiLine), `gemini row must include 硬限制; got: ${geminiLine}`);
+        assert.ok(
+          codexLine && !/硬限制/.test(codexLine),
+          `codex row (no restrictions) must NOT include 硬限制; got: ${codexLine}`,
+        );
+      },
+      { gemini: { restrictions: ['禁止写代码'] } },
+    );
   });
 
   test('F167-F AC-F10: AGENTS.md / CLAUDE.md have no hardcoded "@x = model-y" bindings', async () => {
@@ -1004,7 +1013,7 @@ describe('SystemPromptBuilder', () => {
       //   - `@codex (model=`gpt-5.5`)`  — backticked
       //   - `@codex (model=gpt-5.5)`    — unquoted (round-4 gap)
       //   - `@codex (model="foo")`      — double-quoted
-      //   - `@opus-45` / `@缅因猫`      — non-\w handles
+      //   - `@opus-45` / `@gpt-5.4`     — non-\w handles
       // @handle = `@` + non-whitespace/comma/open-paren chars.
       // model value = any non-whitespace (accepts quoted + unquoted).
       assert.doesNotMatch(
@@ -1331,8 +1340,8 @@ describe('SystemPromptBuilder', () => {
         { catId: 'codex', lastMessageAt: 1000, messageCount: 3 },
       ],
     });
-    assert.match(ctx, /最近活跃：布偶猫\(opus\)\n|最近活跃：布偶猫\(opus\)$/, 'Should inject displayName(id) format');
-    assert.ok(!ctx.includes('最近活跃：缅因猫(codex)'), 'Self (codex) should not appear as most recently active');
+    assert.ok(ctx.includes(`最近活跃：${handleFreeLabel('opus')}`), 'Should inject displayName(id) format');
+    assert.ok(!ctx.includes(`最近活跃：${handleFreeLabel('codex')}`), 'Self should not appear as most recently active');
   });
 
   test('buildInvocationContext skips self in activity list', async () => {
@@ -1350,7 +1359,7 @@ describe('SystemPromptBuilder', () => {
       ],
     });
     // opus is self and most-recent, should be skipped; codex is next
-    assert.match(ctx, /最近活跃：缅因猫\(codex\)\n|最近活跃：缅因猫\(codex\)$/, 'Should inject displayName(id) format');
+    assert.ok(ctx.includes(`最近活跃：${handleFreeLabel('codex')}`), 'Should inject displayName(id) format');
   });
 
   test('buildInvocationContext omits hint when activeParticipants absent', async () => {
@@ -1450,8 +1459,9 @@ describe('SystemPromptBuilder', () => {
       mcpAvailable: false,
       directMessageFrom: 'opus',
     });
-    assert.match(ctx, /^Direct message from 布偶猫\(opus\)/m);
-    assert.ok(ctx.includes('reply to 布偶猫(opus)'));
+    const senderLabel = handleFreeLabel('opus');
+    assert.ok(ctx.includes(`Direct message from ${senderLabel}`));
+    assert.ok(ctx.includes(`reply to ${senderLabel}`));
     assert.ok(!ctx.includes('Direct message from @opus'));
     // F167 anti-spoofing: handoff must carry sender model marker explicitly
     assert.ok(ctx.includes('[model='), 'handoff must include sender model marker');
@@ -1507,8 +1517,9 @@ describe('SystemPromptBuilder', () => {
       });
       assert.match(ctx, /^Identity:/m);
       assert.ok(ctx.includes('@gpt52'));
-      assert.match(ctx, /^Direct message from 缅因猫\(codex\)/m);
-      assert.ok(ctx.includes('reply to 缅因猫(codex)'));
+      const senderLabel = handleFreeLabel('codex');
+      assert.ok(ctx.includes(`Direct message from ${senderLabel}`));
+      assert.ok(ctx.includes(`reply to ${senderLabel}`));
     } finally {
       catRegistry.reset();
       for (const [id, config] of Object.entries(originalConfigs)) {
@@ -1542,7 +1553,7 @@ describe('SystemPromptBuilder', () => {
       assert.match(ctx, /^Identity:.*opus-45/m);
       // same-breed sender shows up with model marker (anti-spoofing: explicit model differentiation)
       assert.ok(ctx.includes('model=claude-opus-4-6'), 'sender model must be claude-opus-4-6');
-      // anti-spoofing notice must fire (same displayName 布偶猫, different catId)
+      // anti-spoofing notice must fire (same family, different catId)
       assert.ok(
         ctx.includes('同族分身') || ctx.includes('不是你'),
         'same-breed handoff must inject anti-spoofing notice',
@@ -1978,7 +1989,7 @@ describe('SystemPromptBuilder', () => {
 
     const maskPos = prompt.indexOf('PACK_MASK_MARKER');
     const guardPos = prompt.indexOf('PACK_GUARD_MARKER');
-    const identityPos = prompt.indexOf('布偶猫');
+    const identityPos = prompt.indexOf(staticIdentityName('opus'));
 
     assert.ok(maskPos > identityPos, 'Masks should appear after identity');
     assert.ok(guardPos > maskPos, 'Guardrails should appear after masks');

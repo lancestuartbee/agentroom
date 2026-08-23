@@ -58,6 +58,8 @@ export interface RuntimeCatInput {
   acp?: AcpVariantConfig;
   /** Roster roles for development-mode workflow routing (defaults to ['assistant']). */
   roles?: string[];
+  /** Independent collaboration disciplines for development-mode prompt projection. */
+  behaviors?: string[];
 }
 
 export interface RuntimeCatUpdate {
@@ -96,6 +98,8 @@ export interface RuntimeCatUpdate {
   acp?: AcpVariantConfig | null;
   /** Roster roles for development-mode workflow routing. Empty array resets to ['assistant']. */
   roles?: string[];
+  /** Independent collaboration disciplines. Empty array clears all assignments. */
+  behaviors?: string[];
 }
 
 export interface RuntimeCoCreatorUpdate {
@@ -292,10 +296,19 @@ function buildDefaultRuntimeRosterEntry(
   displayName: string,
   available: boolean,
   roles?: string[],
-): { family: string; roles: string[]; lead: false; available: boolean; evaluation: string } {
+  behaviors?: string[],
+): {
+  family: string;
+  roles: string[];
+  behaviors: string[];
+  lead: false;
+  available: boolean;
+  evaluation: string;
+} {
   return {
     family,
     roles: roles && roles.length > 0 ? roles : ['assistant'],
+    behaviors: behaviors ?? [],
     lead: false,
     available,
     evaluation: `${displayName} runtime member`,
@@ -322,6 +335,7 @@ export function createRuntimeCat(projectRoot: string, input: RuntimeCatInput): C
         String(nextBreed.displayName ?? nextBreed.name ?? input.catId),
         true,
         input.roles,
+        input.behaviors,
       ),
     };
   }
@@ -558,6 +572,22 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
             String(breed.displayName ?? breed.name ?? catId),
             true,
             nextRoles,
+          ),
+    };
+  }
+  if (patch.behaviors !== undefined && catalog.version === 2) {
+    const existingEntry = catalog.roster[catId];
+    catalog.roster = {
+      ...catalog.roster,
+      [catId]: existingEntry
+        ? { ...existingEntry, behaviors: patch.behaviors }
+        : buildDefaultRuntimeRosterEntry(
+            catId,
+            String(breed.modelFamily ?? breed.id ?? catId),
+            String(breed.displayName ?? breed.name ?? catId),
+            true,
+            undefined,
+            patch.behaviors,
           ),
     };
   }

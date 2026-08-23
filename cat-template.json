@@ -181,6 +181,9 @@
         "peer-reviewer",
         "security"
       ],
+      "behaviors": [
+        "engineering-discipline"
+      ],
       "lead": true,
       "available": true,
       "evaluation": "GPT 5.x via Codex CLI：代码实现、审查、安全分析、测试覆盖。"
@@ -229,6 +232,9 @@
       "roles": [
         "coding",
         "multi-agent"
+      ],
+      "behaviors": [
+        "opencode-runtime-boundary"
       ],
       "lead": true,
       "available": true,

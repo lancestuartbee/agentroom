@@ -18,6 +18,8 @@ export interface TemplateCard {
   teamStrengths?: string;
   /** F032: structured capability/role bindings seeded from roster. */
   roles?: string[];
+  /** F032: independent collaboration behavior bindings seeded from roster. */
+  behaviors?: string[];
 }
 
 interface TemplateStepProps {

@@ -187,6 +187,7 @@ const baseCatSchema = z.object({
   sessionChain: z.boolean().optional(),
   voiceConfig: voiceConfigSchema.optional(),
   roles: z.array(z.string().min(1)).optional(),
+  behaviors: z.array(z.string().min(1)).optional(),
 });
 
 /** Strip trailing slashes from model names — prevents "MiniMax-M2.7/" artifacts.
@@ -261,6 +262,7 @@ const updateCatSchema = z.object({
   voiceConfig: voiceConfigSchema.nullable().optional(),
   acp: acpConfigSchema.nullable().optional(), // F161: nullable to allow removing ACP transport
   roles: z.array(z.string().min(1)).optional(),
+  behaviors: z.array(z.string().min(1)).optional(),
 });
 
 type UpdateCatRequestBody = z.infer<typeof updateCatSchema>;
@@ -506,6 +508,7 @@ async function toCatResponse(
       ? {
           family: metadata.roster.family,
           roles: [...metadata.roster.roles],
+          behaviors: [...(metadata.roster.behaviors ?? [])],
           lead: metadata.roster.lead,
           available: metadata.roster.available,
           evaluation: metadata.roster.evaluation,
@@ -564,18 +567,20 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         }[];
         clientDefaults?: Record<string, { defaultModel: string; models: string[] }>;
       };
-      // F032: derive default roles from roster so the UI can seed new members with
-      // structured capabilities instead of falling back to ['assistant'].
+      // F032: derive independent role and behavior defaults from roster so the UI
+      // can seed both axes without inferring either from breed or model identity.
       const templateConfig = loadCatConfig(templatePath);
       const allCats = Object.values(toAllCatConfigs(templateConfig));
       const roster = getRoster(templateConfig);
       const breedToRoles = new Map<string, string[]>();
+      const breedToBehaviors = new Map<string, string[]>();
       for (const cat of allCats) {
         if (cat.isDefaultVariant && cat.breedId) {
           const entry = roster[cat.id];
           if (entry?.roles && entry.roles.length > 0) {
             breedToRoles.set(cat.breedId, [...entry.roles]);
           }
+          breedToBehaviors.set(cat.breedId, [...(entry?.behaviors ?? [])]);
         }
       }
       if (raw.roleTemplates && raw.roleTemplates.length > 0) {
@@ -583,6 +588,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           templates: raw.roleTemplates.map((t) => ({
             ...t,
             roles: breedToRoles.get(t.id) ?? [],
+            behaviors: breedToBehaviors.get(t.id) ?? [],
           })),
           clientDefaults: raw.clientDefaults ?? {},
         };
@@ -604,6 +610,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           runtimeClient: cat.runtimeClient,
           teamStrengths: cat.teamStrengths,
           roles: breedToRoles.get(cat.breedId ?? cat.id) ?? [],
+          behaviors: breedToBehaviors.get(cat.breedId ?? cat.id) ?? [],
         })),
         clientDefaults: {},
       };
@@ -682,6 +689,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         createRuntimeCat(projectRoot, {
           catId: body.catId,
           roles: body.roles,
+          behaviors: body.behaviors,
           name: body.name,
           displayName: body.displayName,
           variantLabel: body.variantLabel,
@@ -716,6 +724,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         createRuntimeCat(projectRoot, {
           catId: body.catId,
           roles: body.roles,
+          behaviors: body.behaviors,
           name: body.name,
           displayName: body.displayName,
           variantLabel: body.variantLabel,
@@ -748,6 +757,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         createRuntimeCat(projectRoot, {
           catId: body.catId,
           roles: body.roles,
+          behaviors: body.behaviors,
           name: body.name,
           displayName: body.displayName,
           variantLabel: body.variantLabel,
@@ -968,6 +978,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         ...(nextCli !== undefined ? { cli: nextCli } : {}),
         ...(body.available !== undefined ? { available: body.available } : {}),
         ...(body.roles !== undefined ? { roles: body.roles } : {}),
+        ...(body.behaviors !== undefined ? { behaviors: body.behaviors } : {}),
         ...(body.cliConfigArgs !== undefined ? { cliConfigArgs: body.cliConfigArgs } : {}),
         ...(body.agyProfile !== undefined
           ? body.agyProfile === null
