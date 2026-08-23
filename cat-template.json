@@ -135,19 +135,11 @@
     },
     "codex": {
       "defaultModel": "gpt-5.4",
-      "models": [
-        "gpt-5.3-codex",
-        "gpt-5.3-codex-spark",
-        "gpt-5.4"
-      ]
+      "models": ["gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.4"]
     },
     "gemini": {
       "defaultModel": "gemini-2.5-pro",
-      "models": [
-        "gemini-2.5-pro",
-        "gemini-3-flash-preview",
-        "gemini-3.1-pro-preview"
-      ]
+      "models": ["gemini-2.5-pro", "gemini-3-flash-preview", "gemini-3.1-pro-preview"]
     }
   },
   "coCreator": {
@@ -155,109 +147,76 @@
     "nickname": "大当家",
     "avatar": "/avatars/keeper.png",
     "timeZone": "America/Los_Angeles",
-    "aliases": [
-      "You",
-      "Owner"
-    ],
-    "mentionPatterns": [
-      "@co-creator",
-      "@owner"
-    ]
+    "aliases": ["You", "Owner"],
+    "mentionPatterns": ["@co-creator", "@owner"]
   },
   "roster": {
     "opus": {
       "family": "claude",
-      "roles": [
-        "architect",
-        "peer-reviewer"
-      ],
+      "roles": ["architect", "peer-reviewer", "claude"],
       "lead": true,
       "available": true,
       "evaluation": "Claude Opus：复杂推理、架构判断、长上下文综合。"
     },
     "codex": {
       "family": "gpt",
-      "roles": [
-        "peer-reviewer",
-        "security"
-      ],
+      "roles": ["peer-reviewer", "security"],
       "lead": true,
       "available": true,
       "evaluation": "GPT 5.x via Codex CLI：代码实现、审查、安全分析、测试覆盖。"
     },
     "gemini": {
       "family": "gemini",
-      "roles": [
-        "designer"
-      ],
+      "roles": ["designer"],
       "lead": true,
       "available": true,
       "evaluation": "Gemini Pro via AGY：多模态理解、长上下文、视觉证据和前端讨论。"
     },
     "gemini25": {
       "family": "gemini",
-      "roles": [
-        "designer",
-        "triage"
-      ],
+      "roles": ["designer", "triage"],
       "lead": false,
       "available": true,
       "evaluation": "Gemini Flash via AGY：快速资料初筛、多模态理解、轻量讨论。"
     },
     "dare": {
       "family": "dare",
-      "roles": [
-        "coding"
-      ],
+      "roles": ["coding"],
       "lead": true,
       "available": true,
       "evaluation": "确定性执行框架 agent，零信任验证 + 审计追踪 (F050)"
     },
     "antigravity": {
       "family": "gemini",
-      "roles": [
-        "creative",
-        "visual",
-        "browser-agent"
-      ],
+      "roles": ["creative", "visual", "browser-agent"],
       "lead": true,
       "available": false,
       "evaluation": "Gemini family AGY runtime：IDE/browser 自动化和视觉证据链。"
     },
     "opencode": {
       "family": "opencode",
-      "roles": [
-        "coding",
-        "multi-agent"
-      ],
+      "roles": ["coding", "multi-agent", "opencode"],
       "lead": true,
       "available": true,
       "evaluation": "开源多模型编码 agent，自带 Oh My OpenCode 多专家编排 + LSP (F105)"
     },
     "kimi": {
       "family": "kimi",
-      "roles": [
-        "research",
-        "writer"
-      ],
+      "roles": ["research", "writer"],
       "lead": true,
       "available": true,
       "evaluation": "Kimi：中文长文理解、资料整理、结构化输出和编码辅助。"
     },
     "opus-47": {
       "family": "claude",
-      "roles": [
-        "architect"
-      ],
+      "roles": ["architect", "claude"],
       "lead": false,
       "available": true,
       "evaluation": "Claude Opus 4.7：试用模型线，能力画像待校准。"
     },
     "fable-5": {
       "family": "claude",
-      "roles": [
-        "architect"
-      ],
+      "roles": ["architect", "claude"],
       "lead": false,
       "available": true,
       "evaluation": "Claude Fable：深度推理、架构判断、长文共创，能力画像待校准。"
@@ -281,10 +240,7 @@
         "primary": "#9B7EBD",
         "secondary": "#E8DFF5"
       },
-      "mentionPatterns": [
-        "@opus",
-        "@claude"
-      ],
+      "mentionPatterns": ["@opus", "@claude"],
       "roleDescription": "Claude 模型家族，适合复杂推理、系统设计、长上下文协作。",
       "teamStrengths": "复杂推理、架构判断、长上下文综合",
       "caution": null,
@@ -298,18 +254,11 @@
           "cli": {
             "command": "claude",
             "outputFormat": "stream-json",
-            "defaultArgs": [
-              "--output-format",
-              "stream-json"
-            ],
+            "defaultArgs": ["--output-format", "stream-json"],
             "effort": "max"
           },
           "personality": "",
-          "strengths": [
-            "architecture",
-            "backend",
-            "mcp"
-          ],
+          "strengths": ["architecture", "backend", "mcp"],
           "contextBudget": {
             "maxPromptTokens": 180000,
             "maxContextTokens": 160000,
@@ -338,10 +287,7 @@
           "catId": "sonnet",
           "variantLabel": "Sonnet",
           "displayName": "Claude",
-          "mentionPatterns": [
-            "@sonnet",
-            "@claude-sonnet"
-          ],
+          "mentionPatterns": ["@sonnet", "@claude-sonnet"],
           "clientId": "anthropic",
           "defaultModel": "claude-sonnet-4-6",
           "mcpSupport": true,
@@ -353,19 +299,11 @@
           "cli": {
             "command": "claude",
             "outputFormat": "stream-json",
-            "defaultArgs": [
-              "--output-format",
-              "stream-json",
-              "--model",
-              "claude-sonnet-4-6"
-            ],
+            "defaultArgs": ["--output-format", "stream-json", "--model", "claude-sonnet-4-6"],
             "effort": "max"
           },
           "personality": "",
-          "strengths": [
-            "chat",
-            "quick-tasks"
-          ],
+          "strengths": ["chat", "quick-tasks"],
           "teamStrengths": "日常开发、快速实现、上下文协作",
           "caution": null,
           "contextBudget": {
@@ -394,11 +332,7 @@
           "catId": "opus-45",
           "variantLabel": "Opus 4.5",
           "displayName": "Claude",
-          "mentionPatterns": [
-            "@opus45",
-            "@opus-45",
-            "@claude-opus45"
-          ],
+          "mentionPatterns": ["@opus45", "@opus-45", "@claude-opus45"],
           "clientId": "anthropic",
           "defaultModel": "claude-opus-4-5-20251101",
           "mcpSupport": true,
@@ -410,18 +344,11 @@
           "cli": {
             "command": "claude",
             "outputFormat": "stream-json",
-            "defaultArgs": [
-              "--output-format",
-              "stream-json"
-            ],
+            "defaultArgs": ["--output-format", "stream-json"],
             "effort": "max"
           },
           "personality": "",
-          "strengths": [
-            "deep-reasoning",
-            "analysis",
-            "architecture"
-          ],
+          "strengths": ["deep-reasoning", "analysis", "architecture"],
           "teamStrengths": "深度推理、创意写作、架构判断",
           "caution": "旧版 Opus，代码能力按实测校准",
           "contextBudget": {
@@ -450,12 +377,7 @@
           "catId": "fable-5",
           "variantLabel": "Fable 5",
           "displayName": "Claude",
-          "mentionPatterns": [
-            "@fable5",
-            "@fable-5",
-            "@claude-fable-5",
-            "@claude-fable"
-          ],
+          "mentionPatterns": ["@fable5", "@fable-5", "@claude-fable-5", "@claude-fable"],
           "clientId": "anthropic",
           "defaultModel": "claude-fable-5",
           "mcpSupport": true,
@@ -467,22 +389,12 @@
           "cli": {
             "command": "claude",
             "outputFormat": "stream-json",
-            "defaultArgs": [
-              "--output-format",
-              "stream-json",
-              "--model",
-              "claude-fable-5"
-            ],
+            "defaultArgs": ["--output-format", "stream-json", "--model", "claude-fable-5"],
             "effort": "max"
           },
           "roleDescription": "Claude Fable 模型线，适合深度推理、故事化表达和架构判断。",
           "personality": "",
-          "strengths": [
-            "deep-reasoning",
-            "architecture",
-            "writing",
-            "synthesis"
-          ],
+          "strengths": ["deep-reasoning", "architecture", "writing", "synthesis"],
           "teamStrengths": "深度推理、架构判断、长文共创（待校准）",
           "caution": "新模型线，能力画像待校准",
           "contextBudget": {
@@ -523,11 +435,7 @@
         "primary": "#5B8C5A",
         "secondary": "#D4E6D3"
       },
-      "mentionPatterns": [
-        "@codex",
-        "@gpt",
-        "@openai"
-      ],
+      "mentionPatterns": ["@codex", "@gpt", "@openai"],
       "roleDescription": "GPT 5.x 模型家族，适合代码实现、审查、通用推理和测试验证。",
       "teamStrengths": "代码实现、代码审查、安全分析、测试覆盖",
       "features": {
@@ -545,18 +453,11 @@
           "cli": {
             "command": "codex",
             "outputFormat": "json",
-            "defaultArgs": [
-              "exec",
-              "--json"
-            ],
+            "defaultArgs": ["exec", "--json"],
             "effort": "xhigh"
           },
           "personality": "",
-          "strengths": [
-            "code-review",
-            "security",
-            "testing"
-          ],
+          "strengths": ["code-review", "security", "testing"],
           "contextBudget": {
             "maxPromptTokens": 240000,
             "maxContextTokens": 216000,
@@ -609,19 +510,11 @@
           "cli": {
             "command": "codex",
             "outputFormat": "json",
-            "defaultArgs": [
-              "exec",
-              "--json"
-            ],
+            "defaultArgs": ["exec", "--json"],
             "effort": "xhigh"
           },
           "personality": "",
-          "strengths": [
-            "reasoning",
-            "code-review",
-            "analysis",
-            "debugging"
-          ],
+          "strengths": ["reasoning", "code-review", "analysis", "debugging"],
           "teamStrengths": "架构思考、Review、bug 定位",
           "caution": null,
           "contextBudget": {
@@ -650,11 +543,7 @@
           "catId": "spark",
           "variantLabel": "Spark",
           "displayName": "GPT Spark",
-          "mentionPatterns": [
-            "@spark",
-            "@codex-spark",
-            "@gpt-spark"
-          ],
+          "mentionPatterns": ["@spark", "@codex-spark", "@gpt-spark"],
           "clientId": "openai",
           "defaultModel": "gpt-5.3-codex-spark",
           "mcpSupport": true,
@@ -666,20 +555,11 @@
           "cli": {
             "command": "codex",
             "outputFormat": "json",
-            "defaultArgs": [
-              "exec",
-              "--json",
-              "-m",
-              "gpt-5.3-codex-spark"
-            ],
+            "defaultArgs": ["exec", "--json", "-m", "gpt-5.3-codex-spark"],
             "effort": "xhigh"
           },
           "personality": "",
-          "strengths": [
-            "fast-coding",
-            "quick-edits",
-            "low-latency"
-          ],
+          "strengths": ["fast-coding", "quick-edits", "low-latency"],
           "teamStrengths": "快速编码、精确点改",
           "caution": "128k context, 不会自动跑测试",
           "contextBudget": {
@@ -720,10 +600,7 @@
         "primary": "#5B9BD5",
         "secondary": "#D6E9F8"
       },
-      "mentionPatterns": [
-        "@gemini",
-        "@gemini-pro"
-      ],
+      "mentionPatterns": ["@gemini", "@gemini-pro"],
       "roleDescription": "Gemini 模型家族，适合多模态理解、长上下文分析、资料检索和视觉证据讨论。",
       "teamStrengths": "多模态理解、长上下文、视觉证据、前端讨论",
       "caution": "代码与事实性输出建议经过 reviewer 验证",
@@ -745,26 +622,12 @@
           },
           "acp": {
             "command": "agy",
-            "startupArgs": [
-              "--acp",
-              "--approval-mode",
-              "yolo"
-            ],
-            "mcpWhitelist": [
-              "cat-cafe",
-              "cat-cafe-memory",
-              "cat-cafe-collab",
-              "cat-cafe-signals",
-              "pencil"
-            ],
+            "startupArgs": ["--acp", "--approval-mode", "yolo"],
+            "mcpWhitelist": ["cat-cafe", "cat-cafe-memory", "cat-cafe-collab", "cat-cafe-signals", "pencil"],
             "supportsMultiplexing": true
           },
           "personality": "",
-          "strengths": [
-            "visual-design",
-            "ui-ux",
-            "creativity"
-          ],
+          "strengths": ["visual-design", "ui-ux", "creativity"],
           "contextBudget": {
             "maxPromptTokens": 350000,
             "maxContextTokens": 300000,
@@ -794,11 +657,7 @@
           "catId": "gemini25",
           "variantLabel": "Gemini 3.5",
           "displayName": "Gemini",
-          "mentionPatterns": [
-            "@gemini25",
-            "@gemini-25",
-            "@gemini-flash"
-          ],
+          "mentionPatterns": ["@gemini25", "@gemini-25", "@gemini-flash"],
           "clientId": "google",
           "defaultModel": "gemini-3.5-flash",
           "mcpSupport": true,
@@ -814,29 +673,15 @@
           },
           "acp": {
             "command": "agy",
-            "startupArgs": [
-              "--acp",
-              "--approval-mode",
-              "yolo"
-            ],
-            "mcpWhitelist": [
-              "cat-cafe",
-              "cat-cafe-memory",
-              "cat-cafe-collab",
-              "cat-cafe-signals",
-              "pencil"
-            ],
+            "startupArgs": ["--acp", "--approval-mode", "yolo"],
+            "mcpWhitelist": ["cat-cafe", "cat-cafe-memory", "cat-cafe-collab", "cat-cafe-signals", "pencil"],
             "supportsMultiplexing": true
           },
           "caution": "轻量模型线，关键结论建议复核",
           "restrictions": [],
           "personality": "",
           "teamStrengths": "快速资料初筛、多模态理解、创意发散",
-          "strengths": [
-            "visual-design",
-            "creativity",
-            "multimodal"
-          ],
+          "strengths": ["visual-design", "creativity", "multimodal"],
           "contextBudget": {
             "maxPromptTokens": 350000,
             "maxContextTokens": 300000,
@@ -875,13 +720,7 @@
         "primary": "#2563EB",
         "secondary": "#DBEAFE"
       },
-      "mentionPatterns": [
-        "@gemini35",
-        "@gemini-35",
-        "@gemini3.5",
-        "@flash",
-        "@gemini-flash"
-      ],
+      "mentionPatterns": ["@gemini35", "@gemini-35", "@gemini3.5", "@flash", "@gemini-flash"],
       "roleDescription": "Gemini Flash 模型线，适合快速资料初筛、多模态理解和高频轻量讨论。",
       "teamStrengths": "快速资料初筛、多模态理解、创意发散",
       "caution": "轻量模型线，关键结论建议复核",
@@ -902,11 +741,7 @@
           },
           "accountRef": "gemini",
           "personality": "",
-          "strengths": [
-            "visual-design",
-            "creativity",
-            "multimodal"
-          ],
+          "strengths": ["visual-design", "creativity", "multimodal"],
           "contextBudget": {
             "maxPromptTokens": 350000,
             "maxContextTokens": 300000,
@@ -946,11 +781,7 @@
         "primary": "#D4A76A",
         "secondary": "#F5EBD7"
       },
-      "mentionPatterns": [
-        "@dare",
-        "@dare-agent",
-        "@dare-runtime"
-      ],
+      "mentionPatterns": ["@dare", "@dare-agent", "@dare-runtime"],
       "roleDescription": "Dare agent 运行时，适合确定性执行、审计追踪和可重放任务链。",
       "teamStrengths": "确定性执行、审计追踪、状态外化",
       "caution": "框架 agent，底层 LLM 可变；事件输出需映射",
@@ -967,17 +798,10 @@
           "cli": {
             "command": "python",
             "outputFormat": "headless-json",
-            "defaultArgs": [
-              "-m",
-              "client"
-            ]
+            "defaultArgs": ["-m", "client"]
           },
           "personality": "",
-          "strengths": [
-            "deterministic-execution",
-            "audit",
-            "zero-trust"
-          ],
+          "strengths": ["deterministic-execution", "audit", "zero-trust"],
           "contextBudget": {
             "maxPromptTokens": 120000,
             "maxContextTokens": 100000,
@@ -1009,11 +833,7 @@
         "primary": "#D4853A",
         "secondary": "#FAEBDB"
       },
-      "mentionPatterns": [
-        "@antigravity",
-        "@agy",
-        "@gemini-agy"
-      ],
+      "mentionPatterns": ["@antigravity", "@agy", "@gemini-agy"],
       "roleDescription": "Gemini 模型家族的 AGY 运行客户端，适合 IDE/browser 自动化、多模态证据链和跨工具执行。",
       "teamStrengths": "浏览器自动化、视觉证据、IDE 自动化、多工具执行",
       "caution": "AGY bridge 需要本机 IDE runtime；具体工具权限由模式/任务决定",
@@ -1029,12 +849,7 @@
           "defaultModel": "gemini-3.1-pro",
           "mcpSupport": true,
           "personality": "",
-          "strengths": [
-            "image-generation",
-            "browser-automation",
-            "visual-evidence",
-            "multi-model"
-          ],
+          "strengths": ["image-generation", "browser-automation", "visual-evidence", "multi-model"],
           "contextBudget": {
             "maxPromptTokens": 350000,
             "maxContextTokens": 300000,
@@ -1064,11 +879,7 @@
           "catId": "antig-opus",
           "variantLabel": "Claude Opus",
           "displayName": "Claude",
-          "mentionPatterns": [
-            "@antig-opus",
-            "@antigravity-claude",
-            "@agy-claude"
-          ],
+          "mentionPatterns": ["@antig-opus", "@antigravity-claude", "@agy-claude"],
           "clientId": "antigravity",
           "defaultModel": "claude-opus-4-6",
           "mcpSupport": true,
@@ -1078,12 +889,7 @@
             "secondary": "#F5E4D0"
           },
           "personality": "",
-          "strengths": [
-            "image-generation",
-            "browser-automation",
-            "deep-reasoning",
-            "coding"
-          ],
+          "strengths": ["image-generation", "browser-automation", "deep-reasoning", "coding"],
           "contextBudget": {
             "maxPromptTokens": 180000,
             "maxContextTokens": 160000,
@@ -1123,13 +929,7 @@
         "primary": "#C8A951",
         "secondary": "#F5EDDA"
       },
-      "mentionPatterns": [
-        "@opencode",
-        "@金渐层",
-        "@golden",
-        "@golden-chinchilla",
-        "@oc"
-      ],
+      "mentionPatterns": ["@opencode", "@金渐层", "@golden", "@golden-chinchilla", "@oc"],
       "roleDescription": "OpenCode agent 运行时，适合 provider-agnostic 编码、LSP 集成和多专家编排。",
       "teamStrengths": "provider-agnostic 编码、LSP 集成、多专家编排",
       "caution": "OpenCode 原生 MCP 和 Clowder AI MCP 需避免冲突",
@@ -1146,19 +946,10 @@
           "cli": {
             "command": "opencode",
             "outputFormat": "ndjson",
-            "defaultArgs": [
-              "run",
-              "--format",
-              "json"
-            ]
+            "defaultArgs": ["run", "--format", "json"]
           },
           "personality": "",
-          "strengths": [
-            "coding",
-            "multi-agent-orchestration",
-            "lsp",
-            "open-source"
-          ],
+          "strengths": ["coding", "multi-agent-orchestration", "lsp", "open-source"],
           "contextBudget": {
             "maxPromptTokens": 180000,
             "maxContextTokens": 160000,
@@ -1199,12 +990,7 @@
         "primary": "#4B5563",
         "secondary": "#E5E7EB"
       },
-      "mentionPatterns": [
-        "@kimi",
-        "@moonshot",
-        "@月之暗面",
-        "@kimi-k3"
-      ],
+      "mentionPatterns": ["@kimi", "@moonshot", "@月之暗面", "@kimi-k3"],
       "roleDescription": "Kimi 模型家族，适合中文长文本理解、资料整理、结构化输出和编码辅助。",
       "teamStrengths": "中文长文、资料整理、结构化输出、编码辅助",
       "caution": null,
@@ -1218,18 +1004,10 @@
           "cli": {
             "command": "kimi",
             "outputFormat": "stream-json",
-            "defaultArgs": [
-              "--print",
-              "--output-format",
-              "stream-json"
-            ]
+            "defaultArgs": ["--print", "--output-format", "stream-json"]
           },
           "personality": "",
-          "strengths": [
-            "long-context",
-            "chinese-writing",
-            "summarization"
-          ],
+          "strengths": ["long-context", "chinese-writing", "summarization"],
           "contextBudget": {
             "maxPromptTokens": 240000,
             "maxContextTokens": 216000,
@@ -1261,11 +1039,7 @@
         "primary": "#7B1FA2",
         "secondary": "#E1BEE7"
       },
-      "mentionPatterns": [
-        "@opus47",
-        "@opus-47",
-        "@claude-opus47"
-      ],
+      "mentionPatterns": ["@opus47", "@opus-47", "@claude-opus47"],
       "roleDescription": "Claude Opus 4.7 试用模型线，能力画像待实测校准。",
       "teamStrengths": "待评估",
       "caution": "试用模型线，能力画像待校准",
@@ -1281,20 +1055,11 @@
           "cli": {
             "command": "claude",
             "outputFormat": "stream-json",
-            "defaultArgs": [
-              "--output-format",
-              "stream-json",
-              "--model",
-              "claude-opus-4-7"
-            ],
+            "defaultArgs": ["--output-format", "stream-json", "--model", "claude-opus-4-7"],
             "effort": "max"
           },
           "personality": "",
-          "strengths": [
-            "architecture",
-            "reasoning",
-            "coding"
-          ],
+          "strengths": ["architecture", "reasoning", "coding"],
           "contextBudget": {
             "maxPromptTokens": 180000,
             "maxContextTokens": 160000,
