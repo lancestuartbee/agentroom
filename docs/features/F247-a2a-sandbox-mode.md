@@ -8,7 +8,7 @@ created: 2026-08-10
 
 # F247: A2A 沙盒模式 — 项目级 A2A 开发容器
 
-> **Status**: spec | **Owner**: Kimi/K3 | **Priority**: P1
+> **Status**: implemented, pending operator acceptance | **Owner**: Kimi/K3 | **Priority**: P1
 
 ## Why
 
@@ -251,10 +251,10 @@ Reviewer usefulness check: tip teaches a concrete action, timing, or traceable h
 |------|------|
 | 2026-08-10 | 立项，明确模式命名、核心抽象、目录约定 |
 | 2026-08-10 | Phase A: schema & directory contract |
-| 2026-08-22 | Phase B: backend routing & memory isolation |
-| TBD | Phase C: scheduler & run loop |
-| TBD | Phase D: frontend dual-pane UX v1 |
-| 2026-08-22 | Phase E: backflow & promotion 实现完成并通过 review |
+| 2026-08-23 | Phase B: backend routing & memory isolation 实现完成并通过 review（routing fail-closed + lexical/entity/raw semantic/hybrid evidence scope） |
+| 2026-08-16 | Phase C: scheduler & run loop 实现完成并通过 review（luna） |
+| 2026-08-16 | Phase D: frontend dual-pane UX v1 实现完成并通过 review（luna） |
+| 2026-08-22 | Phase E: backflow & promotion 实现完成并通过 review（terra） |
 
 ## Review Gate
 
