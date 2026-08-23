@@ -791,7 +791,7 @@ describe('F215 BLOCKING-3: invokeSingleCat E2E — malformed service → suppres
 
     // Key assertion 2: user-visible relay card (text type) emitted before signal (BLOCKING 1 fix)
     const relayCardText = msgs.find(
-      (m) => m.type === 'text' && typeof m.content === 'string' && m.content.includes('Opus 4.8 炸毛了'),
+      (m) => m.type === 'text' && typeof m.content === 'string' && m.content.includes('Opus 4.8 工具调用格式异常'),
     );
     assert.ok(relayCardText, 'Expected user-visible relay card as text message (BLOCKING 1 fix)');
 
@@ -983,7 +983,7 @@ describe('F215 AC-B6 (P1 7th): malformed after content output → honest notice,
       (m) =>
         m.type === 'text' &&
         typeof m.content === 'string' &&
-        m.content.includes('手抖') &&
+        m.content.includes('最后一步没完成') &&
         !m.content.includes('系统已触发恢复流程'),
     );
     assert.ok(

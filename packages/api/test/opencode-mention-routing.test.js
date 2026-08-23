@@ -22,18 +22,18 @@ ensureFakeCliOnPath('opencode');
 
 /** Full pattern map including opencode — mirrors production catRegistry */
 const allPatterns = new Map([
-  ['opus', ['@opus', '@布偶猫', '@布偶', '@宪宪']],
-  ['codex', ['@codex', '@缅因猫', '@缅因', '@砚砚']],
-  ['gemini', ['@gemini', '@暹罗猫', '@暹罗', '@烁烁']],
-  ['opencode', ['@opencode', '@金渐层', '@golden', '@golden-chinchilla']],
+  ['opus', ['@opus', '@claude']],
+  ['codex', ['@codex', '@gpt', '@openai']],
+  ['gemini', ['@gemini', '@gemini-pro']],
+  ['opencode', ['@opencode', '@金渐层', '@golden', '@golden-chinchilla', '@oc']],
 ]);
 
 /** Display names for realistic system prompt output */
 const catDisplayNames = {
-  opus: '布偶猫',
-  codex: '缅因猫',
-  gemini: '暹罗猫',
-  opencode: '金渐层',
+  opus: 'Claude',
+  codex: 'GPT',
+  gemini: 'Gemini',
+  opencode: 'OpenCode',
 };
 
 /** Minimal CatConfig stub for catRegistry tests */
@@ -210,7 +210,7 @@ describe('System prompt — opencode context injection', () => {
 
   it('buildStaticIdentity produces identity for opencode', () => {
     const identity = buildStaticIdentity('opencode');
-    assert.ok(identity.includes('金渐层'), 'should include displayName');
+    assert.ok(identity.includes('OpenCode'), 'should include displayName');
     assert.ok(identity.length > 10, 'should be non-trivial');
   });
 
@@ -223,7 +223,7 @@ describe('System prompt — opencode context injection', () => {
       directMessageFrom: 'opus',
     });
     assert.ok(ctx.includes('Direct message from'), 'should include direct message context');
-    assert.ok(ctx.includes('布偶猫'), 'should include sender displayName');
+    assert.ok(ctx.includes('Claude'), 'should include sender displayName');
   });
 
   it('buildInvocationContext includes opencode identity line', () => {
@@ -233,7 +233,7 @@ describe('System prompt — opencode context injection', () => {
       teammates: [],
       mcpAvailable: false,
     });
-    assert.ok(ctx.includes('金渐层'), 'should include opencode displayName');
+    assert.ok(ctx.includes('OpenCode'), 'should include opencode displayName');
     assert.ok(ctx.includes('opencode'), 'should include catId');
   });
 
@@ -246,7 +246,7 @@ describe('System prompt — opencode context injection', () => {
       directMessageFrom: 'opencode',
     });
     assert.ok(ctx.includes('Direct message from'), 'should include DM context');
-    assert.ok(ctx.includes('金渐层'), 'should include opencode displayName');
+    assert.ok(ctx.includes('OpenCode'), 'should include opencode displayName');
   });
 });
 
@@ -369,12 +369,12 @@ describe('OpenCodeAgentService — routed prompt with system context', () => {
     const effectivePrompt = `${staticIdentity}\n\n---\n\n${prompt}`;
 
     // Verify structure matches production assembly
-    assert.ok(staticIdentity.includes('金渐层'), 'staticIdentity includes opencode displayName');
+    assert.ok(staticIdentity.includes('OpenCode'), 'staticIdentity includes opencode displayName');
     assert.ok(invocationContext.includes('Direct message from'), 'invocationContext includes DM context');
-    assert.ok(invocationContext.includes('布偶猫'), 'invocationContext includes sender displayName');
+    assert.ok(invocationContext.includes('Claude'), 'invocationContext includes sender displayName');
 
     // Verify ordering: staticIdentity → invocationContext → userMessage
-    const idxIdentity = effectivePrompt.indexOf('金渐层');
+    const idxIdentity = effectivePrompt.indexOf('OpenCode');
     const idxDM = effectivePrompt.indexOf('Direct message from');
     const idxUser = effectivePrompt.indexOf(userMessage);
     assert.ok(idxIdentity < idxDM, 'staticIdentity precedes invocationContext');
@@ -435,7 +435,7 @@ describe('OpenCodeAgentService — routed prompt with system context', () => {
     assert.equal(spawnFn.mock.calls.length, 1, 'spawnFn called once');
     const args = spawnFn.mock.calls[0].arguments[1];
     const lastArg = args[args.length - 1];
-    assert.ok(lastArg.includes('金渐层'), 'CLI arg includes opencode identity');
+    assert.ok(lastArg.includes('OpenCode'), 'CLI arg includes opencode identity');
     assert.ok(lastArg.includes('Direct message from'), 'CLI arg includes DM context');
     assert.ok(lastArg.includes(userMessage), 'CLI arg includes user message');
   });
@@ -484,13 +484,13 @@ describe('OpenCodeAgentService — routed prompt with system context', () => {
     // Verify prompt was delivered matching route-serial assembly
     const cliArgs = spawnFn.mock.calls[0].arguments[1];
     const deliveredPrompt = cliArgs[cliArgs.length - 1];
-    assert.ok(deliveredPrompt.includes('金渐层'), 'opencode identity injected');
+    assert.ok(deliveredPrompt.includes('OpenCode'), 'opencode identity injected');
     assert.ok(deliveredPrompt.includes('Direct message from'), 'DM context injected');
     assert.ok(deliveredPrompt.includes(userText), 'original user message preserved');
 
     // Verify structure: identity → DM → user message (matching production order)
     // Use the full userText to avoid matching @opencode in Identity line
-    const idxId = deliveredPrompt.indexOf('金渐层');
+    const idxId = deliveredPrompt.indexOf('OpenCode');
     const idxDm = deliveredPrompt.indexOf('Direct message from');
     const idxUsr = deliveredPrompt.indexOf(userText);
     assert.ok(idxId < idxDm && idxDm < idxUsr, 'production ordering: identity → invocationContext → user message');
@@ -526,7 +526,7 @@ describe('Fixture guard — allPatterns matches cat-template.json truth source',
     // Guard: fixture patterns must exist in the truth source — prevents phantom patterns
     // that would make tests pass for patterns that were removed from production config.
     // Note: fixture may be a subset (e.g., opus fixture omits @ragdoll for simplicity)
-    const catIdToBreed = { opus: 'ragdoll', codex: 'maine-coon', gemini: 'siamese', opencode: 'golden-chinchilla' };
+    const catIdToBreed = { opus: 'ragdoll', codex: 'maine-coon', gemini: 'gemini', opencode: 'golden-chinchilla' };
     for (const [catId, fixturePatterns] of allPatterns) {
       const breedId = catIdToBreed[catId];
       const breed = catConfig.breeds.find((b) => b.id === breedId);

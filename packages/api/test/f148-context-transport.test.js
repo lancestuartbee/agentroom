@@ -639,7 +639,7 @@ describe('F148 Phase C: formatAnchors', () => {
     assert.equal(lines.length, 2);
     assert.ok(lines[0].includes('co-creator'), `user anchor should show 'co-creator', got: ${lines[0]}`);
     assert.ok(
-      lines[1].includes('opus') || lines[1].includes('宪宪') || lines[1].includes('布偶猫'),
+      lines[1].includes('opus') || lines[1].includes('Opus') || lines[1].includes('Claude'),
       `cat anchor should include speaker name, got: ${lines[1]}`,
     );
   });

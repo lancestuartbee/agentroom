@@ -63,7 +63,7 @@ describe('clowder-ai#489: shadow detection', () => {
     );
 
     // "我问一下 @codex 这个问题" — has inline @mention but NO action keyword → shadow miss
-    const result = detectInlineActionMentionsWithShadow('我问一下 @缅因猫 这个问题', 'opus', []);
+    const result = detectInlineActionMentionsWithShadow('我问一下 @codex 这个问题', 'opus', []);
 
     assert.ok(result, 'should return result object');
     assert.ok(Array.isArray(result.strictHits), 'should have strictHits array');
@@ -79,7 +79,7 @@ describe('clowder-ai#489: shadow detection', () => {
     );
 
     // "Ready for @codex review" — strict detection catches this → no shadow miss
-    const result = detectInlineActionMentionsWithShadow('Ready for @缅因猫 review', 'opus', []);
+    const result = detectInlineActionMentionsWithShadow('Ready for @codex review', 'opus', []);
 
     assert.ok(result.strictHits.length > 0, 'strict should catch this (action keyword present)');
     assert.equal(result.shadowMisses.length, 0, 'no shadow miss when strict catches it');
@@ -91,7 +91,7 @@ describe('clowder-ai#489: shadow detection', () => {
     );
 
     // "@codex 请看一下" — line-start mention, should not be shadow miss
-    const result = detectInlineActionMentionsWithShadow('@缅因猫 请看一下', 'opus', []);
+    const result = detectInlineActionMentionsWithShadow('@codex 请看一下', 'opus', []);
 
     assert.equal(result.strictHits.length, 0, 'strict: line-start mentions handled by parseA2AMentions');
     assert.equal(result.shadowMisses.length, 0, 'shadow: line-start mentions should be excluded');
@@ -102,7 +102,7 @@ describe('clowder-ai#489: shadow detection', () => {
       '../dist/domains/cats/services/agents/routing/a2a-mentions.js'
     );
 
-    const text = '看看这个代码\n```\n@缅因猫 review\n```\n没别的了';
+    const text = '看看这个代码\n```\n@codex review\n```\n没别的了';
     const result = detectInlineActionMentionsWithShadow(text, 'opus', []);
 
     assert.equal(result.strictHits.length, 0, 'no strict hits in code block');
@@ -114,7 +114,7 @@ describe('clowder-ai#489: shadow detection', () => {
       '../dist/domains/cats/services/agents/routing/a2a-mentions.js'
     );
 
-    const text = '> 之前 @缅因猫 说过这个问题';
+    const text = '> 之前 @codex 说过这个问题';
     const result = detectInlineActionMentionsWithShadow(text, 'opus', []);
 
     assert.equal(result.strictHits.length, 0, 'no strict hits in blockquote');
@@ -126,7 +126,7 @@ describe('clowder-ai#489: shadow detection', () => {
       '../dist/domains/cats/services/agents/routing/a2a-mentions.js'
     );
 
-    const result = detectInlineActionMentionsWithShadow('我问一下 @缅因猫 这个问题', 'opus', []);
+    const result = detectInlineActionMentionsWithShadow('我问一下 @codex 这个问题', 'opus', []);
 
     assert.equal(result.shadowMisses.length, 1);
     const miss = result.shadowMisses[0];
@@ -153,7 +153,7 @@ describe('clowder-ai#489: shadow detection', () => {
     );
 
     // codex is already routed via line-start → should not appear in shadow
-    const result = detectInlineActionMentionsWithShadow('这里 @缅因猫 也提到了', 'opus', ['codex']);
+    const result = detectInlineActionMentionsWithShadow('这里 @codex 也提到了', 'opus', ['codex']);
 
     assert.equal(result.shadowMisses.length, 0, 'already-routed mention should be excluded from shadow');
   });
@@ -166,7 +166,7 @@ describe('clowder-ai#489: shadow detection', () => {
     );
 
     // "之前 @codex 提出的方案不错" — pure narrative, no action-like context
-    const result = detectInlineActionMentionsWithShadow('之前 @缅因猫 提出的方案不错', 'opus', []);
+    const result = detectInlineActionMentionsWithShadow('之前 @codex 提出的方案不错', 'opus', []);
 
     assert.equal(result.strictHits.length, 0, 'no strict hits (narrative)');
     assert.equal(result.shadowMisses.length, 0, 'narrative mention must not be shadow miss');
@@ -178,7 +178,7 @@ describe('clowder-ai#489: shadow detection', () => {
     );
 
     // "麻烦 @codex 过目一下" — relaxed action ("麻烦") but not in strict regex
-    const result = detectInlineActionMentionsWithShadow('麻烦 @缅因猫 验证一下', 'opus', []);
+    const result = detectInlineActionMentionsWithShadow('麻烦 @codex 验证一下', 'opus', []);
 
     assert.equal(result.strictHits.length, 0, 'not caught by strict regex');
     assert.equal(result.shadowMisses.length, 1, 'relaxed action context → shadow miss');
@@ -192,8 +192,8 @@ describe('clowder-ai#489: shadow detection', () => {
       '../dist/domains/cats/services/agents/routing/a2a-mentions.js'
     );
 
-    // First @缅因猫 is narrative ("提过"); second has relaxed action ("麻烦") but not strict
-    const result = detectInlineActionMentionsWithShadow('之前 @缅因猫 提过，麻烦 @缅因猫 验证一下', 'opus', []);
+    // First @codex is narrative ("提过"); second has relaxed action ("麻烦") but not strict
+    const result = detectInlineActionMentionsWithShadow('之前 @codex 提过，麻烦 @codex 验证一下', 'opus', []);
 
     assert.equal(result.shadowMisses.length, 1, 'second occurrence should be shadow miss');
     assert.equal(result.shadowMisses[0].catId, 'codex');
@@ -208,7 +208,7 @@ describe('clowder-ai#489: shadow detection', () => {
 
     // Line 1: strict hit (action keyword "review")
     // Line 2: shadow miss (no action keyword — vocab gap candidate)
-    const text = 'Ready for @缅因猫 review\n我问一下 @缅因猫 这个问题';
+    const text = 'Ready for @codex review\n我问一下 @codex 这个问题';
     const result = detectInlineActionMentionsWithShadow(text, 'opus', []);
 
     assert.ok(result.strictHits.length > 0, 'line 1 should be strict hit');
@@ -227,7 +227,7 @@ describe('clowder-ai#489: routedSet skip tracking', () => {
 
     // "Ready for @codex review" — action keyword present, but codex already routed
     const result = detectInlineActionMentionsWithShadow(
-      'Ready for @缅因猫 review',
+      'Ready for @codex review',
       'opus',
       ['codex'], // codex already in routedSet
     );
@@ -242,10 +242,8 @@ describe('clowder-ai#489: routedSet skip tracking', () => {
       '../dist/domains/cats/services/agents/routing/a2a-mentions.js'
     );
 
-    // First @缅因猫 is narrative (no action); second has "Ready for" → actionable but routed
-    const result = detectInlineActionMentionsWithShadow('之前 @缅因猫 提过，Ready for @缅因猫 review', 'opus', [
-      'codex',
-    ]);
+    // First @codex is narrative (no action); second has "Ready for" → actionable but routed
+    const result = detectInlineActionMentionsWithShadow('之前 @codex 提过，Ready for @codex review', 'opus', ['codex']);
 
     assert.equal(result.routedSetSkips, 1, 'second occurrence is actionable + routed → skip');
   });
@@ -258,7 +256,7 @@ describe('clowder-ai#489: routedSet skip tracking', () => {
     );
 
     // "这里 @codex 也提到了" — no action keyword, pure narrative
-    const result = detectInlineActionMentionsWithShadow('这里 @缅因猫 也提到了', 'opus', ['codex']);
+    const result = detectInlineActionMentionsWithShadow('这里 @codex 也提到了', 'opus', ['codex']);
 
     assert.equal(result.routedSetSkips, 0, 'narrative mention must not count as routed overlap');
     assert.equal(result.shadowMisses.length, 0, 'routed cat still excluded from shadow');

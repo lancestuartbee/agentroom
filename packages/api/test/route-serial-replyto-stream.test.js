@@ -65,7 +65,7 @@ describe('routeSerial replyTo on stream messages', () => {
     const appendCalls = [];
     const deps = createMockDeps(
       {
-        opus: createMockService('opus', '我先看一下\n@缅因猫 帮忙复核'),
+        opus: createMockService('opus', '我先看一下\n@codex 帮忙复核'),
         codex: createMockService('codex', '收到，我来复核'),
       },
       appendCalls,
@@ -85,7 +85,7 @@ describe('routeSerial replyTo on stream messages', () => {
     assert.equal(codexText.replyTo, 'msg-1', 'stream text should carry replyTo for live ReplyPill rendering');
     assert.deepEqual(codexText.replyPreview, {
       senderCatId: 'opus',
-      content: '我先看一下\n@缅因猫 帮忙复核',
+      content: '我先看一下\n@codex 帮忙复核',
     });
   });
 
@@ -102,7 +102,7 @@ describe('routeSerial replyTo on stream messages', () => {
           id: 'msg-trigger',
           userId: 'user1',
           catId: 'opus',
-          content: '@缅因猫 帮忙复核',
+          content: '@codex 帮忙复核',
           mentions: ['codex'],
           timestamp: 123,
           threadId: 'thread1',
@@ -111,7 +111,7 @@ describe('routeSerial replyTo on stream messages', () => {
     );
 
     const yielded = [];
-    for await (const msg of routeSerial(deps, ['codex'], '@缅因猫 帮忙复核', 'user1', 'thread1', {
+    for await (const msg of routeSerial(deps, ['codex'], '@codex 帮忙复核', 'user1', 'thread1', {
       a2aTriggerMessageId: 'msg-trigger',
     })) {
       yielded.push(msg);
@@ -125,7 +125,7 @@ describe('routeSerial replyTo on stream messages', () => {
     assert.equal(codexText.replyTo, 'msg-trigger', 'live stream text should carry trigger replyTo');
     assert.deepEqual(codexText.replyPreview, {
       senderCatId: 'opus',
-      content: '@缅因猫 帮忙复核',
+      content: '@codex 帮忙复核',
     });
   });
 
@@ -171,7 +171,7 @@ describe('routeSerial replyTo on stream messages', () => {
     const deferred = [];
     const deps = createMockDeps(
       {
-        opus: createMockService('opus', '我先看一下\n@缅因猫 帮忙复核'),
+        opus: createMockService('opus', '我先看一下\n@codex 帮忙复核'),
       },
       appendCalls,
     );

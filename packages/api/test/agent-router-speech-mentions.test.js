@@ -43,7 +43,7 @@ test('resolveTargetsAndIntent supports speech-style "at + nickname" mentions', a
     }),
   );
 
-  const result = await router.resolveTargetsAndIntent('at咱的砚砚 和 at 宪宪 你们出来了', 'thread-voice');
+  const result = await router.resolveTargetsAndIntent('at咱的gpt 和 at claude 你们出来了', 'thread-voice');
   assert.deepEqual(result.targetCats, ['codex', 'opus']);
 });
 
@@ -59,7 +59,7 @@ test('resolveTargetsAndIntent supports at without spaces', async () => {
     }),
   );
 
-  const result = await router.resolveTargetsAndIntent('at缅因 你先看下这个', 'thread-voice');
+  const result = await router.resolveTargetsAndIntent('atcodex 你先看下这个', 'thread-voice');
   assert.deepEqual(result.targetCats, ['codex']);
 });
 
@@ -93,7 +93,7 @@ test('resolveTargetsAndIntent supports 艾特 prefix', async () => {
     }),
   );
 
-  const result = await router.resolveTargetsAndIntent('艾特宪宪 看一下这个', 'thread-voice');
+  const result = await router.resolveTargetsAndIntent('艾特claude 看一下这个', 'thread-voice');
   assert.deepEqual(result.targetCats, ['opus']);
 });
 
@@ -125,7 +125,7 @@ test('resolveTargetsAndIntent keeps existing @mentions unchanged', async () => {
     }),
   );
 
-  const result = await router.resolveTargetsAndIntent('@砚砚 看下这个', 'thread-voice');
+  const result = await router.resolveTargetsAndIntent('@gpt 看下这个', 'thread-voice');
   assert.deepEqual(result.targetCats, ['codex']);
 });
 
@@ -141,6 +141,6 @@ test('resolveTargetsAndIntent supports @。 speech punctuation prefix', async ()
     }),
   );
 
-  const result = await router.resolveTargetsAndIntent('@。砚砚 出来一下', 'thread-voice');
+  const result = await router.resolveTargetsAndIntent('@。gpt 出来一下', 'thread-voice');
   assert.deepEqual(result.targetCats, ['codex']);
 });

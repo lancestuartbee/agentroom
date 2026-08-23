@@ -5,7 +5,7 @@
  *
  * D1: Failure classification — quota (sticky 4h) / structural (sticky 30min) / transient (retry, 3x→structural)
  * D2: Health state per-carrier, not per-cat (quota = account-level, binary = machine-level)
- * D3: Degradation chain: bg_daemon → interactive_pty → print_sdk → api_key
+ * D3: Degradation chain: bg_daemon → interactive_pty → stream_json → print_sdk → api_key
  * D4: carrier_fallback event is user-visible system_info
  * D5: Rollout config in Redis (PR-2)
  */
@@ -208,12 +208,13 @@ describe('selectFirstHealthyTier — degradation chain walking', () => {
   test('multiple degraded → skips to first healthy', () => {
     store.reportFailure('bg_daemon', 'structural');
     store.reportFailure('interactive_pty', 'structural');
-    assert.equal(selectFirstHealthyTier('bg_daemon', store), 'print_sdk');
+    assert.equal(selectFirstHealthyTier('bg_daemon', store), 'stream_json');
   });
 
   test('all degraded except api_key → returns api_key (last resort)', () => {
     store.reportFailure('bg_daemon', 'quota');
     store.reportFailure('interactive_pty', 'structural');
+    store.reportFailure('stream_json', 'structural');
     store.reportFailure('print_sdk', 'structural');
     assert.equal(selectFirstHealthyTier('bg_daemon', store), 'api_key');
   });
@@ -231,8 +232,8 @@ describe('selectFirstHealthyTier — degradation chain walking', () => {
     assert.equal(selectFirstHealthyTier('unknown_tier', store), 'unknown_tier');
   });
 
-  test('chain order is bg_daemon → interactive_pty → print_sdk → api_key', () => {
-    assert.deepEqual(DEGRADATION_CHAIN, ['bg_daemon', 'interactive_pty', 'print_sdk', 'api_key']);
+  test('chain order is bg_daemon → interactive_pty → stream_json → print_sdk → api_key', () => {
+    assert.deepEqual(DEGRADATION_CHAIN, ['bg_daemon', 'interactive_pty', 'stream_json', 'print_sdk', 'api_key']);
   });
 });
 

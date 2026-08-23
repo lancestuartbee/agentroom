@@ -23,7 +23,7 @@ describe('resolveStartupCliConfigContext', () => {
       assert.equal(context.projectRoot, root);
       assert.equal(context.paths.anthropic, join(root, '.mcp.json'));
       assert.equal(context.paths.openai, join(root, '.codex', 'config.toml'));
-      assert.equal(context.paths.google, join(root, '.gemini', 'settings.json'));
+      assert.equal(context.paths.google, join(homedir(), '.gemini', 'antigravity', 'mcp_config.json'));
       assert.equal(context.paths.kimi, join(root, '.kimi', 'mcp.json'));
       assert.equal(context.paths.antigravity, join(homedir(), '.gemini', 'antigravity', 'mcp_config.json'));
     } finally {
@@ -46,7 +46,7 @@ describe('resolveStartupCliConfigContext', () => {
       assert.equal(context.projectRoot, root);
       assert.equal(context.paths.anthropic, join(root, '.mcp.json'));
       assert.equal(context.paths.openai, join(root, '.codex', 'config.toml'));
-      assert.equal(context.paths.google, join(root, '.gemini', 'settings.json'));
+      assert.equal(context.paths.google, join(homedir(), '.gemini', 'antigravity', 'mcp_config.json'));
       assert.equal(context.paths.kimi, join(root, '.kimi', 'mcp.json'));
       assert.equal(context.paths.antigravity, join(homedir(), '.gemini', 'antigravity', 'mcp_config.json'));
     } finally {

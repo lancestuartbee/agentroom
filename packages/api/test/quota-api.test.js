@@ -209,7 +209,7 @@ describe('GET /api/quota/summary', () => {
       assert.equal(typeof body.fetchedAt, 'string');
       assert.equal(typeof body.risk.level, 'string');
       assert.equal(Array.isArray(body.risk.reasons), true);
-      assert.equal(body.platforms.codex.label, '缅因猫 (Codex + GPT-5.2)');
+      assert.equal(body.platforms.codex.label, 'GPT (Codex CLI)');
       assert.equal(typeof body.platforms.codex.displayPercent, 'number');
       assert.equal(typeof body.probes.official.status, 'string');
       assert.equal(typeof body.probes.kimi.status, 'string');

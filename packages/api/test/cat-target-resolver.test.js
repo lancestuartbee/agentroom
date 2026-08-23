@@ -22,10 +22,10 @@ describe('resolveCatTarget', () => {
     assert.equal(result.ok, 'codex');
   });
 
-  it('returns ok for cat by Chinese mention pattern', async () => {
+  it('returns ok for cat by alternate mention pattern', async () => {
     const { resolveCatTarget } = await import('../dist/domains/cats/services/agents/routing/cat-target-resolver.js');
-    const result = resolveCatTarget('@缅因猫');
-    assert.ok('ok' in result, 'should resolve Chinese mention to ok');
+    const result = resolveCatTarget('@gpt');
+    assert.ok('ok' in result, 'should resolve alternate mention to ok');
     assert.equal(result.ok, 'codex');
   });
 

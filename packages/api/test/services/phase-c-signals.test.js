@@ -117,7 +117,7 @@ describe('F222 Phase C: detectRetryBurst', () => {
 // ── Card builder: new signal types ─────────────────────────
 
 describe('F222 Phase C: card builder — a2a_timeout', () => {
-  it('shows "猫猫响应超时" trigger label', () => {
+  it('shows "成员响应超时" trigger label', () => {
     const card = buildFrustrationIssueCard({
       issueId: 'fi_timeout',
       status: 'draft',
@@ -130,7 +130,7 @@ describe('F222 Phase C: card builder — a2a_timeout', () => {
       createdAt: Date.now(),
     });
     const triggerField = card.fields.find((f) => f.label === '触发类型');
-    assert.equal(triggerField.value, '猫猫响应超时');
+    assert.equal(triggerField.value, '成员响应超时');
     assert.ok(card.bodyMarkdown.includes('没有及时响应'));
   });
 });

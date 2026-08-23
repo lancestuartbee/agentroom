@@ -896,7 +896,7 @@ describe('ConnectorCommandLayer', () => {
       const result = await layer.handle('feishu', 'chat1', 'user1', '/cats');
       assert.equal(result.kind, 'cats');
       assert.ok(result.response);
-      assert.ok(result.response.includes('参与猫'));
+      assert.ok(result.response.includes('参与成员'));
       assert.equal(result.contextThreadId, 't-bound');
     });
 
@@ -1087,7 +1087,7 @@ describe('ConnectorCommandLayer', () => {
       const result = await layer.handle('feishu', 'chat1', 'user1', '/cats');
       assert.equal(result.kind, 'cats');
       // Without deps, no participant/cat categorization data
-      assert.ok(!result.response.includes('参与猫'), 'should not show participants without deps');
+      assert.ok(!result.response.includes('参与成员'), 'should not show participants without deps');
     });
 
     it('/cats WITH all deps returns categorized output', async () => {
@@ -1109,7 +1109,7 @@ describe('ConnectorCommandLayer', () => {
       });
       const result = await layer.handle('feishu', 'chat1', 'user1', '/cats');
       assert.equal(result.kind, 'cats');
-      assert.ok(result.response.includes('参与猫'), 'must show participants when deps are wired');
+      assert.ok(result.response.includes('参与成员'), 'must show participants when deps are wired');
       assert.ok(result.response.includes('布偶猫'), 'must resolve display name from catRoster');
     });
 
@@ -1633,7 +1633,7 @@ describe('F154 Phase B: /status preferred cat visibility (AC-B3)', () => {
     });
     const result = await layer.handle('feishu', 'chat1', 'user1', '/status');
     assert.equal(result.kind, 'status');
-    assert.ok(result.response.includes('首选猫'), '/status should show preferred cat section');
+    assert.ok(result.response.includes('首选成员'), '/status should show preferred cat section');
     assert.ok(result.response.includes('opus'), '/status should show the preferred cat name');
   });
 
@@ -1655,7 +1655,7 @@ describe('F154 Phase B: /status preferred cat visibility (AC-B3)', () => {
     });
     const result = await layer.handle('feishu', 'chat1', 'user1', '/status');
     assert.equal(result.kind, 'status');
-    assert.ok(!result.response.includes('首选猫'), '/status should omit preferred cat line when empty');
+    assert.ok(!result.response.includes('首选成员'), '/status should omit preferred cat line when empty');
   });
 
   it('/status shows no preferred cat line when preferredCats is undefined', async () => {
@@ -1675,7 +1675,7 @@ describe('F154 Phase B: /status preferred cat visibility (AC-B3)', () => {
     });
     const result = await layer.handle('feishu', 'chat1', 'user1', '/status');
     assert.equal(result.kind, 'status');
-    assert.ok(!result.response.includes('首选猫'), '/status should omit preferred cat line when undefined');
+    assert.ok(!result.response.includes('首选成员'), '/status should omit preferred cat line when undefined');
   });
 });
 

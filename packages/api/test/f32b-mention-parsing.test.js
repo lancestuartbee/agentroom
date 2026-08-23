@@ -98,10 +98,10 @@ const variantCatConfigs = {
   'opus-45': {
     id: createCatId('opus-45'),
     name: 'opus-45',
-    displayName: '布偶猫 4.5',
+    displayName: 'Claude',
     avatar: '/avatars/opus.png',
     color: { primary: '#9B7EBD', secondary: '#E8DFF5' },
-    mentionPatterns: ['@opus-45', '@布偶猫4.5'],
+    mentionPatterns: ['@opus45', '@opus-45', '@claude-opus45'],
     provider: 'anthropic',
     defaultModel: 'claude-sonnet-4-5-20250929',
     mcpSupport: true,
@@ -166,9 +166,9 @@ describe('F32-b: parseMentions (longest-match-first)', () => {
     assert.ok(targetCats.map(String).includes('opus-45'));
   });
 
-  it('line-start @布偶猫4.5 routes to opus-45 (Chinese variant mention)', async () => {
+  it('line-start @opus45 routes to opus-45 (compact variant mention)', async () => {
     const router = await createVariantRouter();
-    const { targetCats } = await router.resolveTargetsAndIntent('@布偶猫4.5 来帮忙', 'test-thread');
+    const { targetCats } = await router.resolveTargetsAndIntent('@opus45 来帮忙', 'test-thread');
     assert.deepEqual(targetCats.map(String), ['opus-45']);
   });
 
@@ -194,10 +194,10 @@ describe('F32-b: parseMentions (longest-match-first)', () => {
 
   it('earliest position wins when same cat has short+long alias (cloud P1 regression)', async () => {
     const router = await createVariantRouter();
-    // @布偶 (short alias, early) → opus, @codex (mid), @布偶猫 (long alias, late) → opus
-    // Longest-first processing sees @布偶猫 first (later position), but opus should
-    // resolve to the earliest occurrence (@布偶 at position 0), not the longest match.
-    const { targetCats } = await router.resolveTargetsAndIntent('@布偶\n@codex\n@布偶猫 的方案', 'test-thread');
+    // @claude (secondary alias, early) → opus, @codex (mid), @opus (primary alias, late) → opus
+    // Longest-first processing sees @opus first (later position), but opus should
+    // resolve to the earliest occurrence (@claude at position 0), not the later alias.
+    const { targetCats } = await router.resolveTargetsAndIntent('@claude\n@codex\n@opus 的方案', 'test-thread');
     // opus should come first (earliest mention), codex second
     assert.deepEqual(targetCats.map(String), ['opus', 'codex']);
   });
@@ -208,8 +208,8 @@ describe('F32-b: parseMentions (longest-match-first)', () => {
     const r1 = await router.resolveTargetsAndIntent('@codex)', 'test-thread');
     assert.deepEqual(r1.targetCats.map(String), ['codex']);
 
-    // @布偶猫] — square bracket
-    const r2 = await router.resolveTargetsAndIntent('@布偶猫]', 'test-thread');
+    // @opus] — square bracket
+    const r2 = await router.resolveTargetsAndIntent('@opus]', 'test-thread');
     assert.deepEqual(r2.targetCats.map(String), ['opus']);
 
     // @opus> — angle bracket
@@ -223,23 +223,23 @@ describe('F32-b: parseMentions (longest-match-first)', () => {
     const r1 = await router.resolveTargetsAndIntent('@codex）', 'test-thread');
     assert.deepEqual(r1.targetCats.map(String), ['codex']);
 
-    // @缅因猫】 — fullwidth square bracket
-    const r2 = await router.resolveTargetsAndIntent('@缅因猫】', 'test-thread');
+    // @codex】 — fullwidth square bracket
+    const r2 = await router.resolveTargetsAndIntent('@codex】', 'test-thread');
     assert.deepEqual(r2.targetCats.map(String), ['codex']);
 
     // @opus》 — fullwidth angle bracket
     const r3 = await router.resolveTargetsAndIntent('@opus》', 'test-thread');
     assert.deepEqual(r3.targetCats.map(String), ['opus']);
 
-    // @布偶猫」 — corner bracket (common in Japanese/traditional Chinese)
-    const r4 = await router.resolveTargetsAndIntent('@布偶猫」', 'test-thread');
+    // @opus」 — corner bracket (common in Japanese/traditional Chinese)
+    const r4 = await router.resolveTargetsAndIntent('@opus」', 'test-thread');
     assert.deepEqual(r4.targetCats.map(String), ['opus']);
   });
 
   it('quoted @mentions are inert user text, not routing targets', async () => {
     const router = await createVariantRouter();
     const content =
-      '我花了一下午手动复制粘贴："@布偶猫，你的设计稿好了，传给缅因猫 review 一下。""@缅因猫，上面那个设计你看一下。""@暹罗猫，交互部分你也出个方案？"';
+      '我花了一下午手动复制粘贴："@opus，你的设计稿好了，传给缅因猫 review 一下。""@codex，上面那个设计你看一下。""@gemini，交互部分你也出个方案？"';
 
     const { targetCats, hasMentions, routing_warnings } = await router.resolveTargetsAndIntent(content, 'test-thread');
 

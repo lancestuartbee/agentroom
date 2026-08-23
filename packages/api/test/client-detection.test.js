@@ -23,8 +23,8 @@ test('detectAvailableClients probes every spec via injected existsOnPath', async
 
   const result = await detectAvailableClients({ existsOnPath });
 
-  assert.equal(result.length, 6, 'six CLIs detected');
-  assert.deepEqual(probedClis.sort(), ['claude', 'codex', 'dare', 'gemini', 'kimi', 'opencode']);
+  assert.equal(result.length, 6, 'six clients detected');
+  assert.deepEqual(probedClis.sort(), ['agy', 'claude', 'codex', 'dare', 'kimi', 'opencode']);
   // Two installed (claude + codex), four not.
   const installed = result.filter((c) => c.installed).map((c) => c.client);
   assert.deepEqual(installed.sort(), ['claude', 'codex']);

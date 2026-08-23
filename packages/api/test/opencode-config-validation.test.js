@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const configPath = resolve(__dirname, '..', '..', '..', 'cat-template.json');
 
-describe('cat-template.json — 金渐层 (opencode) validation', () => {
+describe('cat-template.json — OpenCode validation', () => {
   let config;
 
   test('cat-template.json is valid JSON', () => {
@@ -19,7 +19,7 @@ describe('cat-template.json — 金渐层 (opencode) validation', () => {
   test('roster includes opencode entry', () => {
     const roster = config.roster;
     assert.ok(roster.opencode, 'opencode should be in roster');
-    assert.strictEqual(roster.opencode.family, 'golden-chinchilla');
+    assert.strictEqual(roster.opencode.family, 'opencode');
     assert.ok(roster.opencode.roles.includes('coding'));
   });
 
@@ -27,7 +27,7 @@ describe('cat-template.json — 金渐层 (opencode) validation', () => {
     const breed = config.breeds.find((b) => b.id === 'golden-chinchilla');
     assert.ok(breed, 'golden-chinchilla breed should exist');
     assert.strictEqual(breed.catId, 'opencode');
-    assert.strictEqual(breed.name, '金渐层');
+    assert.strictEqual(breed.name, 'OpenCode');
     assert.ok(breed.mentionPatterns.includes('@opencode'));
     assert.ok(breed.mentionPatterns.includes('@金渐层'));
   });

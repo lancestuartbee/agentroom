@@ -532,7 +532,7 @@ describe('AgentRouter', () => {
     assert.equal(mockGeminiService.invoke.mock.callCount(), 0);
   });
 
-  test('routes to opus when Chinese mention @布偶猫 is used', async () => {
+  test('routes to opus when alternate mention @claude is used', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     const mockClaudeService = createMockAgentService('opus');
@@ -550,7 +550,7 @@ describe('AgentRouter', () => {
     );
 
     const messages = [];
-    for await (const msg of router.route('user-1', '@布偶猫 请帮我')) {
+    for await (const msg of router.route('user-1', '@claude 请帮我')) {
       messages.push(msg);
     }
 
@@ -587,7 +587,7 @@ describe('AgentRouter', () => {
     assert.ok(messages.every((m) => m.catId === 'codex'));
   });
 
-  test('routes to codex when Chinese mention @缅因猫 is used', async () => {
+  test('routes to codex when alternate mention @gpt is used', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     const mockClaudeService = createMockAgentService('opus');
@@ -605,7 +605,7 @@ describe('AgentRouter', () => {
     );
 
     const messages = [];
-    for await (const msg of router.route('user-1', '@缅因猫 检查代码')) {
+    for await (const msg of router.route('user-1', '@gpt 检查代码')) {
       messages.push(msg);
     }
 
@@ -641,7 +641,7 @@ describe('AgentRouter', () => {
     assert.ok(messages.every((m) => m.catId === 'gemini'));
   });
 
-  test('routes to gemini when Chinese mention @暹罗猫 is used', async () => {
+  test('routes to gemini when alternate mention @gemini-pro is used', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     const mockClaudeService = createMockAgentService('opus');
@@ -659,7 +659,7 @@ describe('AgentRouter', () => {
     );
 
     const messages = [];
-    for await (const msg of router.route('user-1', '@暹罗猫 设计表情')) {
+    for await (const msg of router.route('user-1', '@gemini-pro 设计表情')) {
       messages.push(msg);
     }
 
@@ -861,9 +861,9 @@ describe('AgentRouter', () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     const testCases = [
-      { mention: '@ragdoll', expectedCat: 'opus' },
-      { mention: '@maine', expectedCat: 'codex' },
-      { mention: '@siamese', expectedCat: 'gemini' },
+      { mention: '@claude', expectedCat: 'opus' },
+      { mention: '@openai', expectedCat: 'codex' },
+      { mention: '@gemini-pro', expectedCat: 'gemini' },
     ];
 
     for (const { mention, expectedCat } of testCases) {
@@ -895,13 +895,13 @@ describe('AgentRouter', () => {
     }
   });
 
-  test('handles all Chinese mention patterns correctly', async () => {
+  test('handles canonical secondary mention patterns correctly', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     const testCases = [
-      { mention: '@布偶', expectedCat: 'opus' },
-      { mention: '@缅因', expectedCat: 'codex' },
-      { mention: '@暹罗', expectedCat: 'gemini' },
+      { mention: '@claude', expectedCat: 'opus' },
+      { mention: '@gpt', expectedCat: 'codex' },
+      { mention: '@gemini-pro', expectedCat: 'gemini' },
     ];
 
     for (const { mention, expectedCat } of testCases) {
@@ -1643,7 +1643,7 @@ describe('AgentRouter', () => {
       opusReceivedPrompt.includes('## 协作'),
       'static A2A collaboration section MUST be present for non-native-L0 provider',
     );
-    assert.ok(opusReceivedPrompt.includes('Identity: 布偶猫'), 'dynamic invocation identity pin');
+    assert.ok(opusReceivedPrompt.includes('Identity: Claude'), 'dynamic invocation identity pin');
     assert.ok(opusReceivedPrompt.includes('hello'), 'original message');
   });
 
@@ -1688,11 +1688,11 @@ describe('AgentRouter', () => {
       'static A2A section must NOT duplicate when provider injects natively',
     );
     // Dynamic pin + message still flow.
-    assert.ok(opusReceivedPrompt.includes('Identity: 布偶猫'));
+    assert.ok(opusReceivedPrompt.includes('Identity: Claude'));
     assert.ok(opusReceivedPrompt.includes('hello'));
   });
 
-  test('identity injection: codex prompt in serial chain contains 缅因猫 (#execute)', async () => {
+  test('identity injection: codex prompt in serial chain contains GPT (#execute)', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     let codexReceivedPrompt = '';
@@ -1721,8 +1721,8 @@ describe('AgentRouter', () => {
       // consume
     }
 
-    // Static identity (缅因猫) prepended to prompt by invoke-single-cat (new session)
-    assert.ok(codexReceivedPrompt.includes('缅因猫'), 'Codex prompt should contain 缅因猫');
+    // Static identity (GPT) prepended to prompt by invoke-single-cat (new session)
+    assert.ok(codexReceivedPrompt.includes('GPT'), 'Codex prompt should contain GPT identity');
     // Dynamic chain position still in -p prompt
     assert.ok(codexReceivedPrompt.includes('2/2'), 'Codex prompt should show chain position 2/2');
   });
@@ -2340,7 +2340,7 @@ describe('F078: Group mentions', () => {
     assert.ok(targetCats.includes('opus'));
   });
 
-  test('@全体布偶猫 routes to all ragdoll variants', async () => {
+  test('@全体Claude routes to all ragdoll variants', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     // Register sonnet as a second ragdoll variant
@@ -2349,10 +2349,10 @@ describe('F078: Group mentions', () => {
       catRegistry.register('sonnet', {
         id: createCatId('sonnet'),
         name: 'sonnet',
-        displayName: '布偶猫',
+        displayName: 'Claude',
         avatar: '/avatars/sonnet.png',
         color: { primary: '#9B7EBD', secondary: '#E8DFF5' },
-        mentionPatterns: ['@sonnet', '@布偶sonnet'],
+        mentionPatterns: ['@sonnet', '@claude-sonnet'],
         provider: 'anthropic',
         defaultModel: 'claude-sonnet-4-6',
         mcpSupport: true,
@@ -2376,7 +2376,7 @@ describe('F078: Group mentions', () => {
       messageStore: createMockMessageStore(),
     });
 
-    const { targetCats } = await router.resolveTargetsAndIntent('@全体布偶猫 你们好');
+    const { targetCats } = await router.resolveTargetsAndIntent('@全体Claude 你们好');
     assert.ok(targetCats.includes('opus'), 'should include opus (ragdoll)');
     assert.ok(targetCats.includes('sonnet'), 'should include sonnet (ragdoll)');
     assert.ok(!targetCats.includes('codex'), 'should NOT include codex (maine-coon)');
@@ -2550,10 +2550,10 @@ describe('F078: Group mentions', () => {
       catRegistry.register('sonnet', {
         id: createCatId('sonnet'),
         name: 'sonnet',
-        displayName: '布偶猫',
+        displayName: 'Claude',
         avatar: '/avatars/sonnet.png',
         color: { primary: '#9B7EBD', secondary: '#E8DFF5' },
-        mentionPatterns: ['@sonnet', '@布偶sonnet'],
+        mentionPatterns: ['@sonnet', '@claude-sonnet'],
         provider: 'anthropic',
         defaultModel: 'claude-sonnet-4-6',
         mcpSupport: true,
@@ -2580,7 +2580,7 @@ describe('F078: Group mentions', () => {
     assert.ok(!targetCats.includes('sonnet'), '@all-ragdollish should not match @all-ragdoll');
   });
 
-  test('@全体布偶猫咪 does NOT trigger @全体布偶猫 (token boundary)', async () => {
+  test('@全体Claude咪 does NOT trigger @全体Claude (token boundary)', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     const router = new AgentRouter(
@@ -2593,9 +2593,9 @@ describe('F078: Group mentions', () => {
       }),
     );
 
-    const { targetCats } = await router.resolveTargetsAndIntent('@全体布偶猫咪 hi');
-    // 咪 is not a boundary char — should NOT match @全体布偶猫
-    assert.equal(targetCats.length, 1, '@全体布偶猫咪 should not trigger breed group');
+    const { targetCats } = await router.resolveTargetsAndIntent('@全体Claude咪 hi');
+    // 咪 is not a boundary char — should NOT match @全体Claude
+    assert.equal(targetCats.length, 1, '@全体Claude咪 should not trigger breed group');
   });
 
   test('@thread + explicit @gemini unions both (group mention does not short-circuit)', async () => {
@@ -2806,7 +2806,7 @@ describe('#58: preferredCats candidate scope (not dispatch list)', () => {
     assert.deepStrictEqual(targetCats, ['gemini'], 'without preferredCats, last replier should still work');
   });
 
-  test('@全体布偶猫 still triggers parallel dispatch even with preferredCats', async () => {
+  test('@全体Claude still triggers parallel dispatch even with preferredCats', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
     const { AgentRegistry } = await import('../dist/domains/cats/services/agents/registry/AgentRegistry.js');
 
@@ -2816,10 +2816,10 @@ describe('#58: preferredCats candidate scope (not dispatch list)', () => {
       catRegistry.register('sonnet', {
         id: createCatId('sonnet'),
         name: 'sonnet',
-        displayName: '布偶猫',
+        displayName: 'Claude',
         avatar: '/avatars/sonnet.png',
         color: { primary: '#9B7EBD', secondary: '#E8DFF5' },
-        mentionPatterns: ['@sonnet', '@布偶sonnet'],
+        mentionPatterns: ['@sonnet', '@claude-sonnet'],
         provider: 'anthropic',
         defaultModel: 'claude-sonnet-4-6',
         mcpSupport: true,
@@ -2850,9 +2850,9 @@ describe('#58: preferredCats candidate scope (not dispatch list)', () => {
       threadStore,
     });
 
-    const { targetCats } = await router.resolveTargetsAndIntent('@全体布偶猫 discuss this', 't1');
-    // @全体布偶猫 is a breed group mention — should override preferredCats and route to all ragdolls
-    assert.ok(targetCats.length > 1, '@全体布偶猫 should still trigger multi-cat dispatch');
+    const { targetCats } = await router.resolveTargetsAndIntent('@全体Claude discuss this', 't1');
+    // @全体Claude is a breed group mention — should override preferredCats and route to all ragdolls
+    assert.ok(targetCats.length > 1, '@全体Claude should still trigger multi-cat dispatch');
     assert.ok(targetCats.includes('opus'), 'should include opus');
   });
 

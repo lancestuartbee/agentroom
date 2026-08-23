@@ -5,8 +5,13 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { catRegistry } from '@cat-cafe/shared';
 
 const { formatThreadAsMarkdown, formatThreadAsText } = await import('../dist/routes/export.js');
+
+function displayName(catId) {
+  return catRegistry.getOrThrow(catId).config.displayName;
+}
 
 /** Helper to create a minimal thread object */
 function makeThread(overrides = {}) {
@@ -53,7 +58,7 @@ describe('formatThreadAsMarkdown', () => {
 
     assert.ok(md.includes('# 对话记录: 第一次测试'));
     assert.ok(md.includes('thread-1'));
-    assert.ok(md.includes('布偶猫'));
+    assert.ok(md.includes(displayName('opus')));
     assert.ok(md.includes('你好布偶猫'));
     assert.ok(md.includes('你好co-creator！'));
     assert.ok(md.includes('co-creator'));
@@ -109,8 +114,8 @@ describe('formatThreadAsMarkdown', () => {
     const md = formatThreadAsMarkdown(thread, messages);
 
     assert.ok(md.includes('co-creator'));
-    assert.ok(md.includes('布偶猫'));
-    assert.ok(md.includes('缅因猫'));
+    assert.ok(md.includes(displayName('opus')));
+    assert.ok(md.includes(displayName('codex')));
     assert.ok(md.includes('请问一下'));
     assert.ok(md.includes('我来回答'));
     assert.ok(md.includes('我也来'));

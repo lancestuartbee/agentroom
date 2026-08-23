@@ -27,7 +27,7 @@ describe('extractBatonContext', () => {
   it('identifies cat speaker by catId', () => {
     const baton = extractBatonContext(messages.slice(0, 2), 'opus');
     assert.equal(baton.fromSpeaker, 'codex');
-    assert.equal(baton.fromSpeakerDisplay, '缅因猫');
+    assert.equal(baton.fromSpeakerDisplay, 'GPT(GPT-5 Codex)');
   });
 
   it('identifies human speaker as "user"', () => {

@@ -120,7 +120,9 @@ function makeMessageStore(messages = []) {
   return {
     getByThread: async (threadId, limit = 10000) =>
       [...map.values()]
-        .filter((message) => message.threadId === threadId && !message.deletedAt && message.deliveryStatus !== 'canceled')
+        .filter(
+          (message) => message.threadId === threadId && !message.deletedAt && message.deliveryStatus !== 'canceled',
+        )
         .slice(0, limit),
     softDelete: async (id, deletedBy) => {
       const message = map.get(id);
@@ -386,6 +388,7 @@ describe('history-reset: hides visible messages and restarts provider context', 
     assert.equal(body.sessionReset.roundtableIssueReset, true);
     assert.deepEqual(sessionManagerDeletes, [
       [USER_A, CAT_OPUS, THREAD_ID, 'roundtable'],
+      [USER_A, CAT_CODEX, `${THREAD_ID}::provider-session:codex-roundtable-writable-v1`, 'roundtable'],
       [USER_A, CAT_CODEX, THREAD_ID, 'roundtable'],
     ]);
     const deletedEvents = socketEvents.filter((event) => event.event === 'message_deleted');

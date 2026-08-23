@@ -47,11 +47,11 @@ function createMockMessageStore() {
 }
 
 describe('A2A Chain Integration (AgentRouter end-to-end)', () => {
-  test('complete A2A chain: opus → @缅因猫 → codex invoked with previous context', async () => {
+  test('complete A2A chain: opus → @codex → codex invoked with previous context', async () => {
     const { AgentRouter } = await import('../../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
-    // opus responds with line-start @缅因猫 mention
-    const mockOpus = createMockService('opus', '代码写好了\n@缅因猫 请 review 这段代码');
+    // opus responds with line-start @codex mention
+    const mockOpus = createMockService('opus', '代码写好了\n@codex 请 review 这段代码');
     const mockCodex = createMockService('codex', 'LGTM，代码没问题');
     const mockGemini = createMockService('gemini', 'unused');
     const messageStore = createMockMessageStore();
@@ -79,9 +79,10 @@ describe('A2A Chain Integration (AgentRouter end-to-end)', () => {
     // Prompt should include direct-message reply target hint for the A2A-invoked cat.
     const codexPrompt = mockCodex.invoke.mock.calls[0]?.arguments?.[0];
     assert.equal(typeof codexPrompt, 'string', 'codex invocation should receive a prompt string');
-    assert.ok(
-      codexPrompt.includes('Direct message from 布偶猫(opus)'),
-      'codex prompt should instruct replying to 布偶猫(opus) (not the user)',
+    assert.match(
+      codexPrompt,
+      /Direct message from .*\(opus\)/,
+      'codex prompt should instruct replying to the opus member (not the user)',
     );
 
     // Should have a2a_handoff event
@@ -117,12 +118,12 @@ describe('A2A Chain Integration (AgentRouter end-to-end)', () => {
       invoke: mock.fn(async function* () {
         _opusCalls++;
         yield { type: 'session_init', catId: 'opus', sessionId: 'opus-s', timestamp: Date.now() };
-        yield { type: 'text', catId: 'opus', content: '开始\n@缅因猫 帮忙review', timestamp: Date.now() };
+        yield { type: 'text', catId: 'opus', content: '开始\n@codex 帮忙review', timestamp: Date.now() };
         yield { type: 'done', catId: 'opus', timestamp: Date.now() };
       }),
     };
-    const mockCodex = createMockService('codex', '需要设计配合\n@暹罗猫 帮忙设计 UI');
-    const mockGemini = createMockService('gemini', '还需要调整\n@布偶猫 请修复');
+    const mockCodex = createMockService('codex', '需要设计配合\n@gemini 帮忙设计 UI');
+    const mockGemini = createMockService('gemini', '还需要调整\n@opus 请修复');
     const messageStore = createMockMessageStore();
 
     // Set MAX_A2A_DEPTH=2 via env (will be read by route-strategies)
@@ -165,7 +166,7 @@ describe('A2A Chain Integration (AgentRouter end-to-end)', () => {
   test('P1: original pending target keeps replying to user (no direct-message override)', async () => {
     const { AgentRouter } = await import('../../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
-    const mockOpus = createMockService('opus', '我先看一下\n@缅因猫 你也看看');
+    const mockOpus = createMockService('opus', '我先看一下\n@codex 你也看看');
     const mockCodex = createMockService('codex', '我来补充结论');
     const mockGemini = createMockService('gemini', 'unused');
 
@@ -190,8 +191,9 @@ describe('A2A Chain Integration (AgentRouter end-to-end)', () => {
 
     const codexPrompt = mockCodex.invoke.mock.calls[0]?.arguments?.[0];
     assert.equal(typeof codexPrompt, 'string', 'codex invocation should receive a prompt string');
-    assert.ok(
-      !codexPrompt.includes('Direct message from 布偶猫(opus)'),
+    assert.doesNotMatch(
+      codexPrompt,
+      /Direct message from .*\(opus\)/,
       'original target must not be forced to reply to another cat',
     );
 
@@ -203,7 +205,7 @@ describe('A2A Chain Integration (AgentRouter end-to-end)', () => {
     const { AgentRouter } = await import('../../dist/domains/cats/services/agents/routing/AgentRouter.js');
 
     // opus mentions itself and mentions codex mid-line (not at line start)
-    const mockOpus = createMockService('opus', '我是布偶猫 @布偶猫\n之前缅因猫说的 @缅因猫 方案不错');
+    const mockOpus = createMockService('opus', '我是Claude @opus\n之前GPT说的 @codex 方案不错');
     const mockCodex = createMockService('codex', 'should not be called');
     const mockGemini = createMockService('gemini', 'should not be called');
 

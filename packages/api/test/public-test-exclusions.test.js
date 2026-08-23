@@ -54,6 +54,7 @@ const LEGACY_EXCLUSIONS = [
   'github-schedule-factories\\.test',
   'harness-eval/eval-hub-read-model\\.test',
   'harness-eval/merge-gate-provenance-contract\\.test',
+  'tmux-(?:agent-spawner|gateway|spawn-override)\\.test',
 ];
 
 async function listTestFiles(rootDir, relDir = '') {
@@ -100,7 +101,7 @@ test('registry preserves metadata for active legacy exclusions and drops stale o
       category: 'source_only',
       owner: '@zts212653',
       introducedBy: '069d0f0fb',
-      expiresOn: '2026-06-30',
+      expiresOn: '2026-09-30',
     },
   );
 });

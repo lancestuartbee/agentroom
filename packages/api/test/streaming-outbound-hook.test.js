@@ -137,15 +137,14 @@ describe('StreamingOutboundHook', () => {
     assert.ok(text.includes('思考中'), `Non-Feishu adapter should get generic text, got: ${text}`);
   });
 
-  it('F157 P2: sender hint adds sender name to Feishu receipt prefix with 🐱', async () => {
+  it('F157 P2: sender hint adds sender name to Feishu receipt prefix', async () => {
     const { hook, adapter } = createHook();
     await hook.onStreamStart('thread-1', 'opus', undefined, { id: 'ou_abc', name: '小明' });
     assert.equal(adapter._calls.sendPlaceholder.length, 1);
     const text = adapter._calls.sendPlaceholder[0].text;
     // Sender name should appear in the prefix for group chat context
     assert.ok(text.includes('小明'), `Receipt should contain sender name, got: ${text}`);
-    // AC-A2: 🐱 must always be present in prefix (R2 regression)
-    assert.ok(text.includes('🐱'), `Receipt must contain 🐱 emoji per AC-A2, got: ${text}`);
+    assert.ok(text.includes('Claude→小明'), `Receipt must identify the member and sender, got: ${text}`);
   });
 
   it('onStreamStart is no-op when no bindings exist', async () => {

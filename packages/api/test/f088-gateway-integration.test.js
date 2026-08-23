@@ -267,7 +267,7 @@ describe('F088 Gateway Integration', () => {
       await h.outboundHook.deliver(r.threadId, 'Hello!', 'opus');
 
       assert.equal(h.telegramSent.length, 1);
-      assert.match(h.telegramSent[0].text, /^【布偶猫🐱】\nHello!$/);
+      assert.match(h.telegramSent[0].text, /^【Claude🐱】\nHello!$/);
     });
   });
 
@@ -289,19 +289,19 @@ describe('F088 Gateway Integration', () => {
       // 4. Simulate outbound with codex identity
       await h.outboundHook.deliver(r.threadId, 'LGTM!', 'codex');
       assert.equal(h.telegramSent.length, 1);
-      assert.match(h.telegramSent[0].text, /^【缅因猫🐱】\nLGTM!$/);
+      assert.match(h.telegramSent[0].text, /^【GPT🐱】\nLGTM!$/);
     });
 
-    it('@布偶猫 in Feishu → triggers opus + prefixed reply', async () => {
+    it('@opus in Feishu → triggers opus + prefixed reply', async () => {
       const h = buildTestHarness();
 
-      const r = await h.router.route('feishu', 'fs-chat', '@布偶猫 帮我看看这个', 'fs-mention-1');
+      const r = await h.router.route('feishu', 'fs-chat', '@opus 帮我看看这个', 'fs-mention-1');
       assert.equal(r.kind, 'routed');
       assert.equal(h.triggerCalls[0].catId, 'opus');
       assert.deepEqual(h.messageStore.messages[0].mentions, ['opus']);
 
       await h.outboundHook.deliver(r.threadId, '好的！', 'opus');
-      assertFeishuCardContains(h.feishuSent[0].content, '🐱 布偶猫', '好的！');
+      assertFeishuCardContains(h.feishuSent[0].content, '🐱 Claude', '好的！');
     });
 
     it('no mention → default cat (opus) invoked', async () => {

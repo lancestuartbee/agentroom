@@ -554,7 +554,7 @@ describe('Callback Routes', () => {
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
         threadId: threadB.id,
-        content: '@缅因猫\n\n请 review 这个改动',
+        content: '@codex\n\n请 review 这个改动',
       },
     });
 
@@ -868,7 +868,7 @@ describe('Callback Routes', () => {
     );
   });
 
-  test('thread-context keyword anchor surfaces the match even when it is in the tail (F236 R1/砚砚 P1)', async () => {
+  test('thread-context keyword anchor surfaces the match even when it is in the tail (F236 R1/GPT-5 Codex P1)', async () => {
     const app = await createApp();
     const { invocationId, callbackToken } = await registry.create('user-1', 'opus');
     const longBody = `${'filler '.repeat(60)}REDISLOCKBUG at the very end`;
@@ -890,7 +890,7 @@ describe('Callback Routes', () => {
     );
   });
 
-  test('thread-context emits returnedChars telemetry (F236 R1/砚砚 P1 eval contract)', async () => {
+  test('thread-context emits returnedChars telemetry (F236 R1/GPT-5 Codex P1 eval contract)', async () => {
     const app = await createApp();
     const { invocationId, callbackToken } = await registry.create('user-1', 'opus');
     messageStore.append({ userId: 'user-1', catId: null, content: 'X'.repeat(500), mentions: [], timestamp: 1 });
@@ -909,7 +909,7 @@ describe('Callback Routes', () => {
     assert.ok(anchorLog.returnedChars > 0);
   });
 
-  test('get-message full drill fullDrillChars includes context neighbors (F236 R1/砚砚 P1 AC-B2)', async () => {
+  test('get-message full drill fullDrillChars includes context neighbors (F236 R1/GPT-5 Codex P1 AC-B2)', async () => {
     const app = await createApp();
     const { invocationId, callbackToken } = await registry.create('user-1', 'opus');
     messageStore.append({
@@ -1838,7 +1838,7 @@ describe('Callback Routes', () => {
 
   test('GET feat-index returns owner-derived suggested cross-post action when feature has a thread', async () => {
     featIndexProvider = async () => [
-      { featId: 'F193', name: 'Cross Thread Comm', status: 'in-progress', owner: '布偶猫' },
+      { featId: 'F193', name: 'Cross Thread Comm', status: 'in-progress', owner: 'Claude' },
     ];
 
     const backlogF193 = await backlogStore.create({
@@ -1867,7 +1867,7 @@ describe('Callback Routes', () => {
       featId: 'F193',
       name: 'Cross Thread Comm',
       status: 'in-progress',
-      owner: '布偶猫',
+      owner: 'Claude',
       ownerCatId: 'opus',
       threadIds: [owningThread.id],
       suggestedAction: {
@@ -1884,7 +1884,7 @@ describe('Callback Routes', () => {
 
   test('GET feat-index suppresses suggested cross-post action for the current thread', async () => {
     featIndexProvider = async () => [
-      { featId: 'F193', name: 'Cross Thread Comm', status: 'in-progress', owner: '布偶猫' },
+      { featId: 'F193', name: 'Cross Thread Comm', status: 'in-progress', owner: 'Claude' },
     ];
 
     const backlogF193 = await backlogStore.create({
@@ -1913,14 +1913,14 @@ describe('Callback Routes', () => {
       featId: 'F193',
       name: 'Cross Thread Comm',
       status: 'in-progress',
-      owner: '布偶猫',
+      owner: 'Claude',
       ownerCatId: 'opus',
       threadIds: [currentThread.id],
     });
   });
 
   test('GET feat-index keeps owner-derived suggested action metadata when no feature thread is known', async () => {
-    featIndexProvider = async () => [{ featId: 'F194', name: 'Owner Only Feature', status: 'spec', owner: '布偶猫' }];
+    featIndexProvider = async () => [{ featId: 'F194', name: 'Owner Only Feature', status: 'spec', owner: 'Claude' }];
 
     const app = await createApp();
     const { invocationId, callbackToken } = await registry.create('user-1', 'codex');
@@ -1937,7 +1937,7 @@ describe('Callback Routes', () => {
       featId: 'F194',
       name: 'Owner Only Feature',
       status: 'spec',
-      owner: '布偶猫',
+      owner: 'Claude',
       ownerCatId: 'opus',
       threadIds: [],
       suggestedAction: {
@@ -1953,7 +1953,7 @@ describe('Callback Routes', () => {
 
   test('GET feat-index keeps single owner metadata when owner annotations contain separators', async () => {
     featIndexProvider = async () => [
-      { featId: 'F195', name: 'Annotated Owner Feature', status: 'spec', owner: '布偶猫 (Opus 4.6, leader)' },
+      { featId: 'F195', name: 'Annotated Owner Feature', status: 'spec', owner: 'Claude (Opus 4.6, leader)' },
     ];
 
     const app = await createApp();
@@ -1971,7 +1971,7 @@ describe('Callback Routes', () => {
       featId: 'F195',
       name: 'Annotated Owner Feature',
       status: 'spec',
-      owner: '布偶猫 (Opus 4.6, leader)',
+      owner: 'Claude (Opus 4.6, leader)',
       ownerCatId: 'opus',
       threadIds: [],
       suggestedAction: {
@@ -1987,7 +1987,7 @@ describe('Callback Routes', () => {
 
   test('GET feat-index resolves slash-separated single owner aliases', async () => {
     featIndexProvider = async () => [
-      { featId: 'F191', name: 'Architecture Governance', status: 'done', owner: '缅因猫/砚砚' },
+      { featId: 'F191', name: 'Architecture Governance', status: 'done', owner: 'GPT/GPT-5 Codex' },
     ];
 
     const app = await createApp();
@@ -2005,7 +2005,7 @@ describe('Callback Routes', () => {
       featId: 'F191',
       name: 'Architecture Governance',
       status: 'done',
-      owner: '缅因猫/砚砚',
+      owner: 'GPT/GPT-5 Codex',
       ownerCatId: 'codex',
       threadIds: [],
       suggestedAction: {
@@ -2021,7 +2021,7 @@ describe('Callback Routes', () => {
 
   test('GET feat-index does not route slash-separated different owners to one cat', async () => {
     featIndexProvider = async () => [
-      { featId: 'F127', name: 'Slash Pair Feature', status: 'spec', owner: '布偶猫/缅因猫' },
+      { featId: 'F127', name: 'Slash Pair Feature', status: 'spec', owner: 'Claude/GPT' },
     ];
 
     const app = await createApp();
@@ -2039,7 +2039,7 @@ describe('Callback Routes', () => {
       featId: 'F127',
       name: 'Slash Pair Feature',
       status: 'spec',
-      owner: '布偶猫/缅因猫',
+      owner: 'Claude/GPT',
       threadIds: [],
     });
   });
@@ -2050,7 +2050,7 @@ describe('Callback Routes', () => {
         featId: 'F125',
         name: 'Alpha Test Channel',
         status: 'in-progress',
-        owner: '缅因猫(gpt52) + 布偶猫(opus)',
+        owner: 'GPT(gpt52) + Claude(opus)',
       },
     ];
 
@@ -2080,7 +2080,7 @@ describe('Callback Routes', () => {
       featId: 'F125',
       name: 'Alpha Test Channel',
       status: 'in-progress',
-      owner: '缅因猫(gpt52) + 布偶猫(opus)',
+      owner: 'GPT(gpt52) + Claude(opus)',
       threadIds: [owningThread.id],
       suggestedAction: {
         type: 'cross_post',
@@ -2094,7 +2094,7 @@ describe('Callback Routes', () => {
 
   test('GET feat-index skips owner-only suggested action for multi-owner features without a known thread', async () => {
     featIndexProvider = async () => [
-      { featId: 'F126', name: 'Owner Pair Feature', status: 'spec', owner: '布偶猫 + 缅因猫' },
+      { featId: 'F126', name: 'Owner Pair Feature', status: 'spec', owner: 'Claude + GPT' },
     ];
 
     const app = await createApp();
@@ -2112,7 +2112,7 @@ describe('Callback Routes', () => {
       featId: 'F126',
       name: 'Owner Pair Feature',
       status: 'spec',
-      owner: '布偶猫 + 缅因猫',
+      owner: 'Claude + GPT',
       threadIds: [],
     });
   });
@@ -2197,15 +2197,15 @@ describe('Callback Routes', () => {
 
   test('GET feat-index supports query fuzzy match over owner metadata', async () => {
     featIndexProvider = async () => [
-      { featId: 'F193', name: 'Cross Thread Comm', status: 'in-progress', owner: '布偶猫' },
-      { featId: 'F191', name: 'Architecture Governance', status: 'done', owner: '缅因猫/砚砚' },
+      { featId: 'F193', name: 'Cross Thread Comm', status: 'in-progress', owner: 'Claude' },
+      { featId: 'F191', name: 'Architecture Governance', status: 'done', owner: 'GPT/GPT-5 Codex' },
     ];
     const app = await createApp();
     const { invocationId, callbackToken } = await registry.create('user-1', 'codex');
 
     const byOwner = await app.inject({
       method: 'GET',
-      url: `/api/callbacks/feat-index?query=${encodeURIComponent('布偶猫')}`,
+      url: `/api/callbacks/feat-index?query=${encodeURIComponent('Claude')}`,
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
     });
 
@@ -2574,7 +2574,7 @@ describe('Callback Routes', () => {
     assert.equal(body.degradeReason, 'marker_queue_error');
   });
 
-  // --- Stale callback freshness guard (cloud Codex P1 + 缅因猫 R3) ---
+  // --- Stale callback freshness guard (cloud Codex P1 + GPT R3) ---
 
   test('POST post-message returns stale_ignored for superseded invocation', async () => {
     const app = await createApp();
@@ -2879,10 +2879,10 @@ describe('Callback Routes', () => {
     assert.equal(parsed.block.type, undefined);
   });
 
-  // ---- Play mode pagination backfill (砚砚 R5 regression) ----
+  // ---- Play mode pagination backfill (GPT-5 Codex R5 regression) ----
 
   test('GET thread-context play mode returns full limit even when stream messages dominate', async () => {
-    // Regression (砚砚 R5+R6): play mode filters other cats' origin:'stream'.
+    // Regression (GPT-5 Codex R5+R6): play mode filters other cats' origin:'stream'.
     // Real failure timing: visible messages are OLDER, hidden stream is NEWER.
     // Pagination must wade through all hidden stream to reach visible messages.
     const thread = threadStore.create('user-1', 'Play backfill test');

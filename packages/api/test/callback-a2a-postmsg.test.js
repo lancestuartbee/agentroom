@@ -147,7 +147,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '这个方案里，之前 @缅因猫 提过类似的思路',
+        content: '这个方案里，之前 @codex 提过类似的思路',
       },
     });
 
@@ -169,7 +169,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '看看这段代码:\n```\n@缅因猫 这里是注释\n```\n完毕',
+        content: '看看这段代码:\n```\n@codex 这里是注释\n```\n完毕',
       },
     });
 
@@ -191,7 +191,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '修复完成了\n@缅因猫\n请帮忙 review',
+        content: '修复完成了\n@codex\n请帮忙 review',
       },
     });
 
@@ -311,7 +311,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '修复完成了\n@缅因猫\n请帮忙 review',
+        content: '修复完成了\n@codex\n请帮忙 review',
       },
     });
 
@@ -335,7 +335,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '这是交接文档，DARE 源码目录执行\n是否接受完全禁用 --api-key argv\n@缅因猫',
+        content: '这是交接文档，DARE 源码目录执行\n是否接受完全禁用 --api-key argv\n@codex',
       },
     });
 
@@ -345,7 +345,7 @@ describe('post_message A2A mention invocation', () => {
     const lastMsg = recent[recent.length - 1];
     assert.ok(
       lastMsg.mentions.includes('codex'),
-      'Content-before-mention: codex should be mentioned when @缅因猫 is on last line',
+      'Content-before-mention: codex should be mentioned when @codex is on last line',
     );
 
     const records = invocationRecordStore.getRecords();
@@ -377,7 +377,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '同步一下\n@缅因猫\n这条是冗余提醒',
+        content: '同步一下\n@codex\n这条是冗余提醒',
       },
     });
 
@@ -408,7 +408,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '修完了，请帮忙 review\n@缅因猫',
+        content: '修完了，请帮忙 review\n@codex',
       },
     });
 
@@ -513,7 +513,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '请帮忙复核\n@缅因猫',
+        content: '请帮忙复核\n@codex',
         targetCats: ['codex', 'gemini'],
       },
     });
@@ -529,7 +529,7 @@ describe('post_message A2A mention invocation', () => {
     assert.equal(recent[0].mentions.includes('gemini'), false, 'gemini must not be injected into mentions');
   });
 
-  // Self-mention filter: opus @布偶猫 → no invocation (can't invoke self)
+  // Self-mention filter: opus @opus → no invocation (can't invoke self)
   test('post-message self-mention does NOT trigger invocation', async () => {
     const app = await createApp();
     const { invocationId, callbackToken } = await registry.create('user-1', 'opus', { threadId: 't1' });
@@ -539,7 +539,7 @@ describe('post_message A2A mention invocation', () => {
       url: '/api/callbacks/post-message',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: {
-        content: '@布偶猫\n这是自我引用测试',
+        content: '@opus\n这是自我引用测试',
       },
     });
 
