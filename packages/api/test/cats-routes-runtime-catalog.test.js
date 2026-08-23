@@ -256,6 +256,7 @@ describe('cats routes read runtime catalog', { concurrency: false }, () => {
     assert.deepEqual(templateCat.roster, {
       family: 'ragdoll',
       roles: ['architect', 'peer-reviewer'],
+      behaviors: [],
       lead: true,
       available: true,
       evaluation: 'seed lead',

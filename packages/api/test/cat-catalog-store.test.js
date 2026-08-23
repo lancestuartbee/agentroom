@@ -574,6 +574,7 @@ describe('cat-catalog-store', () => {
     assert.deepEqual(catalog.roster?.['spark-lite'], {
       family: 'spark-lite',
       roles: ['assistant'],
+      behaviors: [],
       lead: false,
       available: true,
       evaluation: '火花猫 runtime member',
