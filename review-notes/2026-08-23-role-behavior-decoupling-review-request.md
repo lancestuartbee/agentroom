@@ -77,7 +77,7 @@ Why: 本次扩展既有 roster → prompt projection 和现有模板 loader；�
 
 ## Review Sandbox（必填）
 
-- Path: `/tmp/cat-cafe-review/role-behavior-decoupling/opus`
+- Path: `/tmp/cat-cafe-review/role-behavior-decoupling/gemini`
 - Start Command: `pnpm review:start`
 - Ports: `web=3201`, `api=3202`
 
