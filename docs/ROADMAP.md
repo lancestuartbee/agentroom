@@ -7,7 +7,7 @@ created: 2026-02-26
 
 # Cat Cafe Feature Roadmap
 
-> 维护者：三猫 | 最后更新：2026-06-21（F208 done, removed）
+> 维护者：三猫 | 最后更新：2026-08-23（F247 pending operator acceptance, added）
 >
 > **规则**：只放活跃 Feature（idea/spec/in-progress/review），done 后移除。
 > 详细信息见 `docs/features/Fxxx-*.md`。
@@ -84,3 +84,4 @@ created: 2026-02-26
 | F244 | Capability Tips System — 等待态 Knowledge Feed 投影（家里能力 / magic words / 工作流 tips + feature tips 贡献机制；真实状态、tips、猫格表达三层分离） | spec | Maine Coon/Maine Coon | internal (operator 2026-06-18 "直接立项吧") | [F244](features/F244-capability-tips-system.md) |
 | F245 | Friction Signal Eval — 摩擦信号统一聚合（eval:friction）：猫爪感差/用户cancel/F222反馈/eval域摩擦 4 通道散落无统一视图 → 周期 rollup 聚合+分类(harness/工具/环境)+F128/code-as-harness 出口；频率可配（社区weekly/本家3天）；A聚合不搬迁 task-outcome；实证 signal 体量大（数百 invocation/天） | spec | Ragdoll/Ragdoll (opus-48) | internal (operator 2026-06-18 "需要feat你可以创建") | [F245](features/F245-friction-signal-eval.md) |
 | F246 | Approval Hub — 统一审批中心底座：operator 审批散落各 thread（F128/F225/F193），operator不在对应 thread 就看不到 → CQRS read-side index 聚合多 feature 审批项 + Hub "待审批" panel（跨 thread 可见 + 计数徽标 + 就地/跳转审批 + 过期提醒）；接入三条件 actor=operator + binary outcome + 跨 thread；v1 接 F128/F225/F193 E3；F168 sibling 不迁；push channel 独立问题 | spec | Ragdoll/Ragdoll (opus-46) | internal (operator 2026-06-20 "好耶！我同意") | [F246](features/F246-approval-hub.md) |
+| F247 | A2A 沙盒模式 — 项目级 A2A 开发容器 | implemented, pending operator acceptance | Kimi/K3 | internal | [F247](features/F247-a2a-sandbox-mode.md) |

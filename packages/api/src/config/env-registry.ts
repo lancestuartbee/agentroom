@@ -857,6 +857,14 @@ export const ENV_VARS: EnvDefinition[] = [
     hubVisible: false,
   },
   {
+    name: 'CAT_CAFE_SANDBOX_ID',
+    defaultValue: '(运行时按需注入)',
+    description: '当前 A2A 沙盒 ID（由 API 进程注入 MCP Server 子进程 env，用于证据检索默认限定沙盒范围）',
+    category: 'cli',
+    sensitive: false,
+    hubVisible: false,
+  },
+  {
     name: 'CAT_CAFE_CAT_ID',
     defaultValue: '(运行时注入)',
     description: '当前成员 ID（由 API 进程注入 MCP Server 子进程 env）',
