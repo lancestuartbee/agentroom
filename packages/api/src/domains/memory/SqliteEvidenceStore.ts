@@ -575,7 +575,8 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     const mode = options.mode ?? 'lexical';
     const pool = Math.min(Math.max(limit * 4, 20), 100);
     const timeFilter = { dateFrom: options.dateFrom, dateTo: options.dateTo };
-    const lexical = (): PassageResult[] => this.searchPassages(query, pool, timeFilter);
+    const passageOptions = { contextWindow: options.contextWindow, sandboxId: options.sandboxId };
+    const lexical = (): PassageResult[] => this.searchPassages(query, pool, timeFilter, passageOptions);
 
     let passages: PassageResult[];
     let meta: SearchExecutionMeta = { degraded: false };
@@ -627,6 +628,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
       threadId: options.threadId,
       dateFrom: options.dateFrom,
       dateTo: options.dateTo,
+      sandboxId: options.sandboxId,
     });
     const entityPassages = entityPassageHits?.passages.map((p) => this.entityHitToPassageResult(p)) ?? [];
     const mergedEntityMatches = mergeEntityMatchMaps(entityMatchesByAnchor, entityPassageHits?.matchesByAnchor);
@@ -852,6 +854,10 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     const params: unknown[] = parsed.flatMap((p) => [p.docAnchor, p.passageId]);
     let sql = `SELECT doc_anchor, passage_id, content, speaker, position, created_at FROM evidence_passages WHERE (${clauses})`;
 
+    if (options?.sandboxId) {
+      sql += " AND doc_anchor LIKE ? ESCAPE '\\'";
+      params.push(sandboxAnchorPrefix(options.sandboxId));
+    }
     if (options?.threadId) {
       sql += ' AND doc_anchor = ?';
       params.push(`thread-${options.threadId}`);
@@ -905,9 +911,11 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     const passagesByAnchor = new Map<string, PassageResult[]>();
     const withContext = this.attachPassageContext(passages, options?.contextWindow);
 
+    const sandboxPrefix = options?.sandboxId ? `sandbox:${options.sandboxId}:` : undefined;
     for (let index = 0; index < withContext.length; index++) {
       const passage = withContext[index];
       if (threadAnchor && passage.docAnchor !== threadAnchor) continue;
+      if (sandboxPrefix && !passage.docAnchor.startsWith(sandboxPrefix)) continue;
       const arr = passagesByAnchor.get(passage.docAnchor) ?? [];
       arr.push(passage);
       passagesByAnchor.set(passage.docAnchor, arr);
@@ -1654,7 +1662,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     query: string,
     limit = 10,
     timeFilter?: { dateFrom?: string; dateTo?: string },
-    options?: { contextWindow?: number },
+    options?: { contextWindow?: number; sandboxId?: string },
   ): PassageResult[] {
     this.ensureOpen();
     const trimmed = query.trim();
@@ -1673,6 +1681,10 @@ export class SqliteEvidenceStore implements IEvidenceStore {
              WHERE passage_fts MATCH ?`;
         let params: unknown[] = [ftsQuery];
 
+        if (options?.sandboxId) {
+          sql += " AND p.doc_anchor LIKE ? ESCAPE '\\'";
+          params.push(sandboxAnchorPrefix(options.sandboxId));
+        }
         if (timeFilter?.dateFrom) {
           sql += ' AND p.created_at >= ?';
           params.push(timeFilter.dateFrom);

@@ -121,4 +121,51 @@ describe('SqliteEvidenceStore sandbox scope (F247 Phase B)', () => {
     });
     assert.equal(scoped.length, 0);
   });
+
+  it('depth=raw scopes passage hits to sandbox anchor prefix before top-K truncation', async () => {
+    // Global doc only matches at the passage level; its parent doc must not leak
+    // into a sandbox-scoped raw search even when the global passage is the top
+    // passage hit.
+    await store.upsert([
+      {
+        anchor: 'doc:global-secret',
+        kind: 'thread',
+        status: 'active',
+        title: 'Unrelated global thread',
+        summary: 'No sandbox keyword here',
+        updatedAt: '2026-08-23T00:00:00Z',
+      },
+      {
+        anchor: 'sandbox:sandbox:sb-raw:learned:own',
+        kind: 'lesson',
+        status: 'active',
+        title: 'Sandbox lesson',
+        summary: 'needle insight',
+        updatedAt: '2026-08-23T00:00:00Z',
+      },
+    ]);
+
+    const db = store.getDb();
+    const stmt = db.prepare(
+      'INSERT INTO evidence_passages (doc_anchor, passage_id, content, speaker, position, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    // Global passage is the only passage hit; sandbox doc matches at doc level only.
+    stmt.run('doc:global-secret', 'msg-001', 'the needle is in the haystack', 'user', 0, '2026-08-23T00:00:00Z');
+    stmt.run('sandbox:sandbox:sb-raw:learned:own', 'msg-001', 'sandbox conclusion without keyword', 'opus', 0, '2026-08-23T00:00:00Z');
+
+    // Unscoped raw search surfaces the passage-only global doc first.
+    const unscoped = await store.search('needle', { mode: 'lexical', depth: 'raw', limit: 1 });
+    assert.equal(unscoped.length, 1);
+    assert.equal(unscoped[0].anchor, 'doc:global-secret');
+
+    // Scoped raw search must not include the global doc even with limit=1.
+    const scoped = await store.search('needle', {
+      mode: 'lexical',
+      depth: 'raw',
+      limit: 1,
+      sandboxId: 'sandbox:sb-raw',
+    });
+    assert.equal(scoped.length, 1);
+    assert.equal(scoped[0].anchor, 'sandbox:sandbox:sb-raw:learned:own');
+  });
 });

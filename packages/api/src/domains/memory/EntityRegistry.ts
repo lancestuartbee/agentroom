@@ -65,6 +65,16 @@ export function normalizeEntityAlias(value: string): string {
   return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+/** Escape a user-supplied value for use in a SQLite LIKE pattern. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/** F247 Phase B: produce the anchor prefix predicate for a single sandbox's evidence. */
+function sandboxAnchorPrefix(sandboxId: string): string {
+  return `sandbox:${escapeLikePattern(sandboxId)}:%`;
+}
+
 export function aliasMatchesText(text: string, alias: string): boolean {
   const aliasNorm = normalizeEntityAlias(alias);
   const textNorm = normalizeEntityAlias(text);
@@ -242,7 +252,7 @@ export class EntityRegistryStore {
   findMentionPassages(
     queryMatches: QueryEntityMatch[],
     limit: number,
-    options?: { threadId?: string; dateFrom?: string; dateTo?: string },
+    options?: { threadId?: string; dateFrom?: string; dateTo?: string; sandboxId?: string },
   ): {
     passages: EntityMentionPassageHit[];
     matchesByAnchor: Map<string, EntityMatch[]>;
@@ -371,7 +381,7 @@ export class EntityRegistryStore {
   private selectMentionPassageKeys(
     queryMatches: QueryEntityMatch[],
     limit: number,
-    options?: { threadId?: string; dateFrom?: string; dateTo?: string },
+    options?: { threadId?: string; dateFrom?: string; dateTo?: string; sandboxId?: string },
   ): Array<{ doc_anchor: string; passage_id: string }> {
     if (limit <= 0) return [];
     const ids = [...new Set(queryMatches.map((m) => m.entityId))];
@@ -390,6 +400,10 @@ export class EntityRegistryStore {
     if (options?.threadId) {
       sql += ' AND m.doc_anchor = ?';
       params.push(`thread-${options.threadId}`);
+    }
+    if (options?.sandboxId) {
+      sql += " AND m.doc_anchor LIKE ? ESCAPE '\\'";
+      params.push(sandboxAnchorPrefix(options.sandboxId));
     }
     if (options?.dateFrom) {
       sql += ' AND p.created_at >= ?';
