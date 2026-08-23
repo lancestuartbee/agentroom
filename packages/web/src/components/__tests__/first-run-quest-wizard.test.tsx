@@ -144,6 +144,7 @@ describe('FirstRunQuestWizard', () => {
               roleDescription: '主架构师',
               personality: '温柔',
               roles: ['architect'],
+              behaviors: ['engineering-discipline'],
             },
           ],
         });
@@ -246,5 +247,6 @@ describe('FirstRunQuestWizard', () => {
     expect(catsPayload!.clientId).toBe('anthropic');
     expect(catsPayload!.client).toBeUndefined();
     expect(catsPayload!.roles).toEqual(['architect']);
+    expect(catsPayload!.behaviors).toEqual(['engineering-discipline']);
   });
 });

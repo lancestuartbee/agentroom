@@ -161,6 +161,7 @@
     "codex": {
       "family": "gpt",
       "roles": ["peer-reviewer", "security"],
+      "behaviors": ["engineering-discipline"],
       "lead": true,
       "available": true,
       "evaluation": "GPT 5.x via Codex CLI：代码实现、审查、安全分析、测试覆盖。"
@@ -196,6 +197,7 @@
     "opencode": {
       "family": "opencode",
       "roles": ["coding", "multi-agent", "opencode"],
+      "behaviors": ["opencode-runtime-boundary"],
       "lead": true,
       "available": true,
       "evaluation": "开源多模型编码 agent，自带 Oh My OpenCode 多专家编排 + LSP (F105)"

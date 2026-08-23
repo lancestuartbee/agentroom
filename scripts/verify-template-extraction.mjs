@@ -115,12 +115,15 @@ const wfRaw = readFileSync(join(TEMPLATES, 'workflow-triggers.yaml'), 'utf-8');
 const wfParsed = YAML.parse(wfRaw);
 const s6Checks = [
   ['S6 has roles map', typeof wfParsed.roles === 'object'],
-  ['S6 has breeds map', typeof wfParsed.breeds === 'object'],
+  ['S6 has behaviors map', typeof wfParsed.behaviors === 'object'],
   ['S6 architect role routes review to @codex', wfParsed.roles?.architect?.includes('@codex')],
   ['S6 peer-reviewer role guards push back', wfParsed.roles?.['peer-reviewer']?.includes('push back')],
   ['S6 designer role has screenshot discipline', wfParsed.roles?.designer?.includes('截图')],
-  ['S6 maine-coon governance keeps long-task guardrails', wfParsed.breeds?.['maine-coon']?.includes('长任务纪律')],
-  ['S6 golden-chinchilla governance keeps OMOC boundary', wfParsed.breeds?.['golden-chinchilla']?.includes('OMOC')],
+  [
+    'S6 engineering behavior keeps long-task guardrails',
+    wfParsed.behaviors?.['engineering-discipline']?.includes('长任务纪律'),
+  ],
+  ['S6 OpenCode behavior keeps OMOC boundary', wfParsed.behaviors?.['opencode-runtime-boundary']?.includes('OMOC')],
 ];
 for (const [label, ok] of s6Checks) {
   assert(label, String(ok), 'true');

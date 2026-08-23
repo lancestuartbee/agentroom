@@ -188,6 +188,8 @@ export interface RosterEntry {
   readonly family: string;
   /** Roles this cat can fulfill (architect, peer-reviewer, designer, etc.) */
   readonly roles: readonly string[];
+  /** Reusable collaboration disciplines projected into development prompts. */
+  readonly behaviors?: readonly string[];
   /** Whether this cat is the lead of its family */
   readonly lead: boolean;
   /** Whether this cat is available (has quota). co-creator 40 美刀教训！ */

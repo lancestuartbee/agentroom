@@ -100,29 +100,29 @@ describe('prompt-injection review guard scripts', () => {
     );
   });
 
-  it('Maine Coon S6 breed governance preserves native L0 long-task guardrails', () => {
+  it('engineering-discipline behavior preserves native L0 long-task guardrails', () => {
     const workflowTriggers = YAML.parse(readFileSync('assets/prompt-templates/workflow-triggers.yaml', 'utf-8'));
-    const maineCoon = workflowTriggers.breeds?.['maine-coon'];
+    const engineeringDiscipline = workflowTriggers.behaviors?.['engineering-discipline'];
 
-    assert.equal(typeof maineCoon, 'string', 'maine-coon workflow governance template must be a string block');
+    assert.equal(typeof engineeringDiscipline, 'string', 'engineering behavior must be a string block');
     assert.match(
-      maineCoon,
-      /### 缅因猫家族治理（fallback 层数检测 F177 Phase D）/,
-      'Maine Coon S6 should preserve its fallback-layer governance block from the native overlay',
+      engineeringDiscipline,
+      /### 工程纪律（fallback 层数检测 F177 Phase D）/,
+      'engineering behavior should preserve its fallback-layer coordinate audit',
     );
-    assert.match(maineCoon, /### 长任务纪律/, 'Maine Coon S6 should preserve long-task discipline');
+    assert.match(engineeringDiscipline, /### 长任务纪律/, 'behavior should preserve long-task discipline');
     assert.match(
-      maineCoon,
+      engineeringDiscipline,
       /exec_command session_id 存活 → 续 write_stdin。/,
       'long-task discipline must keep session_id reuse guidance',
     );
     assert.match(
-      maineCoon,
+      engineeringDiscipline,
       /bash&\/nohup\/disown\/setsid = 伪后台；真后台用 detached spawn \+ unref。/,
       'long-task discipline must keep pseudo-backgrounding guidance',
     );
     assert.match(
-      maineCoon,
+      engineeringDiscipline,
       /Fire-and-forget → pid\/log\/exit 探针轮询。/,
       'long-task discipline must keep external probe guidance',
     );

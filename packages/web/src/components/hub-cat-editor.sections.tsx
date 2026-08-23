@@ -84,6 +84,7 @@ export function IdentitySection({
 }) {
   const strengthTags = splitStrengthTags(form.strengths);
   const roleTags = splitStrengthTags(form.roles);
+  const behaviorTags = splitStrengthTags(form.behaviors ?? '');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const avatarSrc = safeAvatarSrc(form.avatar);
   const [personaOpen, setPersonaOpen] = useState(false);
@@ -93,7 +94,8 @@ export function IdentitySection({
       form.teamStrengths.trim() ||
       form.caution.trim() ||
       strengthTags.length > 0 ||
-      roleTags.length > 0,
+      roleTags.length > 0 ||
+      behaviorTags.length > 0,
   );
 
   return (
@@ -260,7 +262,7 @@ export function IdentitySection({
               />
             </div>
             <div className="flex items-start gap-3">
-              <span className="w-[150px] shrink-0 pt-1 text-xs font-bold text-cafe-secondary">角色 / 能力</span>
+              <span className="w-[150px] shrink-0 pt-1 text-xs font-bold text-cafe-secondary">协作角色</span>
               <div className="min-w-0 flex-1">
                 <TagEditor
                   tags={roleTags}
@@ -274,6 +276,24 @@ export function IdentitySection({
                 aria-label="Roles"
                 value={form.roles}
                 onChange={(event) => onChange({ roles: event.target.value })}
+                className="sr-only"
+              />
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="w-[150px] shrink-0 pt-1 text-xs font-bold text-cafe-secondary">行为协议</span>
+              <div className="min-w-0 flex-1">
+                <TagEditor
+                  tags={behaviorTags}
+                  onChange={(tags) => onChange({ behaviors: joinTags(tags) })}
+                  addLabel="+ 选择"
+                  placeholder="输入行为，例如 engineering-discipline"
+                  emptyLabel="(无)"
+                />
+              </div>
+              <input
+                aria-label="Behaviors"
+                value={form.behaviors ?? ''}
+                onChange={(event) => onChange({ behaviors: event.target.value })}
                 className="sr-only"
               />
             </div>

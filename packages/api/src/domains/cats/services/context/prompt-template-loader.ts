@@ -83,8 +83,8 @@ export function loadDevProtocol(): string {
 export interface WorkflowTriggers {
   /** Routing preferences keyed by roster role (development-mode only). */
   roles: Record<string, string>;
-  /** Optional breed-specific governance/discipline overlays. */
-  breeds: Record<string, string>;
+  /** Reusable collaboration disciplines keyed by explicit roster behavior. */
+  behaviors: Record<string, string>;
 }
 
 /**
@@ -95,6 +95,11 @@ export interface WorkflowTriggers {
 export const DEV_ROLE_PRIORITY = ['architect', 'peer-reviewer', 'coding', 'security'] as const;
 
 const ALL_RECOGNIZED_ROLES = new Set<string>([...DEV_ROLE_PRIORITY, 'designer']);
+
+const LEGACY_BREED_BEHAVIOR_IDS: Readonly<Record<string, string>> = {
+  'maine-coon': 'engineering-discipline',
+  'golden-chinchilla': 'opencode-runtime-boundary',
+};
 
 function extractStringMap(obj: unknown): Record<string, string> {
   if (obj == null || typeof obj !== 'object') return {};
@@ -109,11 +114,11 @@ function extractStringMap(obj: unknown): Record<string, string> {
 
 /**
  * Detect legacy flat workflow-triggers overlays where top-level keys were role or
- * breed IDs mapped directly to strings. New schema requires `roles:` / `breeds:`
+ * breed IDs mapped directly to strings. New schema requires `roles:` / `behaviors:`
  * nested maps. We migrate without silently dropping user overrides.
  */
 function isLegacyFlatWorkflowTriggers(record: Record<string, unknown>): boolean {
-  if ('roles' in record || 'breeds' in record) return false;
+  if ('roles' in record || 'behaviors' in record || 'breeds' in record) return false;
   const entries = Object.entries(record);
   if (entries.length === 0) return false;
   // Treat as legacy if every top-level value is a string (the old contract).
@@ -123,33 +128,45 @@ function isLegacyFlatWorkflowTriggers(record: Record<string, unknown>): boolean 
 function migrateLegacyFlatWorkflowTriggers(record: Record<string, unknown>): WorkflowTriggers {
   console.warn(
     '[prompt-template] workflow-triggers overlay uses legacy flat schema; ' +
-      'migrating to nested roles/breeds. Please update to the new schema.',
+      'migrating to nested roles/behaviors. Please update to the new schema.',
   );
   const roles: Record<string, string> = {};
-  const breeds: Record<string, string> = {};
+  const behaviors: Record<string, string> = {};
   for (const [key, val] of Object.entries(record)) {
     if (typeof val !== 'string') continue;
     const trimmed = val.trimEnd();
     if (ALL_RECOGNIZED_ROLES.has(key)) {
       roles[key] = trimmed;
     } else {
-      breeds[key] = trimmed;
+      behaviors[LEGACY_BREED_BEHAVIOR_IDS[key] ?? key] = trimmed;
     }
   }
-  return { roles, breeds };
+  return { roles, behaviors };
+}
+
+function migrateLegacyBreedBehaviors(record: Record<string, unknown>): Record<string, string> {
+  const breeds = extractStringMap(record.breeds);
+  if (Object.keys(breeds).length === 0) return {};
+  console.warn(
+    '[prompt-template] workflow-triggers overlay uses legacy nested breeds schema; ' +
+      'migrating entries to behaviors. Please assign the behavior IDs in roster entries.',
+  );
+  return Object.fromEntries(
+    Object.entries(breeds).map(([key, content]) => [LEGACY_BREED_BEHAVIOR_IDS[key] ?? key, content]),
+  );
 }
 
 /**
  * Load workflow triggers from YAML.
  * Checks for workflow-triggers.local.yaml overlay first.
- * Returns role-keyed routing preferences and breed-keyed governance overlays.
+ * Returns role-keyed routing preferences and behavior-keyed discipline overlays.
  * Supports legacy flat overlays by migrating them to the nested schema.
  */
 export function loadWorkflowTriggers(): WorkflowTriggers {
   const { path: filePath, isOverride } = resolveWithOverlay('workflow-triggers.yaml', 'workflow-triggers.local.yaml');
   if (!existsSync(filePath)) {
     console.warn('[prompt-template] workflow-triggers.yaml not found, using empty map');
-    return { roles: {}, breeds: {} };
+    return { roles: {}, behaviors: {} };
   }
 
   let parsed: unknown;
@@ -165,17 +182,17 @@ export function loadWorkflowTriggers(): WorkflowTriggers {
           parsed = YAML.parse(readFileSync(basePath, 'utf-8'));
         } catch {
           console.warn('[prompt-template] base workflow-triggers.yaml also malformed, using empty map');
-          return { roles: {}, breeds: {} };
+          return { roles: {}, behaviors: {} };
         }
       } else {
-        return { roles: {}, breeds: {} };
+        return { roles: {}, behaviors: {} };
       }
     } else {
-      return { roles: {}, breeds: {} };
+      return { roles: {}, behaviors: {} };
     }
   }
 
-  if (parsed == null || typeof parsed !== 'object') return { roles: {}, breeds: {} };
+  if (parsed == null || typeof parsed !== 'object') return { roles: {}, behaviors: {} };
 
   const record = parsed as Record<string, unknown>;
   if (isLegacyFlatWorkflowTriggers(record)) {
@@ -184,7 +201,10 @@ export function loadWorkflowTriggers(): WorkflowTriggers {
 
   return {
     roles: extractStringMap(record.roles),
-    breeds: extractStringMap(record.breeds),
+    behaviors: {
+      ...migrateLegacyBreedBehaviors(record),
+      ...extractStringMap(record.behaviors),
+    },
   };
 }
 

@@ -107,6 +107,7 @@ export function FirstRunQuestWizard({ open, onClose, onCreated }: FirstRunQuestW
               runtimeClient: selectedTemplate.runtimeClient,
               teamStrengths: selectedTemplate.teamStrengths,
               roles: selectedTemplate.roles,
+              behaviors: selectedTemplate.behaviors,
               clientId: selectedClient.provider,
               accountRef: config.accountRef,
               defaultModel: config.model,

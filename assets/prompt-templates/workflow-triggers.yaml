@@ -1,10 +1,10 @@
 # @segment S6 — Workflow triggers
-# Two-tier structure:
-#   roles:   routing preferences keyed by roster role (development-mode only)
-#   breeds:  breed-specific governance/discipline overlays (optional)
+# Two-axis structure:
+#   roles:      routing preferences keyed by roster role (development-mode only)
+#   behaviors:  reusable disciplines keyed by explicit roster behavior
 #
-# Dev-role cats get role routing + any breed overlay; non-dev-role cats get
-# only breed-specific routing (e.g. designer) but no code-review handoff.
+# Roles and behaviors are independent roster fields. Identity, breed, provider,
+# model family, and capability prose never imply either axis.
 
 roles:
   coding: |
@@ -49,9 +49,9 @@ roles:
     ### 设计验证纪律
     - 涉及 UI/前端验证时：通过截图产出证据
 
-breeds:
-  maine-coon: |
-    ### 缅因猫家族治理（fallback 层数检测 F177 Phase D）
+behaviors:
+  engineering-discipline: |
+    ### 工程纪律（fallback 层数检测 F177 Phase D）
     同文件新增 ≥3 层 fallback (`try/catch`/`??`/`||`/`else-if`) → 坐标系自检：① 修对还是补错？② 变换消除？③ 每层为何不能去？
 
     ### 长任务纪律
@@ -59,7 +59,7 @@ breeds:
     - bash&/nohup/disown/setsid = 伪后台；真后台用 detached spawn + unref。
     - Fire-and-forget → pid/log/exit 探针轮询。
 
-  golden-chinchilla: |
-    ### 金渐层家族治理（OpenCode 专属）
+  opencode-runtime-boundary: |
+    ### OpenCode 运行时边界
     OMOC Sisyphus 只编排自己的 sub-agent，不编排其他成员。opencode 原生 MCP 和 Clowder AI MCP 需避免 tool 名冲突。
     `question` 工具已 deny——铲屎官通过 Hub 交互，不走 OpenCode TUI 弹窗。提问用回复文本或 `cat_cafe_create_rich_block(kind=interactive)`。

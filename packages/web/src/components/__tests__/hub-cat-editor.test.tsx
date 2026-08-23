@@ -222,7 +222,8 @@ describe('HubCatEditor', () => {
       teamStrengths: '',
       caution: '',
       strengths: '',
-      roles: '',
+      roles: 'peer-reviewer, security',
+      behaviors: 'engineering-discipline',
       clientId: 'openai',
       accountRef: '',
       defaultModel: 'gpt-5.4',
@@ -253,6 +254,8 @@ describe('HubCatEditor', () => {
     const payload = buildCatPayload(form, existingCat) as Record<string, unknown>;
     expect(payload.name).toBe('运行时缅因猫');
     expect(payload.variantLabel).toBe('GPT-5.5');
+    expect(payload.roles).toEqual(['peer-reviewer', 'security']);
+    expect(payload.behaviors).toEqual(['engineering-discipline']);
   });
 
   it('buildCatPayload recomputes mcpSupport when client changes on existing cat', () => {

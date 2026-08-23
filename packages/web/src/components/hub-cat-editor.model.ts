@@ -50,6 +50,8 @@ export interface HubCatEditorFormState {
   strengths: string;
   /** F032: comma-separated capability/role tags (e.g. coding,designer). */
   roles: string;
+  /** F032: comma-separated reusable collaboration behavior IDs. */
+  behaviors?: string;
   clientId: ClientId;
   accountRef: string;
   defaultModel: string;
@@ -97,6 +99,8 @@ export interface HubCatEditorDraft {
   templateTeamStrengths?: string;
   /** F032: roster roles to seed for a new member created from a template. */
   templateRoles?: string[];
+  /** F032: roster behaviors to seed independently from roles. */
+  templateBehaviors?: string[];
 }
 
 export interface StrategyFormState {
@@ -591,6 +595,7 @@ export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | n
     caution: cat?.caution ?? '',
     strengths: cat?.strengths?.join(', ') ?? '',
     roles: cat?.roster?.roles?.join(', ') ?? createDraft?.templateRoles?.join(', ') ?? '',
+    behaviors: cat?.roster?.behaviors?.join(', ') ?? createDraft?.templateBehaviors?.join(', ') ?? '',
     clientId,
     accountRef: cat?.accountRef ?? createDraft?.accountRef ?? '',
     defaultModel,

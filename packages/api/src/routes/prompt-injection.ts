@@ -69,7 +69,7 @@ function requireOverlayWriteAuth(request: import('fastify').FastifyRequest): Ove
 
 /**
  * Validate that YAML content parses to a nested mapping whose leaf values are
- * strings. The S6 workflow-triggers overlay uses `roles:` / `breeds:` nested
+ * strings. The S6 workflow-triggers overlay uses `roles:` / `behaviors:` nested
  * maps, so flat string-only validation is no longer sufficient.
  * Returns an error message or null if valid.
  * Used by both save and restore-backup paths (P2 audit: same gate on all write paths).
@@ -247,7 +247,7 @@ export const promptInjectionRoutes: FastifyPluginAsync = async (app) => {
       const vars = resolveVars(id);
       let rendered: string;
       if (meta.ext === 'yaml') {
-        // YAML preview: parse and show nested mapping (roles / breeds for S6)
+        // YAML preview: parse and show nested mapping (roles / behaviors for S6)
         try {
           const parsed: unknown = YAML.parse(content);
           if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

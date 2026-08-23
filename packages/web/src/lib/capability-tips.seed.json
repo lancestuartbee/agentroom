@@ -1068,6 +1068,35 @@
     "owner": "opus"
   },
   {
+    "id": "basics-member-roles-behaviors",
+    "kind": "feature",
+    "sourceRef": {
+      "path": "docs/features/F032-agent-plugin-architecture.md",
+      "anchor": "KD-14（Role / Behavior 解耦）— operator signoff 2026-08-23"
+    },
+    "structureSource": {
+      "path": "docs/features/F032-agent-plugin-architecture.md",
+      "anchor": "Phase B：协作规则动态化（新增 scope）"
+    },
+    "bodySource": {
+      "path": "docs/features/F032-agent-plugin-architecture.md",
+      "anchor": "KD-14（Role / Behavior 解耦）— operator signoff 2026-08-23"
+    },
+    "contexts": [
+      "feature_dev",
+      "concierge_open"
+    ],
+    "audience": [
+      "cvo"
+    ],
+    "body": "在设置里编辑成员时，「协作角色」决定任务交接路由，「行为协议」决定开发纪律；两者可以独立调整，不会再由模型家族或能力描述暗中绑定。",
+    "action": {
+      "type": "open_concierge_draft",
+      "label": "了解更多"
+    },
+    "owner": "codex"
+  },
+  {
     "id": "basics-knowledge-feed",
     "kind": "feature",
     "sourceRef": {

@@ -244,6 +244,7 @@ z.string().refine(id => catRegistry.has(id), 'Invalid catId')
     "codex": {
       "family": "maine-coon",
       "roles": ["peer-reviewer", "security"],
+      "behaviors": ["engineering-discipline"],
       "lead": true,
       "available": true,
       "evaluation": "代码审查专家，安全意识强，反应快"
@@ -271,6 +272,7 @@ z.string().refine(id => catRegistry.has(id), 'Invalid catId')
 |------|------|------|
 | `family` | string | 物种/厂商（ragdoll, maine-coon, siamese） |
 | `roles` | string[] | 职能角色（architect, peer-reviewer, designer, thinker...） |
+| `behaviors` | string[]? | 可复用协作纪律（与 roles 独立；不由 family/model/能力描述推导） |
 | `lead` | boolean | 是否是该 family 的负责人 |
 | `available` | boolean | **是否有猫粮**！false = 不要找他 |
 | `evaluation` | string | operator对这只猫的评价（注入到队友介绍） |
@@ -564,6 +566,16 @@ Phase B3 做一次性批量替换 + 守护测试。
 | MENTION_ALIASES | 模块级常量 import 时求值 | P2 |
 
 ## Post-Completion Boundary Adjustments
+
+### KD-14（Role / Behavior 解耦）— operator signoff 2026-08-23
+
+开发协作提示词分成两条正交轴：
+
+- `roster.roles` 只描述团队职能并选择交接路由，例如 coding、peer-reviewer、designer。
+- `roster.behaviors` 只选择可复用纪律，例如 engineering-discipline、opencode-runtime-boundary。
+- breed、catId、displayName、modelFamily 和 F208 capability dossier 都不得隐式推导角色或行为。
+- `workflow-triggers.yaml` 的规范结构为 `roles:` + `behaviors:`；旧 `breeds:` overlay 仅在读取边界迁移并告警。
+- 缺少 `behaviors` 的旧 catalog 继续有效，语义等同空数组。
 
 ### KD-13（F208 边界调整）— operator signoff 2026-06-19
 

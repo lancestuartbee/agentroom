@@ -155,7 +155,7 @@ describe('prompt-injection YAML validation', () => {
       }
     });
 
-    it('accepts nested roles/breeds YAML mapping', async () => {
+    it('accepts nested roles/behaviors YAML mapping', async () => {
       const app = await buildApp();
       try {
         const content = `roles:
@@ -163,9 +163,9 @@ describe('prompt-injection YAML validation', () => {
     test coding routing
   designer: |
     test designer routing
-breeds:
-  maine-coon: |
-    test breed governance`;
+behaviors:
+  engineering-discipline: |
+    test engineering discipline`;
         const res = await app.inject({
           method: 'POST',
           url: `/api/prompt-injection/segment/${YAML_SEGMENT}/preview`,
@@ -176,7 +176,7 @@ breeds:
         const body = JSON.parse(res.body);
         assert.equal(body.segmentId, YAML_SEGMENT);
         assert.ok(body.rendered.includes('coding'), 'preview should include nested roles');
-        assert.ok(body.rendered.includes('breeds'), 'preview should include nested breeds');
+        assert.ok(body.rendered.includes('behaviors'), 'preview should include nested behaviors');
       } finally {
         await app.close();
       }
@@ -327,7 +327,7 @@ breeds:
       });
     });
 
-    it('writes nested roles/breeds YAML overlays', async () => {
+    it('writes nested roles/behaviors YAML overlays', async () => {
       await withPreservedOverlay(YAML_SEGMENT, async () => {
         const overlayPath = getTemplateOverlayPath(YAML_SEGMENT);
         assert.ok(overlayPath);
@@ -338,9 +338,9 @@ breeds:
           const content = `roles:
   coding: |
     nested coding role routing
-breeds:
-  maine-coon: |
-    nested breed governance`;
+behaviors:
+  engineering-discipline: |
+    nested engineering discipline`;
           const res = await app.inject({
             method: 'PUT',
             url: `/api/prompt-injection/segment/${YAML_SEGMENT}/override`,
@@ -388,12 +388,16 @@ breeds:
     });
   });
 
-  describe('legacy flat overlay migration', () => {
-    it('migrates legacy flat workflow-triggers overlay to nested roles/breeds', async () => {
+  describe('legacy overlay migration', () => {
+    it('migrates legacy flat workflow-triggers overlay to nested roles/behaviors', async () => {
       await withPreservedOverlay(YAML_SEGMENT, async () => {
         const overlayPath = getTemplateOverlayPath(YAML_SEGMENT);
         assert.ok(overlayPath);
-        writeFileSync(overlayPath, 'coding: |\n  legacy coding route\nragdoll: |\n  legacy ragdoll route', 'utf-8');
+        writeFileSync(
+          overlayPath,
+          'coding: |\n  legacy coding route\nmaine-coon: |\n  legacy engineering discipline',
+          'utf-8',
+        );
 
         const triggers = loadWorkflowTriggers();
         assert.ok(
@@ -401,8 +405,27 @@ breeds:
           'legacy role key should migrate into roles map',
         );
         assert.ok(
-          triggers.breeds.ragdoll?.includes('legacy ragdoll route'),
-          'legacy breed key should migrate into breeds map',
+          triggers.behaviors['engineering-discipline']?.includes('legacy engineering discipline'),
+          'legacy breed key should migrate into the canonical behaviors map',
+        );
+      });
+    });
+
+    it('migrates the previous nested breeds map into canonical behaviors', async () => {
+      await withPreservedOverlay(YAML_SEGMENT, async () => {
+        const overlayPath = getTemplateOverlayPath(YAML_SEGMENT);
+        assert.ok(overlayPath);
+        writeFileSync(
+          overlayPath,
+          'roles:\n  coding: legacy coding route\nbreeds:\n  golden-chinchilla: legacy OpenCode boundary',
+          'utf-8',
+        );
+
+        const triggers = loadWorkflowTriggers();
+        assert.ok(triggers.roles.coding?.includes('legacy coding route'));
+        assert.ok(
+          triggers.behaviors['opencode-runtime-boundary']?.includes('legacy OpenCode boundary'),
+          'nested legacy breed content should not be dropped',
         );
       });
     });

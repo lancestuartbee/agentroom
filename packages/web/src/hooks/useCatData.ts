@@ -87,6 +87,7 @@ export interface CatData {
   roster?: {
     family: string;
     roles: string[];
+    behaviors?: string[];
     lead: boolean;
     available: boolean;
     evaluation: string;

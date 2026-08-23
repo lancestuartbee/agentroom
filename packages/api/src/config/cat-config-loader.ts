@@ -203,6 +203,7 @@ const catBreedSchema = z.object({
 const rosterEntrySchema = z.object({
   family: z.string().min(1),
   roles: z.array(z.string().min(1)).min(1),
+  behaviors: z.array(z.string().min(1)).optional(),
   lead: z.boolean(),
   available: z.boolean(),
   evaluation: z.string().min(1),

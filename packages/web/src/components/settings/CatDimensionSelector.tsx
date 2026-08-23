@@ -58,7 +58,7 @@ export function isSegmentActiveForCat(
     return defaultMcpSupportForClient(catClientId as ClientId);
   }
 
-  // Breed-specific workflow triggers
+  // Member-specific workflow triggers (legacy breedId conditions remain supported)
   if (t.includes('workflow_triggers') || t.includes('breedid')) return true;
 
   // A2A segments: active when not parallel

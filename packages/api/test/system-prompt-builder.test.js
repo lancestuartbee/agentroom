@@ -447,6 +447,14 @@ describe('SystemPromptBuilder', () => {
       'Codex workflow should avoid local-reviewer ping after external merge-gate feedback',
     );
     assert.ok(codexId.includes('出口一问'), 'Codex workflow should include exit check (出口一问)');
+    assert.ok(
+      codexId.includes('### 工程纪律'),
+      'Codex should receive the explicitly assigned engineering-discipline behavior',
+    );
+    assert.ok(
+      !opusId.includes('### 工程纪律'),
+      'Architect/Claude identity must not implicitly receive Codex engineering discipline',
+    );
 
     const opencodeId = buildStaticIdentity('opencode', { threadMode: 'development' });
     assert.ok(opencodeId.includes('工作流'), 'OpenCode should have workflow triggers');
@@ -456,7 +464,8 @@ describe('SystemPromptBuilder', () => {
     );
     assert.ok(opencodeId.includes('### 执行纪律'), 'OpenCode workflow should include execution discipline');
     assert.ok(opencodeId.includes('出口一问'), 'OpenCode workflow should include exit check (出口一问)');
-    assert.ok(opencodeId.includes('OMOC Sisyphus'), 'OpenCode workflow should keep golden-chinchilla governance');
+    assert.ok(opencodeId.includes('### OpenCode 运行时边界'), 'OpenCode should receive its explicit runtime behavior');
+    assert.ok(opencodeId.includes('OMOC Sisyphus'), 'OpenCode workflow should keep its runtime boundary');
   });
 
   test('buildStaticIdentity omits development workflow triggers outside development mode', async () => {
@@ -480,7 +489,7 @@ describe('SystemPromptBuilder', () => {
     );
   });
 
-  test('buildStaticIdentity gives new breeds the common dev protocol even without per-breed overlay', async () => {
+  test('buildStaticIdentity gives every member the common dev protocol without role or behavior overlays', async () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     const moonshotDev = buildStaticIdentity('kimi', { threadMode: 'development' });
     assert.ok(moonshotDev.includes('### 执行纪律'), 'New breed in dev mode should get common dev protocol');
