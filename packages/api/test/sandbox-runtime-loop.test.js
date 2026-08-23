@@ -1,35 +1,28 @@
 import './helpers/setup-cat-registry.js';
 
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, test } from 'node:test';
 
 const SPEC = { specVersion: '1', name: 'S', goal: 'g', members: ['opus'] };
 
 async function makeSandbox() {
-  const { InMemorySandboxStore } = await import(
-    '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-  );
+  const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
   const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-runtime-'));
   const projectPath = join(tmpDir, 'project');
   const runsDir = join(projectPath, '.a2a-sandbox', 'runs');
   await mkdir(runsDir, { recursive: true });
 
   const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-  const sandbox = await store.create(
-    { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-    'user-1',
-  );
+  const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
   await store.bindThread(sandbox.id, 'thread-1');
   return { store, sandbox, tmpDir, runsDir };
 }
 
 async function writeReport(runsDir, runId, { summary, learned, triggeredAt }) {
-  const { renderSandboxRunReport } = await import(
-    '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-  );
+  const { renderSandboxRunReport } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
   await writeFile(
     join(runsDir, `${runId}.md`),
     renderSandboxRunReport({ runId, trigger: 'scheduled', specVersion: '1', summary, learned, triggeredAt }),
@@ -81,9 +74,7 @@ describe('Sandbox runtime loop', () => {
 describe('Sandbox fold idempotence', () => {
   // Review finding (luna P1-2): a triggeredAt cursor loses data in three ways.
   test('two reports sharing a timestamp are both folded', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const mk = (runId) => ({
       v: 1,
       runId,
@@ -104,9 +95,7 @@ describe('Sandbox fold idempotence', () => {
   });
 
   test('a backwards clock step does not permanently lose later reports', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const mk = (runId, triggeredAt) => ({
       v: 1,
       runId,
@@ -129,9 +118,7 @@ describe('Sandbox fold idempotence', () => {
   });
 
   test('re-folding the same disk state stays a no-op', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const runs = [
       { v: 1, runId: 'r1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary: 'a', learned: ['A'] },
       { v: 1, runId: 'r2', trigger: 'scheduled', triggeredAt: 2000, specVersion: '1', summary: 'b', learned: ['B'] },
@@ -146,9 +133,7 @@ describe('Sandbox fold idempotence', () => {
   // A lost update (concurrent fold) drops ids from processedRunIds, so those runs fold
   // again. That must converge, not duplicate: learnedItems dedupe by id.
   test('a lost update re-folds without duplicating learnings', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const runs = [
       { v: 1, runId: 'r1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary: 'a', learned: ['A'] },
     ];
@@ -163,9 +148,7 @@ describe('Sandbox fold idempotence', () => {
 
   // Memories written before processedRunIds existed must not re-fold their whole history.
   test('legacy memory with only lastRunAt does not replay its entire history', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const legacy = { v: 1, summary: 'old', runsIncorporated: 3, lastRunAt: 5000, learnedItems: [], updatedAt: 5000 };
     const runs = [
       { v: 1, runId: 'old1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary: 'x', learned: ['X'] },
@@ -229,9 +212,7 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
   // My test asserted only the FIRST fold — the same mistake shape as the last round
   // (assert step one, never step two), so it certified the bug as fixed.
   test('legacy memory does not replay history on the SECOND fold either', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const legacy = { v: 1, summary: 'old', runsIncorporated: 3, lastRunAt: 5000, learnedItems: [], updatedAt: 5000 };
     const runs = [
       { v: 1, runId: 'old1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary: 'x', learned: ['X'] },
@@ -257,15 +238,9 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
   // 500 the OLDEST unprocessed report becomes permanently invisible — processedRunIds
   // cannot help with a run that is never even read.
   test('a sandbox with more than 500 reports still folds the oldest one', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
-    const { renderSandboxRunReport } = await import(
-      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { renderSandboxRunReport } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-500-'));
     const projectPath = join(tmpDir, 'project');
@@ -288,10 +263,7 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
     }
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const runs = await store.listRuns(sandbox.id);
@@ -308,12 +280,8 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
   // listRuns then overwrote the cache with that empty result. A permissions or I/O
   // fault would read as "this sandbox has never run".
   test('a directory read fault is not reported as an empty sandbox', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
-    const { renderSandboxRunReport } = await import(
-      '../dist/domains/sandbox/services/sandbox-run-prompt.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { renderSandboxRunReport } = await import('../dist/domains/sandbox/services/sandbox-run-prompt.js');
     const { chmod } = await import('node:fs/promises');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-eacces-'));
@@ -334,10 +302,7 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
     );
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const warm = await store.listRuns(sandbox.id);
@@ -360,9 +325,7 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
   // a member mid-write. A half-written report parsed as complete would be folded and
   // marked processed, permanently losing that run's learnings.
   test('a half-written report is skipped, not folded and marked processed', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-partial-'));
     const projectPath = join(tmpDir, 'project');
@@ -372,15 +335,22 @@ describe('Sandbox fold — legacy migration and long-run bounds', () => {
     // Truncated mid-write: header and summary present, `## Learned` never reached.
     await writeFile(
       join(runsDir, 'run-partial.md'),
-      ['# Sandbox Run run-partial', '', '- Trigger: scheduled', '- Triggered At: 2026-01-01T00:00:00.000Z', '- Spec Version: 1', '', '## Summary', '', '写到一半就断了'].join('\n'),
+      [
+        '# Sandbox Run run-partial',
+        '',
+        '- Trigger: scheduled',
+        '- Triggered At: 2026-01-01T00:00:00.000Z',
+        '- Spec Version: 1',
+        '',
+        '## Summary',
+        '',
+        '写到一半就断了',
+      ].join('\n'),
       'utf-8',
     );
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const runs = await store.listRuns(sandbox.id);
@@ -399,9 +369,7 @@ describe('Sandbox provider effort — real resolver behaviour', () => {
     const { resolveStreamJsonEffort } = await import(
       '../dist/domains/cats/services/agents/providers/ClaudeStreamJsonCarrierService.js'
     );
-    const { resolveCodexEffort } = await import(
-      '../dist/domains/cats/services/agents/providers/CodexAgentService.js'
-    );
+    const { resolveCodexEffort } = await import('../dist/domains/cats/services/agents/providers/CodexAgentService.js');
 
     for (const [label, resolve, catId] of [
       ['claude-stream-json', resolveStreamJsonEffort, 'opus'],
@@ -438,12 +406,8 @@ describe('Sandbox run report — in-flight vs settled', () => {
   // landing in that gap saw a "complete" report, folded it, and marked it processed —
   // so the durable learning written a moment later was lost for good.
   test('a report caught between the ## Learned heading and its bullets is folded only once complete', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const { appendFile } = await import('node:fs/promises');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-inflight-'));
@@ -456,10 +420,7 @@ describe('Sandbox run report — in-flight vs settled', () => {
     await writeFile(file, [...HEADER('run-x'), '## Learned', ''].join('\n'), 'utf-8');
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const firstScan = await store.listRuns(sandbox.id);
@@ -482,9 +443,7 @@ describe('Sandbox run report — in-flight vs settled', () => {
   // have its run skipped forever. Once the file has stopped changing it is final,
   // malformed or not — the run still happened and its summary is real.
   test('a settled but malformed report is still recorded as a run', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
     const { utimes } = await import('node:fs/promises');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-settled-'));
@@ -500,10 +459,7 @@ describe('Sandbox run report — in-flight vs settled', () => {
     await utimes(file, old, old);
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const runs = await store.listRuns(sandbox.id);
@@ -517,9 +473,7 @@ describe('Sandbox run report — in-flight vs settled', () => {
   // Re-review finding (luna P2): stale-cache fallback made "fresh data" and "read
   // failed, here is what I remember" indistinguishable at the call site.
   test('listRuns throws on a real read fault instead of returning stale data', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
     const { chmod } = await import('node:fs/promises');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-throw-'));
@@ -528,10 +482,7 @@ describe('Sandbox run report — in-flight vs settled', () => {
     await mkdir(runsDir, { recursive: true });
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     await chmod(runsDir, 0o000);
@@ -554,12 +505,8 @@ describe('Sandbox run report — in-flight vs settled', () => {
 // its ordinary runs forever. Completeness is judged on raw bullets.
 describe('Sandbox run report — a run with no durable learnings is still complete', () => {
   test('the placeholder-only report is folded, not deferred as in-flight', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-noLearn-'));
     const projectPath = join(tmpDir, 'project');
@@ -570,10 +517,7 @@ describe('Sandbox run report — a run with no durable learnings is still comple
     await writeReport(runsDir, 'run-quiet', { summary: '今天没跑出结论', triggeredAt: 1000 });
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const runs = await store.listRuns(sandbox.id);
@@ -594,12 +538,8 @@ describe('Sandbox fold — learnings are retriable, not gated on proving a write
   // now gates only the SUMMARY, while learnings are re-extracted from every visible
   // report on each fold and deduped by stable id.
   test('a learning appended long after the run was folded is still absorbed', async () => {
-    const { InMemorySandboxStore } = await import(
-      '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-    );
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const { appendFile, utimes } = await import('node:fs/promises');
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-retriable-'));
@@ -631,10 +571,7 @@ describe('Sandbox fold — learnings are retriable, not gated on proving a write
     await utimes(file, old, old);
 
     const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-    const sandbox = await store.create(
-      { title: 'S', projectPath, members: ['opus'], spec: SPEC },
-      'user-1',
-    );
+    const sandbox = await store.create({ title: 'S', projectPath, members: ['opus'], spec: SPEC }, 'user-1');
     await store.bindThread(sandbox.id, 'thread-1');
 
     const first = foldRunsIntoMemory(null, await store.listRuns(sandbox.id));
@@ -655,9 +592,7 @@ describe('Sandbox fold — learnings are retriable, not gated on proving a write
   });
 
   test('re-folding unchanged reports is still a no-op after decoupling', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const runs = [
       { v: 1, runId: 'r1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary: 'a', learned: ['A'] },
     ];
@@ -671,7 +606,7 @@ describe('Sandbox fold — learnings are retriable, not gated on proving a write
 });
 
 describe('Sandbox memory converges to what the reports currently say', () => {
-  const { } = {};
+  const {} = {};
   const run = (learned, summary = 's') => [
     { v: 1, runId: 'r1', trigger: 'scheduled', triggeredAt: 1000, specVersion: '1', summary, learned },
   ];
@@ -682,9 +617,7 @@ describe('Sandbox memory converges to what the reports currently say', () => {
   // Resolution: memory is a PROJECTION of the reports, so it converges to whatever they
   // currently say.
   test('a slot rewritten from partial to complete is corrected in memory', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
     const first = foldRunsIntoMemory(null, run(['partial concl']));
     assert.equal(first.memory.learnedItems[0].content, 'partial concl');
@@ -696,9 +629,7 @@ describe('Sandbox memory converges to what the reports currently say', () => {
   });
 
   test('a promoted learning is not silently rewritten under the exported copy', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
     const first = foldRunsIntoMemory(null, run(['exported conclusion']));
     // Simulate Phase E promotion: this content now also lives outside the sandbox.
@@ -720,9 +651,7 @@ describe('Sandbox memory converges to what the reports currently say', () => {
   // accumulated asset, so they must survive their source report disappearing — memory
   // tracks the reports while they exist, it does not evaporate with them.
   test('a learning survives its source report being pruned', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
     const first = foldRunsIntoMemory(null, run(['durable knowledge']));
     const afterPrune = foldRunsIntoMemory(first.memory, []);
@@ -735,9 +664,7 @@ describe('Sandbox memory converges to what the reports currently say', () => {
   // prompt, so a half-written summary actively misleads future runs. Recomputing it
   // from the visible reports makes it self-correcting too.
   test('a half-written summary is corrected once the report completes', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
 
     const partial = foldRunsIntoMemory(null, run(['L'], '今天的复盘写到一半'));
     assert.match(partial.memory.summary, /写到一半/);
@@ -748,9 +675,7 @@ describe('Sandbox memory converges to what the reports currently say', () => {
   });
 
   test('an unchanged disk state is still a no-op', async () => {
-    const { foldRunsIntoMemory } = await import(
-      '../dist/domains/sandbox/services/fold-runs-into-memory.js'
-    );
+    const { foldRunsIntoMemory } = await import('../dist/domains/sandbox/services/fold-runs-into-memory.js');
     const first = foldRunsIntoMemory(null, run(['A']));
     const again = foldRunsIntoMemory(first.memory, run(['A']));
     assert.equal(again.changed, false);

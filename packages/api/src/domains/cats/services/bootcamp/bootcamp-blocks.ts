@@ -91,7 +91,14 @@ export const taskSelectionBlock: BootcampInteractiveBlock = {
       group: 'Lv.1 好玩上手',
     },
     { id: 'Q8', icon: 'game', label: '像素 AI', description: '像素互动场景 ~2h', level: 1, group: 'Lv.1 好玩上手' },
-    { id: 'Q9', icon: 'chart', label: '3D 能力看板', description: '模型能力雷达图 ~2h', level: 1, group: 'Lv.1 好玩上手' },
+    {
+      id: 'Q9',
+      icon: 'chart',
+      label: '3D 能力看板',
+      description: '模型能力雷达图 ~2h',
+      level: 1,
+      group: 'Lv.1 好玩上手',
+    },
     {
       id: 'Q10',
       icon: 'heart',

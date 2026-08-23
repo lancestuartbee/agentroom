@@ -2,9 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 const { allCritiquesSettled, buildFinalSummary, isLikelyNewRoundtableTopic, parseCritiqueMeta, planRoundtableAction } =
-  await import(
-  '../dist/domains/cats/services/agents/routing/route-roundtable.js'
-);
+  await import('../dist/domains/cats/services/agents/routing/route-roundtable.js');
 
 function extractSummarySection(text, title) {
   const lines = text.split(/\r?\n/);
@@ -39,14 +37,7 @@ describe('roundtable final summary', () => {
           ].join('\n'),
         ],
       ]),
-      [
-        new Map([
-          [
-            'opus',
-            '## 收到的挑战与回应\n这是一段互评循环原文，最终总结不应该把它完整复述出来。',
-          ],
-        ]),
-      ],
+      [new Map([['opus', '## 收到的挑战与回应\n这是一段互评循环原文，最终总结不应该把它完整复述出来。']])],
       new Map([
         ['codex', 'VOTE: accept\n\n## 投票理由\n可以推进，但需要保留清晰的阶段状态。'],
         ['opus', 'VOTE: reject\n\n## 条件或阻塞\n总结不能复制每个人的过程发言。'],
@@ -228,7 +219,10 @@ describe('roundtable action planning', () => {
   });
 
   it('routes post-summary save requests to artifact saving', () => {
-    assert.equal(planRoundtableAction('把刚才的会议结论保存成 markdown 报告', ['codex', 'opus'], summarizedIssue).action, 'artifact_request');
+    assert.equal(
+      planRoundtableAction('把刚才的会议结论保存成 markdown 报告', ['codex', 'opus'], summarizedIssue).action,
+      'artifact_request',
+    );
   });
 
   it('treats @all runtime-status complaints as roundtable status questions, not new topics', () => {

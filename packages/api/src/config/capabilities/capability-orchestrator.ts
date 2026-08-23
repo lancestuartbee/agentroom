@@ -1333,7 +1333,10 @@ export async function generateCliConfigs(config: CapabilitiesConfig, paths: CliC
   await resolveMachineSpecificServers(perProvider, { projectRoot });
 
   // Map absolute path string -> { writer, servers: Map<name, McpServerDescriptor> }
-  const pathWrites = new Map<string, { writer: typeof writeAntigravityMcpConfig; servers: Map<string, McpServerDescriptor> }>();
+  const pathWrites = new Map<
+    string,
+    { writer: typeof writeAntigravityMcpConfig; servers: Map<string, McpServerDescriptor> }
+  >();
 
   for (const [provider, servers] of Object.entries(perProvider)) {
     const rawPath = paths[provider as keyof CliConfigPaths];

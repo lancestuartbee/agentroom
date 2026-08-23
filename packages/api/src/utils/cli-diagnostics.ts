@@ -337,7 +337,8 @@ export function buildCliDiagnostics(args: {
           ?.slice(0, 200) ?? '';
       return {
         publicSummary: panicHeadline ? `CLI panic — ${panicHeadline}` : `Claude Code 报告：${headline}`,
-        publicHint: '这是 Claude Code / 模型侧报告的错误，不是 Clowder AI 配置问题。展开看完整原因；可换一位成员或刷新对话重试。',
+        publicHint:
+          '这是 Claude Code / 模型侧报告的错误，不是 Clowder AI 配置问题。展开看完整原因；可换一位成员或刷新对话重试。',
         debugRef: args.debugRef,
         safeExcerpt: sanitized.slice(0, MAX_CHARS),
         excerptSource: 'cc_structured',

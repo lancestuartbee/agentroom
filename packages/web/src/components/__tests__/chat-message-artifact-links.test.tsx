@@ -89,7 +89,9 @@ describe('ChatMessage artifact links', () => {
       );
     });
 
-    const link = container.querySelector('a[href*="/api/artifact-store/threads/thread_mrhzx4ueucwdg861/download-path"]');
+    const link = container.querySelector(
+      'a[href*="/api/artifact-store/threads/thread_mrhzx4ueucwdg861/download-path"]',
+    );
     expect(link?.getAttribute('href')).toContain('%E7%83%81%E7%83%81_test.md');
     expect(link?.textContent).toContain('下载');
     expect(container.innerHTML).not.toContain('/api/artifact-store/threads/wrong-current-thread/download-path');
@@ -121,7 +123,9 @@ describe('ChatMessage artifact links', () => {
       );
     });
 
-    const link = container.querySelector('a[href*="/api/artifact-store/threads/thread_mrhzx4ueucwdg861/download-path"]');
+    const link = container.querySelector(
+      'a[href*="/api/artifact-store/threads/thread_mrhzx4ueucwdg861/download-path"]',
+    );
     expect(link?.getAttribute('href')).toContain('%E7%83%81%E7%83%81_test.md');
     expect(link?.textContent).toContain('下载');
     expect(link?.getAttribute('href')).not.toContain('/Users/aidox/Documents/AgentRoom');
@@ -156,7 +160,9 @@ describe('ChatMessage artifact links', () => {
       );
     });
 
-    const link = container.querySelector('a[href*="/api/artifact-store/threads/thread_mrs0v34aymrx2hx9/download-path"]');
+    const link = container.querySelector(
+      'a[href*="/api/artifact-store/threads/thread_mrs0v34aymrx2hx9/download-path"]',
+    );
     expect(container.textContent).toContain('已写成文件');
     expect(container.textContent).toContain('CLI Output');
     expect(link?.getAttribute('href')).toContain('agent-authorization-layered-model.md');

@@ -191,7 +191,10 @@ function asciiHeaderFilename(input: string): string {
 }
 
 function contentDispositionAttachment(filename: string): string {
-  const safeName = basename(filename).replace(/[\r\n\t]+/g, ' ').trim() || 'download';
+  const safeName =
+    basename(filename)
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim() || 'download';
   const fallback = asciiHeaderFilename(safeName);
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987Value(safeName)}`;
 }

@@ -21,7 +21,11 @@ const LIFECYCLE_TIPS: Record<string, LifecycleTipConfig> = {
   'phase-8-collab': { icon: '\u{1F50D}', text: '多成员协作中，队友正在 review 代码', variant: 'blue' },
   'phase-9-complete': { icon: '\u2705', text: 'Review 通过，准备合入主分支', variant: 'green' },
   'phase-10-retro': { icon: '\u{1F4DD}', text: '和成员一起回顾这个项目，看看学到了什么', variant: 'amber' },
-  'phase-11-farewell': { icon: '\u{1F393}', text: '恭喜完成训练营！你已经掌握了多成员协作的基本流程', variant: 'green' },
+  'phase-11-farewell': {
+    icon: '\u{1F393}',
+    text: '恭喜完成训练营！你已经掌握了多成员协作的基本流程',
+    variant: 'green',
+  },
 };
 
 export function BootcampGuideOverlay({ catName, phase, hasMessages }: BootcampGuideOverlayProps) {

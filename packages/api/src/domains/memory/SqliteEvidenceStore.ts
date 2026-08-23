@@ -51,7 +51,11 @@ function sandboxAnchorPrefix(sandboxId: string): string {
 }
 
 /** Append an anchor prefix filter to an in-progress SQL query when sandboxId is set. */
-function applySandboxScope(sql: string, params: unknown[], sandboxId: string | undefined): { sql: string; params: unknown[] } {
+function applySandboxScope(
+  sql: string,
+  params: unknown[],
+  sandboxId: string | undefined,
+): { sql: string; params: unknown[] } {
   if (!sandboxId) return { sql, params };
   return {
     sql: `${sql} AND anchor LIKE ? ESCAPE '\\'`,
@@ -390,7 +394,11 @@ export class SqliteEvidenceStore implements IEvidenceStore {
       if (suppressBackstop) {
         containsSql += " AND activation != 'backstop'";
       }
-      ({ sql: containsSql, params: containsParams } = applySandboxScope(containsSql, containsParams, options?.sandboxId));
+      ({ sql: containsSql, params: containsParams } = applySandboxScope(
+        containsSql,
+        containsParams,
+        options?.sandboxId,
+      ));
       try {
         const containsRows = this.db?.prepare(containsSql).all(...containsParams) as RowShape[];
         const { rows: rankedRows, signals } = rankLexicalBackfillRows(containsRows, lexicalBackfillWords);
@@ -1681,7 +1689,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
              FROM passage_fts f
              JOIN evidence_passages p ON p.rowid = f.rowid
              WHERE passage_fts MATCH ?`;
-        let params: unknown[] = [ftsQuery];
+        const params: unknown[] = [ftsQuery];
 
         if (options?.sandboxId) {
           sql += " AND p.doc_anchor LIKE ? ESCAPE '\\'";

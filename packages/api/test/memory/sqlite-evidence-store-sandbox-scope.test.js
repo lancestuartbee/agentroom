@@ -21,7 +21,9 @@ describe('SqliteEvidenceStore sandbox scope (F247 Phase B)', () => {
 
   beforeEach(async () => {
     const { SqliteEvidenceStore } = await import('../../dist/domains/memory/SqliteEvidenceStore.js');
-    const { PassageVectorStore, passageVectorKey: pvk } = await import('../../dist/domains/memory/PassageVectorStore.js');
+    const { PassageVectorStore, passageVectorKey: pvk } = await import(
+      '../../dist/domains/memory/PassageVectorStore.js'
+    );
     passageVectorKey = pvk;
     const { VectorStore } = await import('../../dist/domains/memory/VectorStore.js');
     const { ensurePassageVectorTable, ensureVectorTable } = await import('../../dist/domains/memory/schema.js');
@@ -184,7 +186,14 @@ describe('SqliteEvidenceStore sandbox scope (F247 Phase B)', () => {
     );
     // Global passage is the only passage hit; sandbox doc matches at doc level only.
     stmt.run('doc:global-secret', 'msg-001', 'the needle is in the haystack', 'user', 0, '2026-08-23T00:00:00Z');
-    stmt.run('sandbox:sandbox:sb-raw:learned:own', 'msg-001', 'sandbox conclusion without keyword', 'opus', 0, '2026-08-23T00:00:00Z');
+    stmt.run(
+      'sandbox:sandbox:sb-raw:learned:own',
+      'msg-001',
+      'sandbox conclusion without keyword',
+      'opus',
+      0,
+      '2026-08-23T00:00:00Z',
+    );
 
     // Unscoped raw search surfaces the passage-only global doc first.
     const unscoped = await store.search('needle', { mode: 'lexical', depth: 'raw', limit: 1 });

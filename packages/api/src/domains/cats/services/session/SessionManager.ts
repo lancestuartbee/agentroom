@@ -71,7 +71,12 @@ export class SessionManager {
    * Get stored session ID for user + cat + thread combination.
    * Uses Redis SessionStore when available, falls back to in-memory Map.
    */
-  async get(userId: string, catId: CatId, threadId: string, promptProfile?: PromptProfile): Promise<string | undefined> {
+  async get(
+    userId: string,
+    catId: CatId,
+    threadId: string,
+    promptProfile?: PromptProfile,
+  ): Promise<string | undefined> {
     const storageThreadId = this.storageThreadId(threadId, promptProfile);
     if (this.sessionStore) {
       const result = await this.sessionStore.getSessionId(userId, catId, storageThreadId);

@@ -216,7 +216,13 @@ test('stream-json carrier keeps one Claude CLI process for repeated casual turns
   emitClaudeTurn(proc, { sessionId: 'claude-session-1', messageId: 'msg-1', text: 'hello back' });
   const firstEvents = await firstPending;
   assert.equal(firstEvents.find((event) => event.type === 'session_init')?.sessionId, 'claude-session-1');
-  assert.equal(firstEvents.filter((event) => event.type === 'text').map((event) => event.content).join(''), 'hello back');
+  assert.equal(
+    firstEvents
+      .filter((event) => event.type === 'text')
+      .map((event) => event.content)
+      .join(''),
+    'hello back',
+  );
   assert.equal(firstEvents.at(-1).type, 'done');
 
   const secondPending = collect(
@@ -232,7 +238,13 @@ test('stream-json carrier keeps one Claude CLI process for repeated casual turns
   assert.equal(secondPayload.message.content, 'again');
   emitClaudeTurn(proc, { messageId: 'msg-2', text: 'again back' });
   const secondEvents = await secondPending;
-  assert.equal(secondEvents.filter((event) => event.type === 'text').map((event) => event.content).join(''), 'again back');
+  assert.equal(
+    secondEvents
+      .filter((event) => event.type === 'text')
+      .map((event) => event.content)
+      .join(''),
+    'again back',
+  );
   assert.equal(secondEvents.at(-1).metadata.sessionId, 'claude-session-1');
 
   endProcess(proc);
@@ -244,7 +256,12 @@ test('stream-json carrier preserves fallback behavior when prompt profile is omi
   const fallbackService = {
     async *invoke(prompt, options) {
       fallbackCalls.push({ prompt, options });
-      yield { type: 'done', catId: 'opus', metadata: { provider: 'anthropic', model: 'fallback' }, timestamp: Date.now() };
+      yield {
+        type: 'done',
+        catId: 'opus',
+        metadata: { provider: 'anthropic', model: 'fallback' },
+        timestamp: Date.now(),
+      };
     },
   };
   const service = new ClaudeStreamJsonCarrierService({
@@ -308,7 +325,12 @@ test('stream-json carrier falls back for development turns with per-turn callbac
   const fallbackService = {
     async *invoke(prompt, options) {
       fallbackCalls.push({ prompt, options });
-      yield { type: 'done', catId: 'opus', metadata: { provider: 'anthropic', model: 'fallback' }, timestamp: Date.now() };
+      yield {
+        type: 'done',
+        catId: 'opus',
+        metadata: { provider: 'anthropic', model: 'fallback' },
+        timestamp: Date.now(),
+      };
     },
   };
   const service = new ClaudeStreamJsonCarrierService({
@@ -366,7 +388,13 @@ test('stream-json carrier restarts when stable native prompt changes', async () 
 
   emitClaudeTurn(proc2, { sessionId: 'claude-session-2', messageId: 'msg-4', text: 'second' });
   const secondEvents = await secondPending;
-  assert.equal(secondEvents.filter((event) => event.type === 'text').map((event) => event.content).join(''), 'second');
+  assert.equal(
+    secondEvents
+      .filter((event) => event.type === 'text')
+      .map((event) => event.content)
+      .join(''),
+    'second',
+  );
 
   endProcess(proc2);
 });

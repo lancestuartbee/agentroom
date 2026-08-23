@@ -296,7 +296,12 @@ function RoundtableMessageContent({
       )}
       {parsed.prelude && (
         <div className="rounded-r-md border-l-4 border-cafe bg-cafe-surface-sunken/45 px-3 py-2">
-          <MarkdownContent content={parsed.prelude} className="!text-xs" disableCommandPrefix artifactThreadId={artifactThreadId} />
+          <MarkdownContent
+            content={parsed.prelude}
+            className="!text-xs"
+            disableCommandPrefix
+            artifactThreadId={artifactThreadId}
+          />
         </div>
       )}
       <div className="space-y-2">
@@ -444,7 +449,9 @@ export function ChatMessage({
   const mergedCliStdout = message.extra?.stream?.cliStdout;
   const mergedSpeechContent = message.extra?.stream?.speechContent;
   const renderRoundtableBody = isRoundtableThread && hasTextContent;
-  const cliStdoutContent = renderRoundtableBody ? undefined : (mergedCliStdout ?? (isStreamOrigin ? message.content : undefined));
+  const cliStdoutContent = renderRoundtableBody
+    ? undefined
+    : (mergedCliStdout ?? (isStreamOrigin ? message.content : undefined));
   const cliEvents = toCliEvents(message.toolEvents, cliStdoutContent);
   const hasCliBlock = cliEvents.length > 0;
   const cliStatus = message.isStreaming

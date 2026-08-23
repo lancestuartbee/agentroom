@@ -161,8 +161,14 @@ describe('artifact store routes', () => {
     });
 
     assert.equal(registered.length, 2);
-    assert.equal(registered.some((artifact) => artifact.absolutePath === reportPath), true);
-    assert.equal(registered.some((artifact) => artifact.absolutePath === chineseReportPath), true);
+    assert.equal(
+      registered.some((artifact) => artifact.absolutePath === reportPath),
+      true,
+    );
+    assert.equal(
+      registered.some((artifact) => artifact.absolutePath === chineseReportPath),
+      true,
+    );
     const memory = threadStore.getThreadMemory(thread.id);
     assert.equal(memory.recentArtifacts.length, 2);
     const geminiArtifact = memory.recentArtifacts.find((artifact) => artifact.localPath === reportPath);

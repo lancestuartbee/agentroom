@@ -7202,7 +7202,10 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     );
 
     const expected = resolveThreadArtifactPaths(threadId).reportsDir;
-    assert.ok(msgs.some((m) => m.type === 'done'), 'service should complete');
+    assert.ok(
+      msgs.some((m) => m.type === 'done'),
+      'service should complete',
+    );
     assert.equal(optionsSeen.length, 1);
     assert.equal(optionsSeen[0]?.workingDirectory, expected);
     assert.equal(existsSync(expected), true, 'casual artifact reports directory should be created');

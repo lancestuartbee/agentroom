@@ -11,7 +11,7 @@
  * POST   /api/threads/:threadId/cancel/:catId       → F122B AC-B9: Per-cat cancel
  */
 
-import { catRegistry, type CatId, type SessionPromptProfile } from '@cat-cafe/shared';
+import { type CatId, catRegistry, type SessionPromptProfile } from '@cat-cafe/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { IBallCustodyIngest } from '../domains/ball-custody/BallCustodyIngest.js';
@@ -123,7 +123,12 @@ const historyResetBodySchema = z
   });
 type HistoryResetBody = z.infer<typeof historyResetBodySchema>;
 
-const ALL_SESSION_PROMPT_PROFILES: readonly SessionPromptProfile[] = ['development', 'casual', 'roundtable', 'sandbox'] as const;
+const ALL_SESSION_PROMPT_PROFILES: readonly SessionPromptProfile[] = [
+  'development',
+  'casual',
+  'roundtable',
+  'sandbox',
+] as const;
 const MANUAL_CONTEXT_RESET_SEAL_REASON = 'manual_context_reset';
 
 /**
@@ -178,10 +183,7 @@ function resolveDefaultPromptProfiles(thread: Thread): SessionPromptProfile[] {
   }
 }
 
-function resolvePromptProfiles(
-  requested: SessionResetBody['promptProfile'],
-  thread: Thread,
-): SessionPromptProfile[] {
+function resolvePromptProfiles(requested: SessionResetBody['promptProfile'], thread: Thread): SessionPromptProfile[] {
   if (requested === 'all') return [...ALL_SESSION_PROMPT_PROFILES];
   if (requested) return [requested];
   return resolveDefaultPromptProfiles(thread);

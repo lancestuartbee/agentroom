@@ -1,7 +1,7 @@
 'use client';
 
 import { Children, isValidElement, type ReactNode, useCallback, useRef, useState } from 'react';
-import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
+import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { UNKNOWN_CAT_COLOR } from '@/lib/color-defaults';
@@ -90,7 +90,7 @@ function CodeBlock({ children }: { children: ReactNode }) {
 /* ── File path → VSCode link ──────────────────────────────── */
 const PROJECT_ROOT = process.env.NEXT_PUBLIC_PROJECT_ROOT ?? '';
 const AGENTROOM_REPORT_FILE_PATH_RE =
-  /(?:^|\s)`?((?:\/[^\s`]+)*\/Documents\/AgentRoom\/profiles\/[^/\s`]+\/threads\/[^/\s`]+\/reports\/[^\n\r`<>()\[\]]+?\.(?:markdown|md))(?:`?)/gi;
+  /(?:^|\s)`?((?:\/[^\s`]+)*\/Documents\/AgentRoom\/profiles\/[^/\s`]+\/threads\/[^/\s`]+\/reports\/[^\n\r`<>()[\]]+?\.(?:markdown|md))(?:`?)/gi;
 const FILE_PATH_RE = /(?:^|\s)`?((?:\/[\w.@-]+)+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
 const REL_PATH_RE = /(?:^|\s)`?((?:packages|src|docs|tests?)\/[\w./@-]+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
 const WT_TAG_RE = /^\s*\[wt:([a-zA-Z0-9_/-]+)\]/;
@@ -142,7 +142,10 @@ function resolveArtifactReportDownloadHref(href: string | undefined, threadId: s
   return `${API_URL}/api/artifact-store/threads/${encodeURIComponent(threadId)}/download-path?path=${encodeURIComponent(clean)}`;
 }
 
-function resolveArtifactStoreDownloadHref(href: string | undefined, currentThreadId: string | undefined): string | null {
+function resolveArtifactStoreDownloadHref(
+  href: string | undefined,
+  currentThreadId: string | undefined,
+): string | null {
   if (!href) return null;
   const clean = stripMarkdownFragment(href);
   if (!clean) return null;
@@ -227,15 +230,7 @@ function apiPathFromHref(href: string): string | null {
   }
 }
 
-function ArtifactReportLink({
-  href,
-  children,
-  title,
-}: {
-  href: string;
-  children: ReactNode;
-  title?: string;
-}) {
+function ArtifactReportLink({ href, children, title }: { href: string; children: ReactNode; title?: string }) {
   const [downloading, setDownloading] = useState(false);
 
   const handleClick = useCallback(
@@ -254,7 +249,8 @@ function ArtifactReportLink({
         const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = objectUrl;
-        link.download = filenameFromContentDisposition(res.headers.get('content-disposition')) ?? filenameFromDownloadHref(href);
+        link.download =
+          filenameFromContentDisposition(res.headers.get('content-disposition')) ?? filenameFromDownloadHref(href);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -289,7 +285,10 @@ function ArtifactReportLink({
 function linkifyFilePaths(text: string, artifactThreadId?: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let lastIdx = 0;
-  const combined = new RegExp(`${AGENTROOM_REPORT_FILE_PATH_RE.source}|${FILE_PATH_RE.source}|${REL_PATH_RE.source}`, 'gi');
+  const combined = new RegExp(
+    `${AGENTROOM_REPORT_FILE_PATH_RE.source}|${FILE_PATH_RE.source}|${REL_PATH_RE.source}`,
+    'gi',
+  );
   let m: RegExpExecArray | null;
 
   combined.lastIndex = 0;
@@ -315,11 +314,7 @@ function linkifyFilePaths(text: string, artifactThreadId?: string): ReactNode[] 
     const artifactHref = resolveArtifactDownloadHref(filePath, artifactThreadId);
     if (artifactHref) {
       parts.push(
-        <ArtifactReportLink
-          key={`artifact${m.index}`}
-          href={artifactHref}
-          title={`下载当前对话产物\n${display}`}
-        >
+        <ArtifactReportLink key={`artifact${m.index}`} href={artifactHref} title={`下载当前对话产物\n${display}`}>
           {display}
         </ArtifactReportLink>,
       );
@@ -633,7 +628,11 @@ export function MarkdownContent({
   return (
     <div className={`markdown-content text-sm break-words ${className ?? ''}`}>
       {cmdMatch && <span className="font-semibold text-[var(--semantic-info)]">{cmdMatch[1]}</span>}
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components} urlTransform={markdownUrlTransform}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkBreaks]}
+        components={components}
+        urlTransform={markdownUrlTransform}
+      >
         {md}
       </ReactMarkdown>
     </div>

@@ -139,9 +139,7 @@ describe('DirectoryPickerModal', () => {
 
   // ── F068-R7: Helper to click confirm button after selecting ──
   function clickConfirm(label = '创建对话') {
-    const confirmBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes(label),
-    );
+    const confirmBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes(label));
     expect(confirmBtn).toBeTruthy();
     act(() => {
       confirmBtn?.click();

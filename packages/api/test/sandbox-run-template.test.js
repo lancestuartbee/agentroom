@@ -1,10 +1,10 @@
 import './helpers/setup-cat-registry.js';
 
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
-import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, test } from 'node:test';
 
 const BASE_SPEC = {
   specVersion: '1',
@@ -15,18 +15,13 @@ const BASE_SPEC = {
 };
 
 async function setup() {
-  const { InMemorySandboxStore } = await import(
-    '../dist/domains/sandbox/stores/InMemorySandboxStore.js'
-  );
+  const { InMemorySandboxStore } = await import('../dist/domains/sandbox/stores/InMemorySandboxStore.js');
   const tmpDir = await mkdtemp(join(tmpdir(), 'sandbox-tpl-'));
   const projectPath = join(tmpDir, 'project');
   await mkdir(projectPath, { recursive: true });
 
   const store = new InMemorySandboxStore({ indexFilePath: join(tmpDir, 'index.jsonl') });
-  const sandbox = await store.create(
-    { title: 'S', projectPath, members: ['opus', 'kimi'], spec: BASE_SPEC },
-    'user-1',
-  );
+  const sandbox = await store.create({ title: 'S', projectPath, members: ['opus', 'kimi'], spec: BASE_SPEC }, 'user-1');
   await store.bindThread(sandbox.id, 'thread-1');
   return { store, sandbox, tmpDir };
 }

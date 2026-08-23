@@ -104,13 +104,13 @@ function replaceIdentityFields(
 ): boolean {
   let dirty = false;
   for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(source, field)) {
+    if (Object.hasOwn(source, field)) {
       const nextValue = structuredClone(source[field]);
       if (!jsonEqual(target[field], nextValue)) {
         target[field] = nextValue;
         dirty = true;
       }
-    } else if (Object.prototype.hasOwnProperty.call(target, field)) {
+    } else if (Object.hasOwn(target, field)) {
       delete target[field];
       dirty = true;
     }

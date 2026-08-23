@@ -211,7 +211,7 @@ describe('SandboxSpecBar', () => {
   // "no A error on B" was true while B's controls were dead. `busy` was set for A's pause
   // and the finally that clears it is guarded by isCurrent — correctly, since it belongs to
   // A — so nothing ever cleared it, and B's pause/resume stayed disabled forever.
-  it('leaves B\'s controls usable when a pause started on A never comes back to A', async () => {
+  it("leaves B's controls usable when a pause started on A never comes back to A", async () => {
     mockThreads = [
       { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-A' },
       { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-B' },
@@ -251,12 +251,12 @@ describe('SandboxSpecBar', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(btn()?.disabled, "A settling must not disable B either").toBe(false);
+    expect(btn()?.disabled, 'A settling must not disable B either').toBe(false);
   });
 
   // The one post-await point still unguarded: after `await reload()` the code cleared the
   // error unconditionally, so A finishing wiped an error B had legitimately just produced.
-  it('does not clear B\'s own error when a reload started on A finishes', async () => {
+  it("does not clear B's own error when a reload started on A finishes", async () => {
     mockThreads = [
       { id: 'thread-1', mode: 'sandbox', sandboxId: 'sandbox:sb-A' },
       { id: 'thread-2', mode: 'sandbox', sandboxId: 'sandbox:sb-B' },

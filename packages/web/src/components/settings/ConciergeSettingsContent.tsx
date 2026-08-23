@@ -233,7 +233,10 @@ export function ConciergeSettingsContent() {
       </SettingsSection>
 
       {/* Section 4: 值班成员 (KD-7) */}
-      <SettingsSection title="值班成员" description="选择哪位成员负责前台应答。Provider-agnostic，可配置任意已注册成员。">
+      <SettingsSection
+        title="值班成员"
+        description="选择哪位成员负责前台应答。Provider-agnostic，可配置任意已注册成员。"
+      >
         <div className="space-y-4">
           <SettingsField label="值班成员" hint="前台对话由这位成员处理。">
             <select

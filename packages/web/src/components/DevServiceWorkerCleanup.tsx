@@ -17,8 +17,7 @@ export function DevServiceWorkerCleanup() {
     let cancelled = false;
 
     const cleanup = async () => {
-      const registrations =
-        'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+      const registrations = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistrations() : [];
       const cacheKeys = 'caches' in window ? await window.caches.keys() : [];
 
       await Promise.all([

@@ -51,7 +51,11 @@ function pathCandidateFromHref(href: string, baseUrl: string): string {
   return decodeLocalPathHref(clean);
 }
 
-function artifactStoreDownloadApiPath(href: string, currentThreadId: string | undefined, baseUrl: string): string | null {
+function artifactStoreDownloadApiPath(
+  href: string,
+  currentThreadId: string | undefined,
+  baseUrl: string,
+): string | null {
   let url: URL;
   try {
     url = new URL(stripMarkdownFragment(href), baseUrl);

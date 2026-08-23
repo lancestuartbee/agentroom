@@ -1037,7 +1037,12 @@ export class AgentRouter {
     if (!this.sandboxStore || !thread?.sandboxId) {
       log.warn({ threadId, sandboxId: thread?.sandboxId }, 'Sandbox routing unavailable: no store or no sandboxId');
       const emptyMentions = await this.parseAllMentions(message, threadId);
-      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
+      return {
+        targetCats: [],
+        intent: parseIntent(message, 0),
+        hasMentions: false,
+        routing_warnings: emptyMentions.routing_warnings,
+      };
     }
 
     let sandbox: Sandbox | null = null;
@@ -1046,19 +1051,34 @@ export class AgentRouter {
     } catch (err) {
       log.warn({ err, threadId, sandboxId: thread.sandboxId }, 'Failed to load sandbox for routing; fail-closed');
       const emptyMentions = await this.parseAllMentions(message, threadId);
-      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
+      return {
+        targetCats: [],
+        intent: parseIntent(message, 0),
+        hasMentions: false,
+        routing_warnings: emptyMentions.routing_warnings,
+      };
     }
 
     if (!sandbox || sandbox.threadId !== threadId || sandbox.id !== thread.sandboxId) {
       log.warn({ threadId, sandboxId: thread.sandboxId }, 'Sandbox binding mismatch; fail-closed');
       const emptyMentions = await this.parseAllMentions(message, threadId);
-      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
+      return {
+        targetCats: [],
+        intent: parseIntent(message, 0),
+        hasMentions: false,
+        routing_warnings: emptyMentions.routing_warnings,
+      };
     }
 
     const memberCats = this.filterRoutableCats(sandbox.members);
     if (memberCats.length === 0) {
       const emptyMentions = await this.parseAllMentions(message, threadId);
-      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
+      return {
+        targetCats: [],
+        intent: parseIntent(message, 0),
+        hasMentions: false,
+        routing_warnings: emptyMentions.routing_warnings,
+      };
     }
     const allowed = new Set(memberCats.map(String));
 

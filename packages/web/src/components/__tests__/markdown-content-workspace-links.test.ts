@@ -119,14 +119,17 @@ describe('MarkdownContent workspace link rendering', () => {
   it('renders absolute AgentRoom report paths as thread artifact downloads', () => {
     const html = renderToStaticMarkup(
       React.createElement(MarkdownContent, {
-        content: '报告路径 /Users/aidox/Documents/AgentRoom/profiles/opensource-6398/threads/thread-1/reports/report.md',
+        content:
+          '报告路径 /Users/aidox/Documents/AgentRoom/profiles/opensource-6398/threads/thread-1/reports/report.md',
         disableCommandPrefix: true,
         artifactThreadId: 'thread-1',
       }),
     );
 
     expect(html).toContain('/api/artifact-store/threads/thread-1/download-path');
-    expect(html).toContain('Documents%2FAgentRoom%2Fprofiles%2Fopensource-6398%2Fthreads%2Fthread-1%2Freports%2Freport.md');
+    expect(html).toContain(
+      'Documents%2FAgentRoom%2Fprofiles%2Fopensource-6398%2Fthreads%2Fthread-1%2Freports%2Freport.md',
+    );
   });
 
   it('renders bare AgentRoom report paths with Chinese filenames as downloads', () => {
@@ -209,7 +212,8 @@ describe('MarkdownContent workspace link rendering', () => {
   it('renders artifact deep links with threadId and artifactId as download links', () => {
     const html = renderToStaticMarkup(
       React.createElement(MarkdownContent, {
-        content: '[报告](http://localhost:3003/thread/thread-1?workspace=artifacts&threadId=thread-1&artifactId=md-abc)',
+        content:
+          '[报告](http://localhost:3003/thread/thread-1?workspace=artifacts&threadId=thread-1&artifactId=md-abc)',
         disableCommandPrefix: true,
         artifactThreadId: 'thread-1',
       }),

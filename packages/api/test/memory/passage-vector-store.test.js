@@ -94,7 +94,13 @@ describe('PassageVectorStore', () => {
 
     assert.equal(hits.length, 20, 'should return exactly k distinct hits');
     assert.equal(distinct.size, 20, 'no duplicate keys across widening pools');
-    assert.ok(keys.every((k) => k.startsWith(`["sandbox:${sandboxId}:`)), 'all hits belong to the sandbox');
-    assert.ok(keys.some((k) => k.includes('late-')), 'late sandbox hits must be reachable after widening');
+    assert.ok(
+      keys.every((k) => k.startsWith(`["sandbox:${sandboxId}:`)),
+      'all hits belong to the sandbox',
+    );
+    assert.ok(
+      keys.some((k) => k.includes('late-')),
+      'late sandbox hits must be reachable after widening',
+    );
   });
 });

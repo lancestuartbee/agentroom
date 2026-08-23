@@ -186,7 +186,9 @@ function RoundtableProgressPill({ thread }: { thread: Thread }) {
       title={`圆桌议题：${topic}`}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="flex-shrink-0 rounded border border-cafe px-1.5 py-0.5 font-medium text-cafe-secondary">圆桌</span>
+        <span className="flex-shrink-0 rounded border border-cafe px-1.5 py-0.5 font-medium text-cafe-secondary">
+          圆桌
+        </span>
         <span className="flex-shrink-0 text-cafe-muted">{detail}</span>
         <span className="min-w-0 truncate text-cafe-muted">{topic}</span>
       </div>
@@ -204,11 +206,15 @@ function RoundtableProgressPill({ thread }: { thread: Thread }) {
             <div key={step.stage} className="flex min-w-0 flex-1 items-center last:flex-none">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full border ${dotClass}`} />
-                <span className={`hidden truncate sm:inline ${isActive ? 'font-medium text-cafe-secondary' : 'text-cafe-muted'}`}>
+                <span
+                  className={`hidden truncate sm:inline ${isActive ? 'font-medium text-cafe-secondary' : 'text-cafe-muted'}`}
+                >
                   {step.label}
                 </span>
               </div>
-              {index < ROUNDTABLE_PROGRESS_STEPS.length - 1 && <span className={`mx-1.5 h-px min-w-5 flex-1 ${lineClass}`} />}
+              {index < ROUNDTABLE_PROGRESS_STEPS.length - 1 && (
+                <span className={`mx-1.5 h-px min-w-5 flex-1 ${lineClass}`} />
+              )}
             </div>
           );
         })}

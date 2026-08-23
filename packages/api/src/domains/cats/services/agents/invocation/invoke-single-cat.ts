@@ -701,9 +701,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
   // F247 Phase B: running inside a sandbox thread means tools should default to the
   // sandbox's own evidence scope. Fetch once so we can expose the sandbox id to the
   // tool environment without every tool re-querying the thread store.
-  const threadForSandboxScope = threadStore
-    ? await Promise.resolve(threadStore.get(threadId)).catch(() => null)
-    : null;
+  const threadForSandboxScope = threadStore ? await Promise.resolve(threadStore.get(threadId)).catch(() => null) : null;
   const sandboxId = threadForSandboxScope?.sandboxId;
 
   const callbackEnv: Record<string, string> = {
