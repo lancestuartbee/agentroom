@@ -18,7 +18,7 @@
  * 虽然参数可选（兼容测试），但生产代码必须显式传入。
  */
 
-import type { CatId, CatRoutingError, MessageContent, ThreadAudience } from '@cat-cafe/shared';
+import type { CatId, CatRoutingError, MessageContent, Sandbox, ThreadAudience } from '@cat-cafe/shared';
 import { catRegistry, escapeRegExp } from '@cat-cafe/shared';
 import type { SessionStore } from '@cat-cafe/shared/utils';
 import { context as ctxApi, SpanStatusCode, trace } from '@opentelemetry/api';
@@ -1023,6 +1023,10 @@ export class AgentRouter {
    * Thread.preferredCats is only a copy at creation time; reads must go through the
    * sandbox store so PATCH /api/threads/:id cannot bypass membership by mutating the
    * thread. Mentions are scoped to members; no explicit mention → route to all members.
+   *
+   * Fail-closed: if the sandbox cannot be loaded, no members are routable, or the
+   * thread's sandboxId is missing, we return an empty target list rather than falling
+   * back to preferredCats. A transient store failure must not open the member boundary.
    */
   private async resolveSandboxTargetsAndIntent(
     message: string,
@@ -1030,20 +1034,31 @@ export class AgentRouter {
     thread: Thread | null,
     options?: { persist?: boolean },
   ): Promise<{ targetCats: CatId[]; intent: IntentResult; hasMentions: boolean; routing_warnings: CatRoutingError[] }> {
-    let memberCats: CatId[] = [];
-    if (this.sandboxStore && thread?.sandboxId) {
-      try {
-        const sandbox = await this.sandboxStore.getByThreadId(threadId);
-        if (sandbox) {
-          memberCats = this.filterRoutableCats(sandbox.members);
-        }
-      } catch (err) {
-        log.warn({ err, threadId, sandboxId: thread.sandboxId }, 'Failed to load sandbox for routing; falling back');
-      }
+    if (!this.sandboxStore || !thread?.sandboxId) {
+      log.warn({ threadId, sandboxId: thread?.sandboxId }, 'Sandbox routing unavailable: no store or no sandboxId');
+      const emptyMentions = await this.parseAllMentions(message, threadId);
+      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
     }
-    // Fallback for tests or transient store failures: the creation-time copy.
+
+    let sandbox: Sandbox | null = null;
+    try {
+      sandbox = await this.sandboxStore.getByThreadId(threadId);
+    } catch (err) {
+      log.warn({ err, threadId, sandboxId: thread.sandboxId }, 'Failed to load sandbox for routing; fail-closed');
+      const emptyMentions = await this.parseAllMentions(message, threadId);
+      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
+    }
+
+    if (!sandbox || sandbox.threadId !== threadId || sandbox.id !== thread.sandboxId) {
+      log.warn({ threadId, sandboxId: thread.sandboxId }, 'Sandbox binding mismatch; fail-closed');
+      const emptyMentions = await this.parseAllMentions(message, threadId);
+      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
+    }
+
+    const memberCats = this.filterRoutableCats(sandbox.members);
     if (memberCats.length === 0) {
-      memberCats = this.filterRoutableCats(Array.isArray(thread?.preferredCats) ? thread.preferredCats : []);
+      const emptyMentions = await this.parseAllMentions(message, threadId);
+      return { targetCats: [], intent: parseIntent(message, 0), hasMentions: false, routing_warnings: emptyMentions.routing_warnings };
     }
     const allowed = new Set(memberCats.map(String));
 

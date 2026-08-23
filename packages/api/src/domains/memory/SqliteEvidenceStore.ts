@@ -40,6 +40,25 @@ export function hasCJKCharacters(text: string): boolean {
   return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text);
 }
 
+/** Escape a user-supplied value for use in a SQLite LIKE pattern. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/** F247 Phase B: produce the anchor prefix predicate for a single sandbox's evidence. */
+function sandboxAnchorPrefix(sandboxId: string): string {
+  return `sandbox:${escapeLikePattern(sandboxId)}:%`;
+}
+
+/** Append an anchor prefix filter to an in-progress SQL query when sandboxId is set. */
+function applySandboxScope(sql: string, params: unknown[], sandboxId: string | undefined): { sql: string; params: unknown[] } {
+  if (!sandboxId) return { sql, params };
+  return {
+    sql: `${sql} AND anchor LIKE ? ESCAPE '\\'`,
+    params: [...params, sandboxAnchorPrefix(sandboxId)],
+  };
+}
+
 export interface PassageResult {
   docAnchor: string;
   passageId: string;
@@ -186,7 +205,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     const seenAnchors = new Set<string>();
 
     let anchorSql = 'SELECT * FROM evidence_docs WHERE anchor = ? COLLATE NOCASE';
-    const anchorParams: unknown[] = [trimmed];
+    let anchorParams: unknown[] = [trimmed];
     if (effectiveKind) {
       anchorSql += ' AND kind = ?';
       anchorParams.push(effectiveKind);
@@ -226,6 +245,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
       anchorSql += ' AND scene_id = ?';
       anchorParams.push(options.sceneId);
     }
+    ({ sql: anchorSql, params: anchorParams } = applySandboxScope(anchorSql, anchorParams, options?.sandboxId));
     const exactRow = this.db?.prepare(anchorSql).get(...anchorParams) as RowShape | undefined;
     if (exactRow) {
       results.push(rowToItem(exactRow));
@@ -244,7 +264,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
 				JOIN evidence_docs d ON d.rowid = f.rowid
 				WHERE evidence_fts MATCH ?
 			`;
-        const params: unknown[] = [ftsQuery];
+        let params: unknown[] = [ftsQuery];
 
         if (effectiveKind) {
           sql += ' AND d.kind = ?';
@@ -294,6 +314,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
           sql += ' AND d.scene_id = ?';
           params.push(options.sceneId);
         }
+        ({ sql, params } = applySandboxScope(sql, params, options?.sandboxId));
 
         // Superseded items sort last (KD-16), archive results deprioritized (P2 fix), authoritative first (F152 AC-A6, P1-2 NULL-safe)
         sql +=
@@ -319,7 +340,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
         () => "(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, '')) LIKE ? OR LOWER(COALESCE(keywords, '')) LIKE ?)",
       );
       let containsSql = `SELECT * FROM evidence_docs WHERE (${containsConditions.join(' OR ')})`;
-      const containsParams: unknown[] = lexicalBackfillWords.flatMap((word) => {
+      let containsParams: unknown[] = lexicalBackfillWords.flatMap((word) => {
         const pattern = `%${word}%`;
         return [pattern, pattern, pattern];
       });
@@ -369,6 +390,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
       if (suppressBackstop) {
         containsSql += " AND activation != 'backstop'";
       }
+      ({ sql: containsSql, params: containsParams } = applySandboxScope(containsSql, containsParams, options?.sandboxId));
       try {
         const containsRows = this.db?.prepare(containsSql).all(...containsParams) as RowShape[];
         const { rows: rankedRows, signals } = rankLexicalBackfillRows(containsRows, lexicalBackfillWords);
@@ -644,7 +666,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
 
     const placeholders = mentionHits.anchors.map(() => '?').join(',');
     let sql = `SELECT * FROM evidence_docs WHERE anchor IN (${placeholders})`;
-    const params: unknown[] = [...mentionHits.anchors];
+    let params: unknown[] = [...mentionHits.anchors];
 
     if (filters.effectiveKind) {
       sql += ' AND kind = ?';
@@ -691,6 +713,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     if (filters.suppressBackstop) {
       sql += " AND activation != 'backstop'";
     }
+    ({ sql, params } = applySandboxScope(sql, params, options?.sandboxId));
 
     const rows = this.db.prepare(sql).all(...params) as RowShape[];
     const rowMap = new Map(rows.map((row) => [row.anchor, row]));
@@ -1096,7 +1119,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     const anchors = nnResults.map((r) => r.anchor);
     const placeholders = anchors.map(() => '?').join(',');
     let sql = `SELECT * FROM evidence_docs WHERE anchor IN (${placeholders})`;
-    const params: unknown[] = [...anchors];
+    let params: unknown[] = [...anchors];
 
     // Apply ALL SearchOptions filters (P1 fix: semantic must respect status/keywords too)
     const effectiveKind =
@@ -1144,6 +1167,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     if (suppressBackstop) {
       sql += " AND activation != 'backstop'";
     }
+    ({ sql, params } = applySandboxScope(sql, params, options?.sandboxId));
 
     const rows = this.db?.prepare(sql).all(...params) as RowShape[];
     const docMap = new Map(rows.map((r) => [r.anchor, rowToItem(r)]));
@@ -1197,7 +1221,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     if (missingAnchors.length > 0 && this.db) {
       const placeholders = missingAnchors.map(() => '?').join(',');
       let sql = `SELECT * FROM evidence_docs WHERE anchor IN (${placeholders})`;
-      const params: unknown[] = [...missingAnchors];
+      let params: unknown[] = [...missingAnchors];
 
       // Apply SearchOptions filters (same as semanticNNSearch)
       const effectiveKind =
@@ -1245,6 +1269,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
       if (suppressBackstop) {
         sql += " AND activation != 'backstop'";
       }
+      ({ sql, params } = applySandboxScope(sql, params, options?.sandboxId));
 
       const rows = this.db.prepare(sql).all(...params) as RowShape[];
       for (const row of rows) {
@@ -1646,7 +1671,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
              FROM passage_fts f
              JOIN evidence_passages p ON p.rowid = f.rowid
              WHERE passage_fts MATCH ?`;
-        const params: unknown[] = [ftsQuery];
+        let params: unknown[] = [ftsQuery];
 
         if (timeFilter?.dateFrom) {
           sql += ' AND p.created_at >= ?';
