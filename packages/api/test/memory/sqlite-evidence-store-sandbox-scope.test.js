@@ -268,8 +268,9 @@ describe('SqliteEvidenceStore sandbox scope (F247 Phase B)', () => {
     assert.equal(unscoped.length, 1);
     assert.equal(unscoped[0].anchor, 'doc:global-passage-0');
 
-    // Scoped semantic ANN must apply the scope inside sqlite-vec so the sandbox
-    // passage wins even though it is vector-ranked behind all global items.
+    // Scoped semantic ANN must apply the scope before top-K truncation so the
+    // sandbox passage wins even though it is vector-ranked behind all global
+    // items.
     const scoped = await store.search('coordination', {
       mode: 'semantic',
       depth: 'raw',

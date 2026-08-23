@@ -57,4 +57,44 @@ describe('PassageVectorStore', () => {
     assert.equal(passageVectors.count(), 0);
     assert.equal(docVectors.count(), 1);
   });
+
+  it('scoped search deduplicates across widening pools and returns k distinct hits', async () => {
+    const { PassageVectorStore, passageVectorKey } = await import('../../dist/domains/memory/PassageVectorStore.js');
+
+    const passageVectors = new PassageVectorStore(db, 4);
+    const queryVec = new Float32Array([1, 0, 0, 0]);
+    const sandboxId = 'sandbox:sb-dedup';
+
+    // Layout: ranks 1-10 are sandbox early, 11-20 are global, 21-30 are sandbox late.
+    // Without cross-pool deduplication the early sandbox hits would be counted
+    // again in the second pool and the search would return before scanning the
+    // late sandbox hits.
+    for (let i = 0; i < 10; i++) {
+      passageVectors.upsert(
+        passageVectorKey(`sandbox:${sandboxId}:learned:early-${i}`, 'msg-001'),
+        new Float32Array([0.99 - i * 0.001, 0.01, 0, 0]),
+      );
+    }
+    for (let i = 0; i < 10; i++) {
+      passageVectors.upsert(
+        passageVectorKey(`doc:global-passage-${i}`, 'msg-001'),
+        new Float32Array([0.9 - i * 0.001, 0.01, 0, 0]),
+      );
+    }
+    for (let i = 0; i < 10; i++) {
+      passageVectors.upsert(
+        passageVectorKey(`sandbox:${sandboxId}:learned:late-${i}`, 'msg-001'),
+        new Float32Array([0.5 - i * 0.001, 0.01, 0, 0]),
+      );
+    }
+
+    const hits = passageVectors.search(queryVec, 20, { sandboxId });
+    const keys = hits.map((h) => h.passageKey);
+    const distinct = new Set(keys);
+
+    assert.equal(hits.length, 20, 'should return exactly k distinct hits');
+    assert.equal(distinct.size, 20, 'no duplicate keys across widening pools');
+    assert.ok(keys.every((k) => k.startsWith(`["sandbox:${sandboxId}:`)), 'all hits belong to the sandbox');
+    assert.ok(keys.some((k) => k.includes('late-')), 'late sandbox hits must be reachable after widening');
+  });
 });

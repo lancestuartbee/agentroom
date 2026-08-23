@@ -14,15 +14,10 @@ export function parsePassageVectorKey(key: string): { docAnchor: string; passage
   return { docAnchor: parsed[0], passageId: parsed[1] };
 }
 
-/** Escape a user-supplied value for use in a SQLite LIKE pattern. */
-function escapeLikePattern(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-}
-
 /**
  * F247 Phase B: produce a passage_key prefix that matches the JSON encoding of
- * ["sandbox:<sandboxId>:", ...]. sqlite-vec stores passage_key as the primary
- * key text column, so a LIKE predicate can scope the ANN search before top-k.
+ * ["sandbox:<sandboxId>:", ...]. We filter the sqlite-vec ANN results in JS
+ * because sqlite-vec evaluates k before additional WHERE predicates.
  */
 function sandboxPassageKeyPrefix(sandboxId: string): string {
   return '[' + JSON.stringify(`sandbox:${sandboxId}:`).slice(0, -1);
@@ -59,14 +54,16 @@ export class PassageVectorStore {
     }
 
     // F247 Phase B: sqlite-vec evaluates k before additional WHERE predicates,
-    // so a scoped LIKE alone can return empty when global passages rank higher.
-    // We iteratively widen the candidate pool until we collect k scoped hits or
-    // exhaust the index.
+    // so a scoped SQL predicate alone can return empty when global passages rank
+    // higher. We iteratively widen the ANN candidate pool and filter by the
+    // sandbox passage_key prefix in JS until we collect k distinct scoped hits
+    // or exhaust the index.
     const prefix = sandboxPassageKeyPrefix(options.sandboxId);
     const total = this.count();
     const maxPool = Math.max(total, k);
     let pool = k;
     const out: Array<{ passageKey: string; distance: number }> = [];
+    const seen = new Set<string>();
     const stmt = this.db.prepare(
       `SELECT passage_key as passageKey, distance FROM passage_vectors
        WHERE embedding MATCH ? AND k = ?`,
@@ -75,7 +72,8 @@ export class PassageVectorStore {
     while (pool <= maxPool) {
       const rows = stmt.all(queryVec, pool) as Array<{ passageKey: string; distance: number }>;
       for (const row of rows) {
-        if (row.passageKey.startsWith(prefix)) {
+        if (row.passageKey.startsWith(prefix) && !seen.has(row.passageKey)) {
+          seen.add(row.passageKey);
           out.push(row);
           if (out.length >= k) return out;
         }
