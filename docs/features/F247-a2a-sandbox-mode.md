@@ -115,17 +115,17 @@ learningGoal: '积累主题分类体系和信息源质量评估'
 ## Acceptance Criteria
 
 ### Phase A（Schema & Directory Contract）
-- [ ] AC-A1: `packages/shared/src/types/modes.ts` 增加 `'sandbox'`，类型系统不破坏现有三种模式。
-- [ ] AC-A2: 新增 `packages/shared/src/types/sandbox.ts`，包含 `Sandbox`、`SandboxMemoryV1`、`SandboxSpecV1`、`SandboxScheduleV1`、`SandboxSettingsV1`。
-- [ ] AC-A3: `Thread` 类型增加 `sandboxId?: string`，不影响现有 thread 行为。
-- [ ] AC-A4: 目录约定文档化，`<projectPath>/.a2a-sandbox/` 结构明确。
+- [x] AC-A1: `packages/shared/src/types/modes.ts` 增加 `'sandbox'`，类型系统不破坏现有三种模式。
+- [x] AC-A2: 新增 `packages/shared/src/types/sandbox.ts`，包含 `Sandbox`、`SandboxMemoryV1`、`SandboxSpecV1`、`SandboxScheduleV1`、`SandboxSettingsV1`。
+- [x] AC-A3: `Thread` 类型增加 `sandboxId?: string`，不影响现有 thread 行为。
+- [x] AC-A4: 目录约定文档化，`<projectPath>/.a2a-sandbox/` 结构明确。
 
 ### Phase B（Backend Routing & Memory Isolation）
-- [ ] AC-B1: `AgentRouter` 在 `mode === 'sandbox'` 时走 sandbox 分支，不进入 development 旧通道。
-- [ ] AC-B2: Sandbox 内 A2A 路由限制在 `Sandbox.members` 内，越界 mention 退回当前成员。
-- [ ] AC-B3: `SessionBootstrap` 在 sandbox 模式下注入 `SandboxMemoryV1`。
-- [ ] AC-B4: Sandbox 内 evidence search 默认只搜索 `sandbox:<id>` collection，不污染全局/项目记忆。
-- [ ] AC-B5: Sandbox 内 Agent 不加载完整 SOP/家规，但保留路由和质量门禁。
+- [x] AC-B1: `AgentRouter` 在 `mode === 'sandbox'` 时走 sandbox 分支，不进入 development 旧通道。
+- [x] AC-B2: Sandbox 内 A2A 路由限制在 `Sandbox.members` 内，越界 mention 退回当前成员；`PATCH /api/threads/:id` 拒绝改写 sandbox thread 的 `preferredCats`/`audience`。
+- [x] AC-B3: `SessionBootstrap` 在 sandbox 模式下注入 `SandboxMemoryV1`；KV memory 对 sandbox thread 隐式加 `sandbox:<id>:` 前缀隔离。
+- [x] AC-B4: Sandbox 内 evidence search 默认只搜索 `sandbox:<id>` collection，不污染全局/项目记忆。实现沿用现有 evidence 表，以 `anchor` 前缀 `sandbox:<id>:` 做逻辑隔离，未为每个沙盒注册独立 LibraryCatalog collection（KD-4）。
+- [x] AC-B5: Sandbox 内 Agent 不加载完整 SOP/家规，但保留路由和质量门禁。
 
 ### Phase C（Scheduler & Run Loop）
 - [x] AC-C1: 支持创建沙盒时配置 cron schedule。`spec.schedule` 是唯一真相源，cron 任务只是它的投影；创建/改 spec/暂停都走 `syncSandboxSchedule()` 收敛，避免改 cron 后两个调度并存。时区透传到 trigger（真实盯盘没有时区等于没有时间）。
@@ -251,7 +251,7 @@ Reviewer usefulness check: tip teaches a concrete action, timing, or traceable h
 |------|------|
 | 2026-08-10 | 立项，明确模式命名、核心抽象、目录约定 |
 | 2026-08-10 | Phase A: schema & directory contract |
-| TBD | Phase B: backend routing & memory isolation |
+| 2026-08-22 | Phase B: backend routing & memory isolation |
 | TBD | Phase C: scheduler & run loop |
 | TBD | Phase D: frontend dual-pane UX v1 |
 | 2026-08-22 | Phase E: backflow & promotion 实现完成并通过 review |

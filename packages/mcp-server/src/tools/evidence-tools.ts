@@ -123,6 +123,12 @@ export async function handleSearchEvidence(input: {
   if (input.explain) params.set('explain', 'true');
   if (input.intent) params.set('intent', input.intent);
 
+  // F247 Phase B: when running inside a sandbox invocation, default the search to the
+  // sandbox's own evidence collection so a sandbox member does not accidentally recall
+  // unrelated project/global knowledge as if it were sandbox context.
+  const sandboxId = process.env['CAT_CAFE_SANDBOX_ID']?.trim();
+  if (sandboxId) params.set('sandboxId', sandboxId);
+
   const url = `${API_URL}/api/evidence/search?${params.toString()}`;
   const queryLabel = JSON.stringify(input.query);
 

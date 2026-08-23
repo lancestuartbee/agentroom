@@ -698,6 +698,14 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     timestamp: Date.now(),
   };
 
+  // F247 Phase B: running inside a sandbox thread means tools should default to the
+  // sandbox's own evidence scope. Fetch once so we can expose the sandbox id to the
+  // tool environment without every tool re-querying the thread store.
+  const threadForSandboxScope = threadStore
+    ? await Promise.resolve(threadStore.get(threadId)).catch(() => null)
+    : null;
+  const sandboxId = threadForSandboxScope?.sandboxId;
+
   const callbackEnv: Record<string, string> = {
     CAT_CAFE_API_URL: apiUrl,
     CAT_CAFE_INVOCATION_ID: invocationId,
@@ -709,6 +717,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // "missing required parameter". Inject the live threadId so prompt template
     // can resolve to a concrete value.
     CAT_CAFE_THREAD_ID: threadId,
+    ...(sandboxId ? { CAT_CAFE_SANDBOX_ID: sandboxId } : {}),
     ...(process.env.CAT_CAFE_SIGNAL_USER ? { CAT_CAFE_SIGNAL_USER: process.env.CAT_CAFE_SIGNAL_USER } : {}),
     // Per-cat git author identity (W1: cats are Agents with identity).
     // GIT_AUTHOR_NAME/GIT_COMMITTER_NAME override the runtime git config's pinned

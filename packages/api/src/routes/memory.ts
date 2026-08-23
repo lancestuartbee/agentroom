@@ -50,6 +50,20 @@ export const memoryRoutes: FastifyPluginAsync<MemoryRoutesOptions> = async (app,
     return true;
   }
 
+  /**
+   * F247 Phase B: sandbox threads get an implicit key prefix so a member's KV memory
+   * in one sandbox cannot leak into another sandbox or the global thread memory.
+   */
+  async function resolveKeyPrefix(threadId: string): Promise<string> {
+    if (!opts.threadStore || threadId === 'default') return '';
+    const thread = await opts.threadStore.get(threadId);
+    return thread?.sandboxId ? `sandbox:${thread.sandboxId}:` : '';
+  }
+
+  function stripPrefix(key: string, prefix: string): string {
+    return prefix && key.startsWith(prefix) ? key.slice(prefix.length) : key;
+  }
+
   // POST /api/memory — write entry
   app.post('/api/memory', async (request, reply) => {
     const parseResult = writeSchema.safeParse(request.body);
@@ -71,8 +85,15 @@ export const memoryRoutes: FastifyPluginAsync<MemoryRoutesOptions> = async (app,
       return { error: 'Access denied' };
     }
 
+    const prefix = await resolveKeyPrefix(threadId);
     const resolvedUpdatedBy = updatedBy === 'user' ? ('user' as const) : createCatId(updatedBy);
-    const entry = await opts.memoryStore.set({ threadId, key, value, updatedBy: resolvedUpdatedBy });
+    const stored = await opts.memoryStore.set({
+      threadId,
+      key: `${prefix}${key}`,
+      value,
+      updatedBy: resolvedUpdatedBy,
+    });
+    const entry = { ...stored, key: stripPrefix(stored.key, prefix) };
 
     reply.status(201);
     return entry;
@@ -99,18 +120,22 @@ export const memoryRoutes: FastifyPluginAsync<MemoryRoutesOptions> = async (app,
       return { error: 'Access denied' };
     }
 
+    const prefix = await resolveKeyPrefix(threadId);
     if (key) {
       // Single key lookup
-      const entry = await opts.memoryStore.get(threadId, key);
+      const entry = await opts.memoryStore.get(threadId, `${prefix}${key}`);
       if (!entry) {
         reply.status(404);
         return { error: 'Memory entry not found' };
       }
-      return entry;
+      return { ...entry, key: stripPrefix(entry.key, prefix) };
     }
 
-    // List all keys for thread
-    const entries = await opts.memoryStore.list(threadId);
+    // List all keys for thread; strip the sandbox prefix so callers see their own keys.
+    const allEntries = await opts.memoryStore.list(threadId);
+    const entries = prefix
+      ? allEntries.filter((e) => e.key.startsWith(prefix)).map((e) => ({ ...e, key: stripPrefix(e.key, prefix) }))
+      : allEntries;
     return { entries };
   });
 
@@ -135,7 +160,8 @@ export const memoryRoutes: FastifyPluginAsync<MemoryRoutesOptions> = async (app,
       return { error: 'Access denied' };
     }
 
-    const deleted = await opts.memoryStore.delete(threadId, key);
+    const prefix = await resolveKeyPrefix(threadId);
+    const deleted = await opts.memoryStore.delete(threadId, `${prefix}${key}`);
 
     if (!deleted) {
       reply.status(404);

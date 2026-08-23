@@ -147,4 +147,47 @@ describe('sandbox threads are born only with a sandbox', () => {
 
     await app.close();
   });
+
+  // F247 KD-5: sandbox membership is fixed and authoritative in Sandbox.members.
+  // Thread.preferredCats is just a copy at creation time; generic PATCH must not be
+  // able to rewrite it and bypass the sandbox member list.
+  test('PATCH /api/threads/:id refuses to change preferredCats on a sandbox thread', async () => {
+    const { app, threadStore } = await buildApp();
+    const thread = threadStore.create('user-1', 'Real sandbox');
+    threadStore.updateSandboxId(thread.id, 'sbx-1');
+    threadStore.updateThreadMode(thread.id, 'sandbox');
+    threadStore.updatePreferredCats(thread.id, ['opus', 'kimi']);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/threads/${thread.id}`,
+      headers: { 'x-cat-cafe-user': 'user-1' },
+      payload: { preferredCats: ['opus', 'codex'] },
+    });
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.json().code, 'SANDBOX_MEMBERS_FIXED');
+    assert.deepEqual(threadStore.get(thread.id).preferredCats, ['opus', 'kimi']);
+
+    await app.close();
+  });
+
+  test('PATCH /api/threads/:id refuses to change audience on a sandbox thread', async () => {
+    const { app, threadStore } = await buildApp();
+    const thread = threadStore.create('user-1', 'Real sandbox');
+    threadStore.updateSandboxId(thread.id, 'sbx-1');
+    threadStore.updateThreadMode(thread.id, 'sandbox');
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/threads/${thread.id}`,
+      headers: { 'x-cat-cafe-user': 'user-1' },
+      payload: { audience: { mode: 'selected', agentIds: ['opus'] } },
+    });
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.json().code, 'SANDBOX_AUDIENCE_FIXED');
+
+    await app.close();
+  });
 });

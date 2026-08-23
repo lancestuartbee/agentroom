@@ -599,5 +599,86 @@ describe('SessionBootstrap', () => {
       // Tools section always survives
       assert.ok(result.text.includes('cat_cafe_read_invocation_detail'));
     });
+
+    // F247 Phase B: sandbox threads must auto-recall from their own evidence scope,
+    // not pull in unrelated project/global knowledge.
+    it('auto-recall scopes evidence search to sandboxId for sandbox threads', async () => {
+      const store = createMockSessionChainStore([
+        { id: 'sess-0', catId: 'opus', threadId: 'thread-sandbox', status: 'sealed', seq: 0 },
+        { id: 'sess-1', catId: 'opus', threadId: 'thread-sandbox', status: 'active', seq: 1 },
+      ]);
+      const reader = createMockTranscriptReader();
+      const threadStore = {
+        async get(threadId) {
+          if (threadId === 'thread-sandbox') {
+            return {
+              id: 'thread-sandbox',
+              title: 'Stock sandbox recall query',
+              sandboxId: 'sandbox:sb-test',
+            };
+          }
+          return null;
+        },
+      };
+
+      const originalFetch = global.fetch;
+      /** @type {string | undefined} */
+      let capturedUrl;
+      global.fetch = async (url) => {
+        capturedUrl = String(url);
+        return { ok: true, json: async () => ({ results: [] }) };
+      };
+
+      try {
+        await buildSessionBootstrap(
+          { sessionChainStore: store, transcriptReader: reader, threadStore },
+          'opus',
+          'thread-sandbox',
+        );
+
+        assert.ok(capturedUrl, 'auto-recall should call /api/evidence/search');
+        assert.ok(capturedUrl.includes('/api/evidence/search'), capturedUrl);
+        assert.ok(capturedUrl.includes('sandboxId=sandbox%3Asb-test'), capturedUrl);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('auto-recall does not inject sandboxId for non-sandbox threads', async () => {
+      const store = createMockSessionChainStore([
+        { id: 'sess-0', catId: 'opus', threadId: 'thread-normal', status: 'sealed', seq: 0 },
+        { id: 'sess-1', catId: 'opus', threadId: 'thread-normal', status: 'active', seq: 1 },
+      ]);
+      const reader = createMockTranscriptReader();
+      const threadStore = {
+        async get(threadId) {
+          if (threadId === 'thread-normal') {
+            return { id: 'thread-normal', title: 'Normal recall query' };
+          }
+          return null;
+        },
+      };
+
+      const originalFetch = global.fetch;
+      /** @type {string | undefined} */
+      let capturedUrl;
+      global.fetch = async (url) => {
+        capturedUrl = String(url);
+        return { ok: true, json: async () => ({ results: [] }) };
+      };
+
+      try {
+        await buildSessionBootstrap(
+          { sessionChainStore: store, transcriptReader: reader, threadStore },
+          'opus',
+          'thread-normal',
+        );
+
+        assert.ok(capturedUrl, 'auto-recall should call /api/evidence/search');
+        assert.ok(!capturedUrl.includes('sandboxId'), capturedUrl);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
   });
 });

@@ -160,6 +160,94 @@ describe('Memory API Routes', () => {
     assert.equal(getRes.statusCode, 404);
   });
 
+  describe('sandbox thread key prefix isolation (F247 Phase B)', () => {
+    let sandboxThreadId;
+    let otherSandboxThreadId;
+
+    beforeEach(() => {
+      sandboxThreadId = threadStore.create('test-user', 'Sandbox thread').id;
+      threadStore.updateSandboxId(sandboxThreadId, 'sandbox:sb-test-a');
+      otherSandboxThreadId = threadStore.create('test-user', 'Other sandbox thread').id;
+      threadStore.updateSandboxId(otherSandboxThreadId, 'sandbox:sb-test-b');
+    });
+
+    it('stores sandbox keys under an implicit prefix', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/memory',
+        headers: { 'x-cat-cafe-user': 'test-user' },
+        payload: { threadId: sandboxThreadId, key: 'goal', value: 'A', updatedBy: 'user' },
+      });
+
+      // The same key in a different sandbox is a separate entry.
+      await app.inject({
+        method: 'POST',
+        url: '/api/memory',
+        headers: { 'x-cat-cafe-user': 'test-user' },
+        payload: { threadId: otherSandboxThreadId, key: 'goal', value: 'B', updatedBy: 'user' },
+      });
+
+      const resA = await app.inject({
+        method: 'GET',
+        url: `/api/memory?threadId=${sandboxThreadId}&key=goal`,
+        headers: { 'x-cat-cafe-user': 'test-user' },
+      });
+      assert.equal(resA.statusCode, 200);
+      assert.equal(resA.json().value, 'A');
+
+      const resB = await app.inject({
+        method: 'GET',
+        url: `/api/memory?threadId=${otherSandboxThreadId}&key=goal`,
+        headers: { 'x-cat-cafe-user': 'test-user' },
+      });
+      assert.equal(resB.statusCode, 200);
+      assert.equal(resB.json().value, 'B');
+    });
+
+    it('lists sandbox keys with the prefix stripped', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/memory',
+        headers: { 'x-cat-cafe-user': 'test-user' },
+        payload: { threadId: sandboxThreadId, key: 'goal', value: 'A', updatedBy: 'user' },
+      });
+
+      const listRes = await app.inject({
+        method: 'GET',
+        url: `/api/memory?threadId=${sandboxThreadId}`,
+        headers: { 'x-cat-cafe-user': 'test-user' },
+      });
+      assert.equal(listRes.statusCode, 200);
+      const entries = listRes.json().entries;
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].key, 'goal');
+      assert.ok(!entries[0].key.includes('sandbox:'));
+    });
+
+    it('deletes sandbox keys using the implicit prefix', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/memory',
+        headers: { 'x-cat-cafe-user': 'test-user' },
+        payload: { threadId: sandboxThreadId, key: 'goal', value: 'A', updatedBy: 'user' },
+      });
+
+      const delRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/memory?threadId=${sandboxThreadId}&key=goal`,
+        headers: { 'x-cat-cafe-user': 'test-user' },
+      });
+      assert.equal(delRes.statusCode, 204);
+
+      const getRes = await app.inject({
+        method: 'GET',
+        url: `/api/memory?threadId=${sandboxThreadId}&key=goal`,
+        headers: { 'x-cat-cafe-user': 'test-user' },
+      });
+      assert.equal(getRes.statusCode, 404);
+    });
+  });
+
   it('DELETE /api/memory returns 404 for unknown', async () => {
     const res = await app.inject({
       method: 'DELETE',

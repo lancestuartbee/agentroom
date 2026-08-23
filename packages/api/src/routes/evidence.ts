@@ -48,6 +48,8 @@ const searchSchema = z.object({
   threadId: z.string().optional(),
   dimension: z.enum(['project', 'global', 'library', 'collection', 'all']).optional(),
   collections: z.string().optional(),
+  /** F247 Phase B: scope results to a single sandbox's promoted learnings */
+  sandboxId: z.string().optional(),
   explain: z.enum(['true', '1']).optional(),
   activeFeatureIds: z.string().optional(),
   truthSourceRef: z.string().optional(),
@@ -123,6 +125,7 @@ export const evidenceRoutes: FastifyPluginAsync<EvidenceRoutesOptions> = async (
       threadId,
       dimension,
       collections: rawCollections,
+      sandboxId,
       explain: rawExplain,
       activeFeatureIds: rawFeatureIds,
       truthSourceRef,
@@ -180,6 +183,7 @@ export const evidenceRoutes: FastifyPluginAsync<EvidenceRoutesOptions> = async (
         threadId,
         dimension,
         collections: parsedCollections,
+        sandboxId,
         explain,
       };
       let searchMeta: SearchExecutionMeta = { degraded: false };

@@ -874,6 +874,26 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
       return sandboxViolation;
     }
 
+    // F247 KD-5: sandbox membership is fixed and authoritative in Sandbox.members.
+    // Generic thread mutation must not be able to bypass the member list by rewriting
+    // the creation-time copy stored in Thread.preferredCats or narrowing the audience.
+    if (thread.sandboxId) {
+      if (preferredCats !== undefined) {
+        reply.status(400);
+        return {
+          error: 'Sandbox thread membership is fixed in v1 and cannot be changed through preferredCats',
+          code: 'SANDBOX_MEMBERS_FIXED',
+        };
+      }
+      if (audience !== undefined) {
+        reply.status(400);
+        return {
+          error: 'Sandbox thread audience is managed by the sandbox and cannot be changed here',
+          code: 'SANDBOX_AUDIENCE_FIXED',
+        };
+      }
+    }
+
     if (title !== undefined) {
       await threadStore.updateTitle(id, title);
       try {

@@ -212,6 +212,11 @@ export async function buildSessionBootstrap(
       if (query && query.length > 2) {
         const apiUrl = process.env.CAT_CAFE_API_URL ?? `http://localhost:${process.env.API_SERVER_PORT ?? '3004'}`;
         const params = new URLSearchParams({ q: query, limit: '5' });
+        // F247 Phase B: sandbox threads should recall from the sandbox's own evidence scope
+        // first, not pull in unrelated project/global knowledge.
+        if (thread?.sandboxId) {
+          params.set('sandboxId', thread.sandboxId);
+        }
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 500);
         const res = await fetch(`${apiUrl}/api/evidence/search?${params.toString()}`, { signal: controller.signal });

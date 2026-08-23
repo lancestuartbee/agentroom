@@ -141,4 +141,76 @@ describe('KnowledgeResolver', () => {
     assert.equal(result.results.length, 0);
     assert.deepEqual(result.sources, ['project']);
   });
+
+  it('filters legacy search to sandbox scope when sandboxId is set (F247 Phase B)', async () => {
+    const projectItems = [
+      {
+        anchor: 'sandbox:sandbox:sb-test:learned:a',
+        kind: 'lesson',
+        status: 'active',
+        title: 'Sandbox lesson',
+        updatedAt: '2026-03-12',
+      },
+      { anchor: 'F042', kind: 'feature', status: 'active', title: 'Project feature', updatedAt: '2026-03-12' },
+    ];
+
+    const resolver = new KnowledgeResolver({ projectStore: createMockStore(projectItems) });
+    const result = await resolver.resolve('lesson feature', { sandboxId: 'sandbox:sb-test' });
+
+    assert.equal(result.results.length, 1);
+    assert.equal(result.results[0].anchor, 'sandbox:sandbox:sb-test:learned:a');
+  });
+
+  it('filters collection search to sandbox scope when sandboxId is set (F247 Phase B)', async () => {
+    const projectItems = [
+      {
+        anchor: 'sandbox:sandbox:sb-coll:learned:x',
+        kind: 'lesson',
+        status: 'active',
+        title: 'Sandbox collection lesson',
+        updatedAt: '2026-03-12',
+      },
+    ];
+    const catalog = {
+      getRoutable: () => [{ id: 'project:cat-cafe', kind: 'project', name: 'cat-cafe' }],
+      list: () => [],
+    };
+    const stores = new Map([['project:cat-cafe', createMockStore(projectItems)]]);
+
+    const resolver = new KnowledgeResolver({
+      projectStore: createMockStore([]),
+      catalog,
+      stores,
+    });
+    const result = await resolver.resolve('lesson', {
+      dimension: 'collection',
+      collections: ['project:cat-cafe'],
+      sandboxId: 'sandbox:sb-coll',
+    });
+
+    assert.equal(result.results.length, 1);
+    assert.equal(result.results[0].anchor, 'sandbox:sandbox:sb-coll:learned:x');
+  });
+
+  it('filters global search to sandbox scope when sandboxId is set (F247 Phase B)', async () => {
+    const globalItems = [
+      {
+        anchor: 'sandbox:sandbox:sb-global:learned:a',
+        kind: 'lesson',
+        status: 'active',
+        title: 'Sandbox global lesson',
+        updatedAt: '2026-03-12',
+      },
+      { anchor: 'F099', kind: 'feature', status: 'active', title: 'Global feature', updatedAt: '2026-03-12' },
+    ];
+
+    const resolver = new KnowledgeResolver({
+      projectStore: createMockStore([]),
+      globalStore: createMockStore(globalItems),
+    });
+    const result = await resolver.resolve('lesson feature', { dimension: 'global', sandboxId: 'sandbox:sb-global' });
+
+    assert.equal(result.results.length, 1);
+    assert.equal(result.results[0].anchor, 'sandbox:sandbox:sb-global:learned:a');
+  });
 });

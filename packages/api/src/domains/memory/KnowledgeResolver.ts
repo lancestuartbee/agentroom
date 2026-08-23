@@ -16,6 +16,17 @@ import type { LibraryCatalog } from './LibraryCatalog.js';
 import { redactForTranscript } from './privacy-redactor.js';
 import { redactGroupsForPersistence } from './RecallPersistenceRedactor.js';
 
+/** F247 Phase B: a sandbox collection only contains items whose anchor belongs to that sandbox. */
+function matchesSandboxScope(item: EvidenceItem, sandboxId: string | undefined): boolean {
+  if (!sandboxId) return true;
+  return item.anchor.startsWith(`sandbox:${sandboxId}:`);
+}
+
+function applySandboxScope<T extends { items: EvidenceItem[] }>(group: T, sandboxId: string | undefined): T {
+  if (!sandboxId) return group;
+  return { ...group, items: group.items.filter((item) => matchesSandboxScope(item, sandboxId)) };
+}
+
 interface KnowledgeResolverDeps {
   projectStore: IEvidenceStore;
   globalStore?: IEvidenceStore;
@@ -80,16 +91,20 @@ export class KnowledgeResolver implements IKnowledgeResolver {
       }),
     );
 
+    const sandboxId = options?.sandboxId;
     for (const entry of settled) {
       if (entry.status === 'fulfilled') {
         const { manifest: m, items, meta, durationMs, noStore } = entry.value;
         if (meta) metas.push(meta);
+        const scopedItems = noStore
+          ? []
+          : redactForTranscript(items, m.sensitivity).filter((item) => matchesSandboxScope(item, sandboxId));
         groups.push({
           collectionId: m.id,
           sensitivity: m.sensitivity,
           status: noStore ? 'skipped' : 'ok',
           durationMs: durationMs ?? 0,
-          items: noStore ? [] : redactForTranscript(items, m.sensitivity),
+          items: scopedItems,
         });
       } else {
         const m = manifests[settled.indexOf(entry)] as CollectionManifest;
@@ -128,9 +143,15 @@ export class KnowledgeResolver implements IKnowledgeResolver {
     limit: number,
     dimension: string,
   ): Promise<KnowledgeResult> {
+    const sandboxId = options?.sandboxId;
     if (dimension === 'project') {
       const execution = await searchStoreWithMeta(this.projectStore, query, { ...options, limit });
-      return { results: execution.items.slice(0, limit), sources: ['project'], query, meta: execution.meta };
+      return {
+        results: execution.items.filter((item) => matchesSandboxScope(item, sandboxId)).slice(0, limit),
+        sources: ['project'],
+        query,
+        meta: execution.meta,
+      };
     }
 
     if (dimension === 'global') {
@@ -142,7 +163,7 @@ export class KnowledgeResolver implements IKnowledgeResolver {
             meta: { degraded: true, degradeReason: 'evidence_store_error' },
           }) satisfies EvidenceSearchExecution,
       );
-      const results = execution.items;
+      const results = execution.items.filter((item) => matchesSandboxScope(item, sandboxId));
       return {
         results: results.slice(0, limit),
         sources: results.length > 0 ? ['global'] : [],
@@ -153,7 +174,12 @@ export class KnowledgeResolver implements IKnowledgeResolver {
 
     if (isProjectLocalScope(options)) {
       const execution = await searchStoreWithMeta(this.projectStore, query, { ...options, limit });
-      return { results: execution.items.slice(0, limit), sources: ['project'], query, meta: execution.meta };
+      return {
+        results: execution.items.filter((item) => matchesSandboxScope(item, sandboxId)).slice(0, limit),
+        sources: ['project'],
+        query,
+        meta: execution.meta,
+      };
     }
 
     const sources: KnowledgeResult['sources'] = [];
@@ -169,7 +195,7 @@ export class KnowledgeResolver implements IKnowledgeResolver {
       : Promise.resolve(null);
 
     const [projectExecution, globalExecution] = await Promise.all([projectPromise, globalPromise]);
-    const projectResults = projectExecution.items;
+    const projectResults = projectExecution.items.filter((item) => matchesSandboxScope(item, sandboxId));
     sources.push('project');
 
     if (!globalExecution || globalExecution.items.length === 0) {
@@ -182,7 +208,7 @@ export class KnowledgeResolver implements IKnowledgeResolver {
     }
 
     sources.push('global');
-    const globalResults = globalExecution.items;
+    const globalResults = globalExecution.items.filter((item) => matchesSandboxScope(item, sandboxId));
     const fused = rrfFusion(projectResults, globalResults, limit);
     return { results: fused, sources, query, meta: combineSearchMeta([projectExecution.meta, globalExecution.meta]) };
   }

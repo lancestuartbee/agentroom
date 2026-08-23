@@ -259,6 +259,8 @@ export interface SearchOptions {
   worldId?: string;
   /** F093 Phase A (KD-16): filter to a specific scene within a world */
   sceneId?: string;
+  /** F247 Phase B: scope evidence search to a single sandbox's promoted learnings */
+  sandboxId?: string;
   /** F200 v1.1 DF-3: include explainability fields in results */
   explain?: boolean;
   /** F200 HW-1: search intent — topk (default) or coverage (exhaustive multi-scope) */

@@ -1019,8 +1019,10 @@ export class AgentRouter {
   /**
    * F247: Resolve targets for sandbox mode.
    *
-   * Sandbox members are stored in Thread.preferredCats. Mentions are scoped to members.
-   * No explicit mention → route to all members.
+   * Sandbox membership is fixed in v1 (KD-5) and authoritative in Sandbox.members.
+   * Thread.preferredCats is only a copy at creation time; reads must go through the
+   * sandbox store so PATCH /api/threads/:id cannot bypass membership by mutating the
+   * thread. Mentions are scoped to members; no explicit mention → route to all members.
    */
   private async resolveSandboxTargetsAndIntent(
     message: string,
@@ -1028,7 +1030,21 @@ export class AgentRouter {
     thread: Thread | null,
     options?: { persist?: boolean },
   ): Promise<{ targetCats: CatId[]; intent: IntentResult; hasMentions: boolean; routing_warnings: CatRoutingError[] }> {
-    const memberCats = this.filterRoutableCats(Array.isArray(thread?.preferredCats) ? thread.preferredCats : []);
+    let memberCats: CatId[] = [];
+    if (this.sandboxStore && thread?.sandboxId) {
+      try {
+        const sandbox = await this.sandboxStore.getByThreadId(threadId);
+        if (sandbox) {
+          memberCats = this.filterRoutableCats(sandbox.members);
+        }
+      } catch (err) {
+        log.warn({ err, threadId, sandboxId: thread.sandboxId }, 'Failed to load sandbox for routing; falling back');
+      }
+    }
+    // Fallback for tests or transient store failures: the creation-time copy.
+    if (memberCats.length === 0) {
+      memberCats = this.filterRoutableCats(Array.isArray(thread?.preferredCats) ? thread.preferredCats : []);
+    }
     const allowed = new Set(memberCats.map(String));
 
     const allMentions = await this.parseAllMentions(message, threadId);
