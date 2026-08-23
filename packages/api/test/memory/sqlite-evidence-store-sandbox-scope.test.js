@@ -1,14 +1,47 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import * as sqliteVec from 'sqlite-vec';
+
+let passageVectorKey;
+
+function createEmbedding(vector) {
+  return {
+    isReady: () => true,
+    reprobeIfNeeded: async () => {},
+    embed: async () => [vector],
+    getModelInfo: () => ({ modelId: 'test-sandbox-scope', modelRev: 'v1', dim: 3 }),
+  };
+}
 
 describe('SqliteEvidenceStore sandbox scope (F247 Phase B)', () => {
   let store;
+  let passageVectorStore;
+  let vectorStore;
   const savedEnv = {};
 
   beforeEach(async () => {
     const { SqliteEvidenceStore } = await import('../../dist/domains/memory/SqliteEvidenceStore.js');
+    const { PassageVectorStore, passageVectorKey: pvk } = await import('../../dist/domains/memory/PassageVectorStore.js');
+    passageVectorKey = pvk;
+    const { VectorStore } = await import('../../dist/domains/memory/VectorStore.js');
+    const { ensurePassageVectorTable, ensureVectorTable } = await import('../../dist/domains/memory/schema.js');
+
     store = new SqliteEvidenceStore(':memory:');
     await store.initialize();
+    const db = store.getDb();
+    sqliteVec.load(db);
+    ensureVectorTable(db, 3);
+    ensurePassageVectorTable(db, 3);
+    vectorStore = new VectorStore(db, 3);
+    passageVectorStore = new PassageVectorStore(db, 3);
+
+    store.setEmbedDeps({
+      embedding: createEmbedding(new Float32Array([1, 0, 0])),
+      vectorStore,
+      passageVectorStore,
+      mode: 'on',
+    });
+
     savedEnv.F163 = process.env.F163_AUTHORITY_BOOST;
     savedEnv.F200 = process.env.F200_CONSUMPTION_RERANK;
     delete process.env.F163_AUTHORITY_BOOST;
@@ -167,5 +200,158 @@ describe('SqliteEvidenceStore sandbox scope (F247 Phase B)', () => {
     });
     assert.equal(scoped.length, 1);
     assert.equal(scoped[0].anchor, 'sandbox:sandbox:sb-raw:learned:own');
+  });
+
+  it('depth=raw semantic scopes ANN search to sandbox before top-K truncation', async () => {
+    // 20 global passages are nearer to the query vector than the single sandbox
+    // passage. Unscoped ANN with k=20 returns only global hits; scoped ANN must
+    // still find the sandbox hit.
+    const globalItems = Array.from({ length: 20 }, (_, i) => ({
+      anchor: `doc:global-passage-${i}`,
+      kind: 'thread',
+      status: 'active',
+      title: `Global thread ${i}`,
+      summary: 'Global coordination note',
+      updatedAt: '2026-08-23T00:00:00Z',
+    }));
+    const sandboxItem = {
+      anchor: 'sandbox:sandbox:sb-semantic:learned:own',
+      kind: 'lesson',
+      status: 'active',
+      title: 'Sandbox lesson',
+      summary: 'Sandbox coordination insight',
+      updatedAt: '2026-08-23T00:00:00Z',
+    };
+    await store.upsert([...globalItems, sandboxItem]);
+
+    const db = store.getDb();
+    const insertPassage = db.prepare(
+      'INSERT INTO evidence_passages (doc_anchor, passage_id, content, speaker, position, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+
+    const queryVec = new Float32Array([1, 0, 0]);
+    for (let i = 0; i < 20; i++) {
+      insertPassage.run(
+        `doc:global-passage-${i}`,
+        'msg-001',
+        `Global coordination detail ${i}`,
+        'user',
+        i,
+        '2026-08-23T00:00:00Z',
+      );
+      // Each global vector is closer to [1,0,0] than the sandbox vector below.
+      passageVectorStore.upsert(
+        passageVectorKey(`doc:global-passage-${i}`, 'msg-001'),
+        new Float32Array([0.99 - i * 0.001, 0.01, 0]),
+      );
+    }
+    insertPassage.run(
+      'sandbox:sandbox:sb-semantic:learned:own',
+      'msg-001',
+      'Sandbox coordination insight',
+      'opus',
+      0,
+      '2026-08-23T00:00:00Z',
+    );
+    // Sandbox vector is farther from [1,0,0] than all 20 global vectors.
+    passageVectorStore.upsert(
+      passageVectorKey('sandbox:sandbox:sb-semantic:learned:own', 'msg-001'),
+      new Float32Array([0.5, 0.5, 0]),
+    );
+
+    // Unscoped semantic ANN (k=20) only sees the 20 nearer global passages.
+    const unscoped = await store.search('coordination', {
+      mode: 'semantic',
+      depth: 'raw',
+      limit: 1,
+    });
+    assert.equal(unscoped.length, 1);
+    assert.equal(unscoped[0].anchor, 'doc:global-passage-0');
+
+    // Scoped semantic ANN must apply the scope inside sqlite-vec so the sandbox
+    // passage wins even though it is vector-ranked behind all global items.
+    const scoped = await store.search('coordination', {
+      mode: 'semantic',
+      depth: 'raw',
+      limit: 1,
+      sandboxId: 'sandbox:sb-semantic',
+    });
+    assert.equal(scoped.length, 1);
+    assert.equal(scoped[0].anchor, 'sandbox:sandbox:sb-semantic:learned:own');
+  });
+
+  it('depth=raw hybrid keeps scoped semantic hit when lexical side has no sandbox match', async () => {
+    // Same vector layout as the semantic test, but query tokens intentionally
+    // absent from every doc title/summary so lexical returns nothing. Hybrid
+    // must still surface the sandbox passage via scoped semantic ANN.
+    const globalItems = Array.from({ length: 20 }, (_, i) => ({
+      anchor: `doc:global-passage-${i}`,
+      kind: 'thread',
+      status: 'active',
+      title: `Global thread ${i}`,
+      summary: 'Global note',
+      updatedAt: '2026-08-23T00:00:00Z',
+    }));
+    const sandboxItem = {
+      anchor: 'sandbox:sandbox:sb-hybrid:learned:own',
+      kind: 'lesson',
+      status: 'active',
+      title: 'Sandbox lesson',
+      summary: 'Sandbox note',
+      updatedAt: '2026-08-23T00:00:00Z',
+    };
+    await store.upsert([...globalItems, sandboxItem]);
+
+    const db = store.getDb();
+    const insertPassage = db.prepare(
+      'INSERT INTO evidence_passages (doc_anchor, passage_id, content, speaker, position, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+
+    for (let i = 0; i < 20; i++) {
+      insertPassage.run(
+        `doc:global-passage-${i}`,
+        'msg-001',
+        `Global note content ${i}`,
+        'user',
+        i,
+        '2026-08-23T00:00:00Z',
+      );
+      passageVectorStore.upsert(
+        passageVectorKey(`doc:global-passage-${i}`, 'msg-001'),
+        new Float32Array([0.99 - i * 0.001, 0.01, 0]),
+      );
+    }
+    insertPassage.run(
+      'sandbox:sandbox:sb-hybrid:learned:own',
+      'msg-001',
+      'Sandbox note content',
+      'opus',
+      0,
+      '2026-08-23T00:00:00Z',
+    );
+    passageVectorStore.upsert(
+      passageVectorKey('sandbox:sandbox:sb-hybrid:learned:own', 'msg-001'),
+      new Float32Array([0.5, 0.5, 0]),
+    );
+
+    // Query token "uniquetoken" appears nowhere, so lexical is empty.
+    // Unscoped hybrid falls back to global semantic top-1.
+    const unscoped = await store.search('uniquetoken', {
+      mode: 'hybrid',
+      depth: 'raw',
+      limit: 1,
+    });
+    assert.equal(unscoped.length, 1);
+    assert.equal(unscoped[0].anchor, 'doc:global-passage-0');
+
+    // Scoped hybrid should find the sandbox passage through scoped semantic ANN.
+    const scoped = await store.search('uniquetoken', {
+      mode: 'hybrid',
+      depth: 'raw',
+      limit: 1,
+      sandboxId: 'sandbox:sb-hybrid',
+    });
+    assert.equal(scoped.length, 1);
+    assert.equal(scoped[0].anchor, 'sandbox:sandbox:sb-hybrid:learned:own');
   });
 });

@@ -794,7 +794,9 @@ export class SqliteEvidenceStore implements IEvidenceStore {
     options?: SearchOptions,
   ): Promise<PassageResult[]> {
     const queryVec = await this.embedDeps!.embedding.embed([query]);
-    const nnResults = this.embedDeps!.passageVectorStore!.search(queryVec[0], limit);
+    const nnResults = this.embedDeps!.passageVectorStore!.search(queryVec[0], limit, {
+      sandboxId: options?.sandboxId,
+    });
     return this.hydratePassageVectorHits(nnResults, options);
   }
 
